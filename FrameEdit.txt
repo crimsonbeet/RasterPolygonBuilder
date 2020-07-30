@@ -1,0 +1,88 @@
+>< $ KFrame DataType=FrameEdit 
+
+>< $ Situation ClassName=FrameEdit Bottom=1000 Right=1000 >< BackColor Hex=D3D3D3 $ 
+
+
+
+
+
+
+>< $ HyperList DataType='StereoConfiguration' LineHeightFactor=2.0 Debug=0 NoHeaders=1 NoLines=1 
+
+>< Situation Left=10 Top=70 Bottom=990 Right=990 FontFace='Segoe UI' FontHeight=9 
+
+>< $ PlainTextFormat 
+OffsetUnit=2 
+CellOffset=2 
+CellOffset=58 
+CellUi@2=1 
+CellOffset=38 
+CellUi@3=2 
+CellOffset=2 
+CellRightAlignment=000001 
+$ 
+
+>< $ ItemFormat 
+OffsetUnit=2 
+CellName='' 
+CellName=Description 
+CellUi@2=1 
+CellName='' 
+CellName=Value 
+CellUi@4=2 
+CellName='' 
+CellName=Error 
+CellUi@6=3 
+CellOffset=2 
+CellOffset=35 
+CellOffset=2 
+CellOffset=20 
+CellOffset=2 
+CellOffset=37 
+CellEditFlag=000000010000
+CellRightAlignment=000100000000 
+>< CellTextColor@4 Hex=4169E1 
+>< CellTextColor@6 Hex=FF6347 
+$ 
+
+>< EntryField Type=1 Description='APEX Vision System Settings' Value='Changes may cause existing connection to reset'
+>< EntryField Type=1		Value='Following changes will cause existing connection to cameras to reset'
+
+>< EntryField UI=CameraNames		Description='Names of Cameras:' Default='ACE0 ACE1' Error='Please enter 2 words separated by space' 
+>< EntryField UI=ImageHeight		Description='Height of image (pixels):' Default='483' Error='Please enter a number between 10 and 1024' 
+>< EntryField UI=Format12Bit		Description='12-Bit image format (1-Yes, 0-No):' Default='#No' Error='Please enter a digit (0 means No)' 
+
+>< EntryField Type=1 		Value='Following changes will not cause existing connection to reset'
+
+>< EntryField UI=TriggerHardware	Description='Hardware Trigger (1-Yes, 0-No):' Default='#No' Error='Please enter a digit (0 means No)' 
+
+>< EntryField Type=1 		Value='...Calibration'
+>< EntryField UI=CalibAutoImageCapture	Description='Image auto-capture:' Default='#No' Error='Please enter a digit (0 means No)' 
+>< EntryField UI=CalibRectifyAlphaParam	Description='Original size factor (0..1) (0 - scale to ROI, 1 - no scale):' Default='0' Error='Please enter a digit between 0 and 1' 
+>< EntryField UI=MinImages			Description='Min. number of calibr. images:' Default='12' Error='Please enter a number between 0 and 1' 
+>< EntryField UI=MinRMSEImages		Description='Min.Max. dist. between calibr. images (pixels):' Default='60' Error='Please enter a positive number' 
+>< EntryField UI=PatternIsGridOfSquares		Description='Pattern is grid of squares (1-Yes, 0-No):' Default='#No' Error='Please enter a digit (0 means No)' Error='Chess board pattern has to be Off' 
+>< EntryField UI=PatternIsChessBoard		Description='Pattern is assym. chess board (1-Yes, 0-No):' Default='#No' Error='Please enter a digit (0 means No)' Error='Pattern also has to be Grid Of Squares' 
+>< EntryField UI=PatternIsWhiteOnBlack		Description='Pattern is white on black (1-Yes, 0-No):' Default='#No' Error='Please enter a digit (0 means No)' 
+>< EntryField UI=PatternDistance	Description='Dist. between calibr. objects (inches):' Default='2.5' Error='Please enter a positive value' 
+>< EntryField UI=ImagesFromFiles	Description='Images from files (1-Yes, 0-No):' Default='#No' Error='Please enter a digit (0 means No)' 
+
+>< EntryField Type=1 		Value='...3D Reconstruction'
+>< EntryField UI=MaxYError			Description='Max. Y-Error (Pixels):' Default='2.0' Error='Please enter value >= 1 and < 10' 
+>< EntryField UI=MaxBoxsizePixels	Description='Max. Size of LED image (Pixels):' Default='25' Error='Please enter number between 10 and 100' 
+>< EntryField UI=MaxClusterDistance	Description='Ref.Cluster Max. inner distance (inches):' Default='4' Error='Please enter a positive number' 
+>< EntryField UI=AxisesRatio		Description='Ref.Cluster Axes Ratio:' Default='0.777' Error='Please enter a positive value' 
+>< EntryField UI=DistanceToTarget	Description='Distance from LED to bolt (inches):' Error='Please enter a number (0 means no bolt evaluation)' 
+>< EntryField UI=UseCenterOfGravity	Description='Disable socket detection:' Default='#No' Error='Please enter a positive value (0 means do not disable)' 
+>< EntryField UI=VisualDiagnostics	Description='Visual Diagnostics (1-Yes, 0-No):' Default='#No' Error='Please enter a positive value' 
+>< EntryField Type=1
+$ 
+
+
+
+
+
+
+$
+
+

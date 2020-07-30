@@ -1,0 +1,66 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.30225.117
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "RasterPolygonBuilder", "RasterPolygonBuilder.vcxproj", "{6DCEE80E-240A-42E3-B392-7FA5245DF9B2}"
+	ProjectSection(ProjectDependencies) = postProject
+		{4F345371-BEB5-4486-AEA9-85CBFF290505} = {4F345371-BEB5-4486-AEA9-85CBFF290505}
+		{E1742AA1-6E33-4E90-8F50-F121D0897850} = {E1742AA1-6E33-4E90-8F50-F121D0897850}
+		{7E6264BD-9972-45A2-AF3B-6988CE28EB53} = {7E6264BD-9972-45A2-AF3B-6988CE28EB53}
+	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DS7Singleton", "..\XDS7\DS7Singleton\DS7Singleton.vcxproj", "{E1742AA1-6E33-4E90-8F50-F121D0897850}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "KWindows", "..\XDS7\KWindows\KWindows.vcxproj", "{4F345371-BEB5-4486-AEA9-85CBFF290505}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Polymorpher", "..\Polymorpher\Polymorpher.vcxproj", "{7E6264BD-9972-45A2-AF3B-6988CE28EB53}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Debug|x86 = Debug|x86
+		Release|x64 = Release|x64
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{6DCEE80E-240A-42E3-B392-7FA5245DF9B2}.Debug|x64.ActiveCfg = Debug|x64
+		{6DCEE80E-240A-42E3-B392-7FA5245DF9B2}.Debug|x64.Build.0 = Debug|x64
+		{6DCEE80E-240A-42E3-B392-7FA5245DF9B2}.Debug|x86.ActiveCfg = Debug|Win32
+		{6DCEE80E-240A-42E3-B392-7FA5245DF9B2}.Debug|x86.Build.0 = Debug|Win32
+		{6DCEE80E-240A-42E3-B392-7FA5245DF9B2}.Release|x64.ActiveCfg = Release|x64
+		{6DCEE80E-240A-42E3-B392-7FA5245DF9B2}.Release|x64.Build.0 = Release|x64
+		{6DCEE80E-240A-42E3-B392-7FA5245DF9B2}.Release|x86.ActiveCfg = Release|Win32
+		{6DCEE80E-240A-42E3-B392-7FA5245DF9B2}.Release|x86.Build.0 = Release|Win32
+		{E1742AA1-6E33-4E90-8F50-F121D0897850}.Debug|x64.ActiveCfg = Debug|x64
+		{E1742AA1-6E33-4E90-8F50-F121D0897850}.Debug|x64.Build.0 = Debug|x64
+		{E1742AA1-6E33-4E90-8F50-F121D0897850}.Debug|x86.ActiveCfg = Debug|Win32
+		{E1742AA1-6E33-4E90-8F50-F121D0897850}.Debug|x86.Build.0 = Debug|Win32
+		{E1742AA1-6E33-4E90-8F50-F121D0897850}.Release|x64.ActiveCfg = Release|x64
+		{E1742AA1-6E33-4E90-8F50-F121D0897850}.Release|x64.Build.0 = Release|x64
+		{E1742AA1-6E33-4E90-8F50-F121D0897850}.Release|x86.ActiveCfg = Release|Win32
+		{E1742AA1-6E33-4E90-8F50-F121D0897850}.Release|x86.Build.0 = Release|Win32
+		{4F345371-BEB5-4486-AEA9-85CBFF290505}.Debug|x64.ActiveCfg = Debug|x64
+		{4F345371-BEB5-4486-AEA9-85CBFF290505}.Debug|x64.Build.0 = Debug|x64
+		{4F345371-BEB5-4486-AEA9-85CBFF290505}.Debug|x86.ActiveCfg = Debug|Win32
+		{4F345371-BEB5-4486-AEA9-85CBFF290505}.Debug|x86.Build.0 = Debug|Win32
+		{4F345371-BEB5-4486-AEA9-85CBFF290505}.Release|x64.ActiveCfg = Release|x64
+		{4F345371-BEB5-4486-AEA9-85CBFF290505}.Release|x64.Build.0 = Release|x64
+		{4F345371-BEB5-4486-AEA9-85CBFF290505}.Release|x86.ActiveCfg = Release|Win32
+		{4F345371-BEB5-4486-AEA9-85CBFF290505}.Release|x86.Build.0 = Release|Win32
+		{7E6264BD-9972-45A2-AF3B-6988CE28EB53}.Debug|x64.ActiveCfg = Debug|x64
+		{7E6264BD-9972-45A2-AF3B-6988CE28EB53}.Debug|x64.Build.0 = Debug|x64
+		{7E6264BD-9972-45A2-AF3B-6988CE28EB53}.Debug|x86.ActiveCfg = Debug|Win32
+		{7E6264BD-9972-45A2-AF3B-6988CE28EB53}.Debug|x86.Build.0 = Debug|Win32
+		{7E6264BD-9972-45A2-AF3B-6988CE28EB53}.Release|x64.ActiveCfg = Release|x64
+		{7E6264BD-9972-45A2-AF3B-6988CE28EB53}.Release|x64.Build.0 = Release|x64
+		{7E6264BD-9972-45A2-AF3B-6988CE28EB53}.Release|x86.ActiveCfg = Release|Win32
+		{7E6264BD-9972-45A2-AF3B-6988CE28EB53}.Release|x86.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {1842D4E7-B6F2-4E88-B733-98ECAA6456E0}
+	EndGlobalSection
+EndGlobal

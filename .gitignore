@@ -1,0 +1,9 @@
+﻿################################################################################
+# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+################################################################################
+
+/.vs/RasterPolygonBuilder/v16
+/nwpu_images/data
+/opencv/doc
+/packages
+/x64

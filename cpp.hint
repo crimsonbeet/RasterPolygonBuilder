@@ -1,0 +1,7 @@
+// Hint files help the Visual Studio IDE interpret Visual C++ identifiers
+// such as names of functions and macros.
+// For more information see https://go.microsoft.com/fwlink/?linkid=865984
+#define CONTAINS_FLAT_MEMBER(Member, Identifyer) contains_flat_member(((Inner_Type*)offset)->Member, #Identifyer, This);
+#define CONTAINS_FLAT_MEMBER(Member, Identifyer) contains_flat_member(&Inner_Type::Member, offset, #Identifyer, This);
+#define CONTAINS_FLAT_MEMBER(Member, Identifyer)
+#define BEGIN_WSI_SERIALIZATION_OBJECT(ClassName) BEGIN_WSI_SERIALIZATION_OBJECT_EX(ClassName, false)

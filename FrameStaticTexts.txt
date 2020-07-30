@@ -1,0 +1,49 @@
+100 FrameEdit
+
+100045 The form cannot be saved
+100046 Some fields are not valid
+100063  Save and reconnect 
+100066  Save and run 
+
+
+
+110 FrameReconstructedImage
+
+110001 RunTime Stats
+110002 Settings
+110003  
+110004 Delete Calibration
+110005 Restore Calibration
+110006 Capture Image
+110007 Delete Features
+110008 Restore Features
+110009 Create Features Of An Engine
+110010 Diag.Features
+
+
+
+120 FrameCalibrationImages
+
+120001 Stop capturing images
+
+
+
+140 CPTControllerUIElement
+
+140182 Not Defined
+
+
+
+
+150 main
+
+150019 Other Instance running
+150085 Local
+
+
+
+160 BaseClientHeader
+
+160020 initialized
+160021 active
+160025 closed

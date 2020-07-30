@@ -1,0 +1,21 @@
+
+>< $ KFrame DataType=FrameMain 
+>< $ Situation Name='RasterPolygonBuilder v.1.0.0.test' Left=30 Top=30 Bottom=970 Right=970 FontFace='Segoe UI' FontHeight=10 >< BackColor Hex=D3D3D3 $ 
+
+
+>< $ Canvas DataType=Rebar 
+>< $ Situation Left=0 Top=0 Bottom=1 Right=1000 FontFace='Segoe UI' FontHeight=10 >< BackColor Hex=D3D3D3 $ 
+$
+
+
+>< $ Canvas DataType=FrameReconstructedImage 
+>< $ Situation Left=0 Top=1 Bottom=1000 Right=1000 FontFace='Segoe UI' FontHeight=10 >< BackColor Hex=D3D3D3 $ 
+$
+
+
+
+$
+
+
+
+

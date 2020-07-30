@@ -1,0 +1,42 @@
+
+><$StereoConfiguration 
+
+PatternDistance=2.5 
+MaxClusterDistance=4
+AxisesRatio=0.778
+MinImages=12
+MinRMSEImages=60
+
+TriggerHardware=0 
+
+PixelThreshold=40
+
+SceneTranslate={-30 0 -20}
+LocalSceneTranslate={0 -10 40}
+
+ImageHeight=966
+
+CameraNames={ACE1 ACE2} 
+
+ExposureTimes={1500 1500}
+
+Format12Bit=0 
+
+CalibAutoImageCapture=1 
+
+CalibMinConfidence=0.0 
+CalibRectifyAlphaParam=0.0 
+
+ImagesFromFiles=0 
+TwoStepCalibration=1 
+
+
+PercentMaxintensity=0.1333
+
+MaxBoxsizePixels=25
+
+SupervisedLoG=1
+FramesFromFiles=1
+
+$
+

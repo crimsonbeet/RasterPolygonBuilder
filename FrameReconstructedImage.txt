@@ -1,0 +1,53 @@
+>< $ KFrame DataType=FrameReconstructedImage 
+
+>< $ Situation ClassName=FrameReconstructedImage Bottom=1000 Right=1000 >< BackColor Hex=D3D3D3 $ 
+
+
+>< $ HyperList DataType='StereoConfiguration' LineHeightFactor=2 Debug=0 NoHeaders=1 NoBorder=1 
+>< $ Situation Left=690 Top=10 Bottom=65 Right=990 Transparent=1 FontFace='Segoe UI' FontHeight=10 
+>< BackColor Hex=D3D3D3 $ 
+
+>< $ ItemFormat 
+OffsetUnit=2 
+CellOffset@1=38 
+CellOffset@2=2 
+CellOffset@3=60 
+CellHyperlink=000001 
+CellRightAlignment=010000 
+$ 
+$ 
+
+
+
+>< $ Canvas DataType='Frame_Container' 
+>< $ Situation Left=1 Top=70 Bottom=420 Right=500 FontFace='Segoe UI' FontHeight=10 >< BackColor Hex=D3D3D3 $ 
+$ 
+
+>< $ Canvas DataType='openCV_Container' 
+>< $ Situation Left=500 Top=70 Bottom=535 Right=1000 IsAbsolute=1 FontFace='Segoe UI' FontHeight=10 Name='Camera1' >< BackColor Hex=D3D3D3 $ 
+$ 
+
+>< $ Canvas DataType='openCV_Container' 
+>< $ Situation Left=500 Top=535 Bottom=1000 Right=1000 IsAbsolute=1 FontFace='Segoe UI' FontHeight=10 Name='Camera2' >< BackColor Hex=D3D3D3 $ 
+$ 
+
+>< $ Canvas DataType='openCV_Container' 
+>< $ Situation Left=1 Top=420 Bottom=650 Right=500 IsAbsolute=1 FontFace='Segoe UI' FontHeight=10 Name='Camera1Fit' >< BackColor Hex=D3D3D3 $ 
+$ 
+
+>< $ Canvas DataType='openCV_Container' 
+>< $ Situation Left=1 Top=650 Bottom=880 Right=500 IsAbsolute=1 FontFace='Segoe UI' FontHeight=10 Name='Camera2Fit' >< BackColor Hex=D3D3D3 $ 
+$ 
+
+
+
+
+>< $ LogWindow 
+>< $ Situation Left=1 Top=880 Bottom=1000 Right=500 FontFace='Tahoma' FontHeight=9 >< BackColor Hex=D3D3D3 $ 
+$ 
+
+
+
+
+
+$ 
