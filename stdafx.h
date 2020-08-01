@@ -60,9 +60,12 @@ using namespace cv;
 #include <vector>
 #include <cmath>
 
+#include "MASInterface.h"
+
 
 #pragma comment(lib, "DS7Singleton.lib")
 #pragma comment(lib, "KWindows.lib")
+#pragma comment(lib, "Polymorpher.lib")
 
 
 
@@ -245,6 +248,7 @@ struct ABox {
 	bool IsValid() const {
 		return x[0] < x[1] && y[0] < y[1];
 	}
+	std::vector<Point> contour;
 };
 
 

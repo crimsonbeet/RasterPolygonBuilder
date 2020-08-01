@@ -317,7 +317,7 @@ return_t __stdcall ZeroLogHandler(LPVOID lp) {
 	return 0;
 }
 
-
+HANDLE g_event_SFrameIsAvailable = INVALID_HANDLE_VALUE;
 HANDLE g_event_SeedPointIsAvailable = INVALID_HANDLE_VALUE;
 HANDLE g_event_ContourIsConfirmed = INVALID_HANDLE_VALUE;
 LoGSeedPoint g_LoG_seedPoint;
@@ -782,6 +782,7 @@ int main() {
 
 	while (ProcessWinMessages());
 
+	g_event_SFrameIsAvailable = CreateEvent(0, 0, 0, 0);
 	g_event_SeedPointIsAvailable = CreateEvent(0, 0, 0, 0);
 	g_event_ContourIsConfirmed = CreateEvent(0, 0, 0, 0);
 
@@ -821,6 +822,8 @@ int main() {
 				continue;
 			}
 
+			WaitForSingleObject(g_event_SFrameIsAvailable, 10);
+
 			bool stereodata_statistics_changed = DisplayReconstructionData(reconstruction_ctl, image_acquisition_ctl, imagewin_names, time_average);
 			if (stereodata_statistics_changed) {
 				if (_g_images_frame) {
@@ -828,7 +831,7 @@ int main() {
 			}
 
 
-			if (ProcessWinMessages(10)) {
+			if (ProcessWinMessages()) {
 			}
 		}
 	}

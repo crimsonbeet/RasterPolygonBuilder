@@ -10,6 +10,7 @@
 extern bool g_bTerminated;
 extern bool g_bRestart;
 extern Size g_imageSize; 
+extern HANDLE g_event_SFrameIsAvailable;
 extern HANDLE g_event_SeedPointIsAvailable;
 extern HANDLE g_event_ContourIsConfirmed;
 extern LoGSeedPoint g_LoG_seedPoint;
@@ -2423,6 +2424,7 @@ int BlobCentersLoG(std::vector<ABox>& boxes, std::vector<ClusteredPoint>& points
 						}
 
 						if ((isValid || supervised_LoG)) {
+							aBox.contour.swap(contour); 
 							boxes.push_back(aBox);
 						}
 						else {
@@ -2833,7 +2835,7 @@ void OptimizeSelectionOfQuadrilaterals(int idx[2], std::vector<ClusteredPoint> c
 }
 
 
-bool GetFramesFromFilesWithSubdirectorySearch(Mat cv_image[2]/*out*/, bool& arff_file_requested/*out*/) {
+bool GetFramesFromFilesWithSubdirectorySearch(Mat cv_image[2]/*out*/, bool& arff_file_requested/*out*/, std::string& file_name) {
 	bool image_isok = false; 
 
 	static int s_arff_file_requested = 0;
@@ -2845,18 +2847,19 @@ bool GetFramesFromFilesWithSubdirectorySearch(Mat cv_image[2]/*out*/, bool& arff
 	static int s_sub_dir_search = 0; 
 
 	if(s_file_number > -1) {
-		std::string file_name = s_sub_dir + "raw-" + (s_file_number < 0? std::string(): std::to_string(++s_file_number));
-		image_isok = GetImagesFromFile(cv_image[0], cv_image[1], file_name);
+		file_name = "raw-" + (s_file_number < 0 ? std::string() : std::to_string(++s_file_number));
+		std::string path_name = s_sub_dir + file_name;
+		image_isok = GetImagesFromFile(cv_image[0], cv_image[1], path_name);
 		if (!image_isok) {
 			std::ostringstream ostr;
 			if (s_file_number >= 0) {
 				using namespace std;
 				ostr << setfill('0') << setw(3) << s_file_number;
 			}
-			file_name = s_sub_dir + "lake_" + ostr.str();
-			image_isok = GetImagesFromFile(cv_image[0], cv_image[1], file_name);
+			path_name = s_sub_dir + (file_name = "lake_" + ostr.str());
+			image_isok = GetImagesFromFile(cv_image[0], cv_image[1], path_name);
 		}
-		std::cout << file_name << ' ' << (image_isok? "Ok": "NOk") << std::endl;
+		std::cout << path_name << ' ' << (image_isok? "Ok": "NOk") << std::endl;
 
 
 	}
@@ -2997,10 +3000,12 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 		bool arff_file_requested = false;
 
+		std::string file_name; 
+
 		if (g_configuration._frames_from_files > 0) {
 			if (!image_isok || g_configuration._frames_from_files == 1/* >1 means iterate through the first image (for profiling and leakage testing)*/) {
 				ctl->_gate.lock();
-				image_isok = GetFramesFromFilesWithSubdirectorySearch(cv_image/*out*/, arff_file_requested/*out*/);
+				image_isok = GetFramesFromFilesWithSubdirectorySearch(cv_image/*out*/, arff_file_requested/*out*/, file_name);
 				ctl->_gate.unlock();
 			}
 
@@ -3037,10 +3042,13 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 			cv_edges[1] = cv_image[1].clone();
 
 
+			MASInitialize(1, 1); 
 
-			//medianBlur(cv_edges[2], cv_edges[0], 3);
-			//medianBlur(cv_edges[3], cv_edges[1], 3);
 
+			//const char* polyNames[3] = { "", "1", "2" };
+			//MASPreload_StaticLayers(3, polyNames);
+
+			MASLayerCreateDBStorage(file_name.c_str());
 
 
 
@@ -3058,6 +3066,8 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 			ctl->_image_isvalid = true;
 			ctl->_last_image_timestamp = image_localtime;
 			ctl->_gate.unlock();
+
+			int pass_number = 0;
 
 			while (!g_bTerminated && !ctl->_terminated) {
 				HANDLE handles[] = { g_event_SeedPointIsAvailable, g_event_ContourIsConfirmed };
@@ -3139,6 +3149,25 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 						}
 					}
 
+					_sAlong x; 
+					_sAlong y;
+					size_t j = 0;
+					for (auto p : boxes[1][0].contour) {
+						x[j] = p.x; 
+						y[j] = p.y;
+						++j;
+					}
+
+
+					std::ostringstream out_layer_name;
+					out_layer_name << file_name << "_" << pass_number;
+
+					MASLayerAddPolygon2DBStorage(file_name.c_str(), x , y);
+
+					pass_number++;
+
+
+
 					ctl->_gate.lock();
 					matCV_16UC1_memcpy(ctl->_cv_image[0], cv_image[0]);
 					matCV_16UC1_memcpy(ctl->_cv_image[1], cv_image[1]);
@@ -3149,8 +3178,8 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 					ctl->_last_image_timestamp = image_localtime;
 
 
-					ctl->_boxes[0].swap(boxes[0]);
-					ctl->_boxes[1].swap(boxes[1]);
+					ctl->_boxes[0] = (boxes[0]);
+					ctl->_boxes[1] = (boxes[1]);
 
 					ctl->_cv_points[0].swap(cv_points[0]);
 					ctl->_cv_points[1].swap(cv_points[1]);
@@ -3160,6 +3189,12 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 					ctl->_last_image_timestamp = image_localtime;
 
 					ctl->_gate.unlock();
+
+					SetEvent(g_event_SFrameIsAvailable); 
+
+					MASEvaluate1(MAS_OverlapElim, file_name.c_str(), out_layer_name.str().c_str());
+					MASSize(out_layer_name.str().c_str(), "out", -3);
+
 				}
 			}
 		}

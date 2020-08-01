@@ -28,7 +28,6 @@ extern bool g_bTerminated;
 extern bool g_bUserTerminated; 
 extern bool g_bCalibrationExists; 
 
-bool ProcessWinMessages(DWORD dwMilliseconds); 
 
 
 
@@ -92,7 +91,6 @@ void FrameMain::Instantiate() {
 			if(!nstep) { 
 				std::cout << "FrameMain->can not create rebar\r\n"; 
 			} 
-			ProcessWinMessages(0);
 		} 
 		break; 
 		case 3: // create back-forth toolbar. 
