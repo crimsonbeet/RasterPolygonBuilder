@@ -1717,13 +1717,20 @@ template<typename T>
 void smoothContour(std::vector<Point_<T>>& contour) {
 	const int L = (int)contour.size(); 
 	const int N = (contour[0] == contour[L - 1])? (L - 1): L;
-	for(int j = 0, k = N - 1, k1 = N - 2, m = 1, m1 = 2; j < N; ++j, ++k, ++k1, ++m, ++m1) { 
+	for(int j = 0, k = N - 1, k1 = N - 2, k2 = N - 3, m = 1, m1 = 2, m2 = 3; j < N; ++j, ++k, ++k1, ++k2, ++m, ++m1, ++m2) {
 		k = k % N; 
 		m = m % N; 
 		k1 = k1 % N;
 		m1 = m1 % N;
+		k2 = k2 % N;
+		m2 = m2 % N;
 
 		Point2d point(contour[j]); 
+		if (L > 1) {
+			point += Point2d(contour[k] + contour[m] + contour[k1] + contour[m1] + contour[k2] + contour[m2]);
+			point *= 1.0 / 7.0;
+		}
+		else
 		if (L > 9) {
 			point += Point2d(contour[k] + contour[m] + contour[k1] + contour[m1]);
 			point *= 1.0 / 5.0;
@@ -2130,6 +2137,18 @@ int BlobCentersLoG(std::vector<ABox>& boxes, std::vector<ClusteredPoint>& points
 
 
 
+						int point_index = (int)points.size();
+						points.resize(point_index + 1);
+						ClusteredPoint& point = points[point_index];
+
+
+
+						intensity /= counter;
+						aBox.intensity = (int)(intensity + 0.5);
+
+
+
+
 						Rect approxBoundingRect(aBox.x[0], aBox.y[0], aBox.x[1] - aBox.x[0], aBox.y[1] - aBox.y[0]);
 
 
@@ -2156,13 +2175,35 @@ int BlobCentersLoG(std::vector<ABox>& boxes, std::vector<ClusteredPoint>& points
 
 						Point2f offset((float)approxBoundingRect.x, (float)approxBoundingRect.y);
 
-
-						intensity /= counter;
-						aBox.intensity = (int)(intensity + 0.5);
-
-
 						Mat crop(image, approxBoundingRect);
 						Mat crop_colored;
+
+
+						maux = Mat(); // clear temporary matrix
+
+						double fx = 240.0 / crop.rows;
+
+						if (g_configuration._visual_diagnostics) {
+							crop.convertTo(crop_colored, CV_16UC1, std::max(256 / (int)g_bytedepth_scalefactor, 1));
+							cv::cvtColor(crop_colored, maux, CV_GRAY2RGB);
+							crop_colored = Mat();
+							cv::resize(maux, crop_colored, cv::Size(0, 0), fx, fx, INTER_AREA);
+						}
+
+
+
+
+						if (crop_colored.rows > 0) {
+							Point a = (Point2f(contour[0]) + Point2f(0.5, 0.5) - (offset)) * fx; 
+							for (int j = 1; j < contour.size(); ++j) {
+								Point b = (Point2f(contour[j]) + Point2f(0.5, 0.5) - (offset)) * fx;
+								cv::line(crop_colored, a, b, Scalar(0, (size_t)255 * 256, 0));
+								a = b; 
+							}
+						}
+
+
+
 
 
 						double minMax[2];
@@ -2204,6 +2245,8 @@ int BlobCentersLoG(std::vector<ABox>& boxes, std::vector<ClusteredPoint>& points
 						}
 
 						double intensity_upperquantile = double(intensity_variation_counter) / double(counter);
+						double form_factor = hull_circularity * (1 - flattening) * intensity_upperquantile; /*hull_circularity < 0.96 && flattening > 0.1 && intensity_upperquantile < 0.4*/
+
 
 
 						double intensity_scale = max_distance / (minMax[1] - minMax[0]);
@@ -2221,26 +2264,6 @@ int BlobCentersLoG(std::vector<ABox>& boxes, std::vector<ClusteredPoint>& points
 
 						covar /= std::pow(max_distance, 2);
 
-						maux = Mat(); // clear temporary matrix
-
-						double fx = 240.0 / crop.rows;
-
-						if(g_configuration._visual_diagnostics) {
-							crop.convertTo(crop_colored, CV_16UC1, std::max(256 / (int)g_bytedepth_scalefactor, 1));
-							cv::cvtColor(crop_colored, maux, CV_GRAY2RGB);
-							crop_colored = Mat();
-							cv::resize(maux, crop_colored, cv::Size(0, 0), fx, fx, INTER_AREA);
-						}
-
-						if(crop_colored.rows > 0) {
-							for(int j = 0; j < (contour.size() - 1); ++j) {
-								cv::line(crop_colored, (Point2f(contour[j]) + Point2f(0.5, 0.5) - (offset)) * fx, (Point2f(contour[j + 1]) + Point2f(0.5, 0.5) - (offset)) * fx, Scalar(0, 255 * 256, 0));
-							}
-						}
-
-
-						double form_factor = hull_circularity * (1 - flattening) * intensity_upperquantile; /*hull_circularity < 0.96 && flattening > 0.1 && intensity_upperquantile < 0.4*/
-
 						double effective_flattening = (std::pow(covar, 2) / (form_factor));
 						effective_flattening *= contour_area2hull_area;
 
@@ -2249,10 +2272,6 @@ int BlobCentersLoG(std::vector<ABox>& boxes, std::vector<ClusteredPoint>& points
 						double shapemeasure = effective_flattening / (skewness * (intensity / g_bytedepth_scalefactor));
 
 
-
-						int point_index = (int)points.size(); 
-						points.resize(point_index + 1);
-						ClusteredPoint& point = points[point_index];
 
 
 
@@ -2389,7 +2408,7 @@ int BlobCentersLoG(std::vector<ABox>& boxes, std::vector<ClusteredPoint>& points
 							point._isACenter = 1;
 						}
 
-						if ((isValid || supervised_LoG)) {
+						if (isValid || supervised_LoG) {
 							if(crop_colored.rows > 0) {
 								cv::circle(crop_colored, point._crop_center, 2, Scalar(0, 255 * 256, 0), -1);
 								crop_colored.copyTo(point._crop);
@@ -2411,6 +2430,9 @@ int BlobCentersLoG(std::vector<ABox>& boxes, std::vector<ClusteredPoint>& points
 						point._contour_area = contour_area;
 						point._contour_area2hull_area = contour_area2hull_area;
 						point._centers_distance = centers_distance;
+
+
+
 
 						if ((isValid || supervised_LoG) && rectangleDetected) {
 							if(max_shapemeasure < shapemeasure) {
@@ -3042,15 +3064,6 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 			cv_edges[1] = cv_image[1].clone();
 
 
-			MASInitialize(1, 1); 
-
-
-			//const char* polyNames[3] = { "", "1", "2" };
-			//MASPreload_StaticLayers(3, polyNames);
-
-			MASLayerCreateDBStorage(file_name.c_str());
-
-
 
 
 			g_imageSize = cv_image[0].size();
@@ -3066,8 +3079,6 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 			ctl->_image_isvalid = true;
 			ctl->_last_image_timestamp = image_localtime;
 			ctl->_gate.unlock();
-
-			int pass_number = 0;
 
 			while (!g_bTerminated && !ctl->_terminated) {
 				HANDLE handles[] = { g_event_SeedPointIsAvailable, g_event_ContourIsConfirmed };
@@ -3149,52 +3160,107 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 						}
 					}
 
-					_sAlong x; 
-					_sAlong y;
-					size_t j = 0;
-					for (auto p : boxes[1][0].contour) {
-						x[j] = p.x; 
-						y[j] = p.y;
-						++j;
+
+
+					std::vector<std::vector<cv::Point>> contours(1); 
+					contours[0] = boxes[1][0].contour; 
+
+
+					int pass_number = 0;
+
+					while (pass_number++ < 2) {
+						std::ostringstream out_layer_name;
+						out_layer_name << file_name << "_" << pass_number;
+
+						MASInitialize(1, 1);
+
+						MASLayerCreateDBStorage(file_name.c_str());
+
+						for (auto& contour : contours) {
+							_sAlong x;
+							_sAlong y;
+							size_t j = 0;
+							for (auto p : contour) {
+								x[j] = p.x;
+								y[j] = p.y;
+								++j;
+							}
+							MASLayerAddPolygon2DBStorage(file_name.c_str(), x, y);
+						}
+
+
+
+						ctl->_gate.lock();
+						matCV_16UC1_memcpy(ctl->_cv_image[0], cv_image[0]);
+						matCV_16UC1_memcpy(ctl->_cv_image[1], cv_image[1]);
+						matCV_16UC1_memcpy(ctl->_cv_edges[0], cv_edges[0]);
+						matCV_16UC1_memcpy(ctl->_cv_edges[1], cv_edges[1]);
+						ctl->_pixel_threshold = (int)std::floor(effective_threshold_min / g_bytedepth_scalefactor + 0.5);
+						ctl->_image_isvalid = true;
+						ctl->_last_image_timestamp = image_localtime;
+
+
+						ctl->_boxes[0] = (boxes[0]);
+						ctl->_boxes[1] = (boxes[1]);
+
+						ctl->_cv_points[0] = cv_points[0];
+						ctl->_cv_points[1] = cv_points[1];
+
+						ctl->_data_isvalid = true;
+
+						ctl->_last_image_timestamp = image_localtime;
+
+						ctl->_gate.unlock();
+
+
+
+						SetEvent(g_event_SFrameIsAvailable);
+
+
+						//MASEvaluate1(MAS_OverlapElim, file_name.c_str(), "out");
+
+						MASEvaluate1(MAS_OverlapElim, file_name.c_str(), out_layer_name.str().c_str());
+						MASSize(out_layer_name.str().c_str(), "out", -1);
+
+						size_t nFirst = 0;
+						long nPolygons = MASLayerCountRTPolygons("out", &nFirst);
+
+						contours.resize(nPolygons); 
+
+						for (size_t n = nFirst, count = 0; count < nPolygons && n < (nPolygons<<2); ++n) {
+							_sAlong x;
+							_sAlong y;
+							long nPoints = MASLayerGetRTPolygon("out", n, x, y);
+							if (nPoints > 0) {
+								std::vector<Point>& contour = contours[count++];
+								contour.resize(nPoints);
+
+								long j = 0;
+								while(j < nPoints) {
+									contour[j] = Point(x[j], y[j]);
+									++j;
+								}
+
+								ClusteredPoint& point = cv_points[1][0];
+								Mat& crop_colored = point._crop;
+								if (crop_colored.rows == 0) {
+									continue;
+								}
+
+								double fx = point._crop_mat_scalefactor;
+								Point2f& off = point._crop_mat_offset;
+
+								Point a = (Point2f(contour[0]) + Point2f(0.5, 0.5) - (off)) * fx;
+								for (int j = 1; j < contour.size(); ++j) {
+									Point b = (Point2f(contour[j]) + Point2f(0.5, 0.5) - (off)) * fx;
+									cv::line(crop_colored, a, b, Scalar(0, (size_t)count*256, (size_t)255 * 256));
+									a = b;
+								}
+
+							}
+						}
+
 					}
-
-
-					std::ostringstream out_layer_name;
-					out_layer_name << file_name << "_" << pass_number;
-
-					MASLayerAddPolygon2DBStorage(file_name.c_str(), x , y);
-
-					pass_number++;
-
-
-
-					ctl->_gate.lock();
-					matCV_16UC1_memcpy(ctl->_cv_image[0], cv_image[0]);
-					matCV_16UC1_memcpy(ctl->_cv_image[1], cv_image[1]);
-					matCV_16UC1_memcpy(ctl->_cv_edges[0], cv_edges[0]);
-					matCV_16UC1_memcpy(ctl->_cv_edges[1], cv_edges[1]);
-					ctl->_pixel_threshold = (int)std::floor(effective_threshold_min / g_bytedepth_scalefactor + 0.5);
-					ctl->_image_isvalid = true;
-					ctl->_last_image_timestamp = image_localtime;
-
-
-					ctl->_boxes[0] = (boxes[0]);
-					ctl->_boxes[1] = (boxes[1]);
-
-					ctl->_cv_points[0].swap(cv_points[0]);
-					ctl->_cv_points[1].swap(cv_points[1]);
-
-					ctl->_data_isvalid = true;
-
-					ctl->_last_image_timestamp = image_localtime;
-
-					ctl->_gate.unlock();
-
-					SetEvent(g_event_SFrameIsAvailable); 
-
-					MASEvaluate1(MAS_OverlapElim, file_name.c_str(), out_layer_name.str().c_str());
-					MASSize(out_layer_name.str().c_str(), "out", -3);
-
 				}
 			}
 		}
