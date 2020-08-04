@@ -328,7 +328,8 @@ struct ClusteredPoint: public Point2d {
 	};
 
 	MatCloner _crop;
-	double _crop_mat_scalefactor; 
+	MatCloner _cropOriginal;
+	double _crop_mat_scalefactor;
 	Point2f _crop_mat_offset;
 	Point2f _crop_center;
 

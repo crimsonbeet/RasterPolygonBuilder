@@ -2177,6 +2177,7 @@ int BlobCentersLoG(std::vector<ABox>& boxes, std::vector<ClusteredPoint>& points
 
 						Mat crop(image, approxBoundingRect);
 						Mat crop_colored;
+						Mat crop_coloredOriginal; 
 
 
 						maux = Mat(); // clear temporary matrix
@@ -2188,6 +2189,7 @@ int BlobCentersLoG(std::vector<ABox>& boxes, std::vector<ClusteredPoint>& points
 							cv::cvtColor(crop_colored, maux, CV_GRAY2RGB);
 							crop_colored = Mat();
 							cv::resize(maux, crop_colored, cv::Size(0, 0), fx, fx, INTER_AREA);
+							crop_colored.copyTo(crop_coloredOriginal);
 						}
 
 
@@ -2232,7 +2234,7 @@ int BlobCentersLoG(std::vector<ABox>& boxes, std::vector<ClusteredPoint>& points
 									++intensity_variation_counter;
 								}
 
-								Point2d pixel(x - offset.x, aRow._rownum - offset.y);
+								Point2d pixel((size_t)x - offset.x, (size_t)aRow._rownum - offset.y);
 								double dist = std::sqrt(DistanceSquareFromPointToSegment(pixel, PA, PB));
 								if(max_distance < dist) {
 									max_distance = dist;
@@ -2323,7 +2325,7 @@ int BlobCentersLoG(std::vector<ABox>& boxes, std::vector<ClusteredPoint>& points
 							const double thresholdVal = /*(minMax[0] + minMax[1]) / 2*/std::max((minMax[0] + minMax[1]) / 2, intensity);
 
 							maux = Mat();
-							threshold(crop, maux, thresholdVal, 255 * g_bytedepth_scalefactor, THRESH_TOZERO);
+							threshold(crop, maux, thresholdVal, (size_t)255 * g_bytedepth_scalefactor, THRESH_TOZERO);
 							Mat binarizedImage = mat_binarize2byte(maux);
 							vector<vector<Point> > contours;
 							findContours(binarizedImage, contours, CV_RETR_LIST, CV_CHAIN_APPROX_SIMPLE);
@@ -2410,8 +2412,9 @@ int BlobCentersLoG(std::vector<ABox>& boxes, std::vector<ClusteredPoint>& points
 
 						if (isValid || supervised_LoG) {
 							if(crop_colored.rows > 0) {
-								cv::circle(crop_colored, point._crop_center, 2, Scalar(0, 255 * 256, 0), -1);
+								cv::circle(crop_colored, point._crop_center, 2, Scalar(0, (size_t)255 * 256, 0), -1);
 								crop_colored.copyTo(point._crop);
+								crop_coloredOriginal.copyTo(point._cropOriginal); 
 							}
 
 							point._crop_mat_scalefactor = fx;
@@ -3167,28 +3170,13 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 
 					int pass_number = 0;
+					int size_increment = 1; 
+					int iteration_number = 1; 
+					int max_passes = 2; 
 
-					while (pass_number++ < 2) {
-						std::ostringstream out_layer_name;
-						out_layer_name << file_name << "_" << pass_number;
+					bool doInvertDirection = false; 
 
-						MASInitialize(1, 1);
-
-						MASLayerCreateDBStorage(file_name.c_str());
-
-						for (auto& contour : contours) {
-							_sAlong x;
-							_sAlong y;
-							size_t j = 0;
-							for (auto p : contour) {
-								x[j] = p.x;
-								y[j] = p.y;
-								++j;
-							}
-							MASLayerAddPolygon2DBStorage(file_name.c_str(), x, y);
-						}
-
-
+					while (0<1) {
 
 						ctl->_gate.lock();
 						matCV_16UC1_memcpy(ctl->_cv_image[0], cv_image[0]);
@@ -3212,26 +3200,74 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 						ctl->_gate.unlock();
 
-
-
 						SetEvent(g_event_SFrameIsAvailable);
 
 
-						//MASEvaluate1(MAS_OverlapElim, file_name.c_str(), "out");
+
+						if (doInvertDirection || pass_number++ == max_passes) {
+							doInvertDirection = false;
+							pass_number = 0;
+							size_increment = -size_increment;
+							if (++iteration_number == 4) {
+								break;
+							}
+							switch (iteration_number) {
+							case 3:
+								max_passes >>= 1; 
+								break; 
+							case 2:
+								max_passes <<= 1;
+								break;
+							}
+						}
+
+
+
+						std::ostringstream out_layer_name;
+						out_layer_name << file_name << "_" << pass_number;
+
+						MASInitialize(1, 1);
+
+						MASLayerCreateDBStorage(file_name.c_str());
+
+						for (auto& contour : contours) {
+							_sAlong x;
+							_sAlong y;
+							size_t j = 0;
+							for (auto p : contour) {
+								x[j] = p.x;
+								y[j] = p.y;
+								++j;
+							}
+							if (contour.size() > 0) {
+								MASLayerAddPolygon2DBStorage(file_name.c_str(), x, y);
+							}
+						}
+
+
+						//MASEvaluate1(MAS_OverlapElim, file_name.c_str(), out_layer_name.str().c_str());
+						//MASEvaluate1(MAS_Or, out_layer_name.str().c_str(), "out");
 
 						MASEvaluate1(MAS_OverlapElim, file_name.c_str(), out_layer_name.str().c_str());
-						MASSize(out_layer_name.str().c_str(), "out", -1);
+						MASSize(out_layer_name.str().c_str(), "out", size_increment);
+						//MASEvaluate1(MAS_OverlapElim, "sized", "out");
+						MASEvaluate1(MAS_ActivateLayer, "out");
 
 						size_t nFirst = 0;
 						long nPolygons = MASLayerCountRTPolygons("out", &nFirst);
 
-						contours.resize(nPolygons); 
 
-						for (size_t n = nFirst, count = 0; count < nPolygons && n < (nPolygons<<2); ++n) {
+						size_t count = 0;
+						for (size_t n = nFirst; count < nPolygons && n < ((size_t)nPolygons<<2); ++n) {
 							_sAlong x;
 							_sAlong y;
 							long nPoints = MASLayerGetRTPolygon("out", n, x, y);
-							if (nPoints > 0) {
+							if (nPoints > 20) {
+								if(count == 0) {
+									contours.resize(0);
+									contours.resize(nPolygons);
+								}
+
 								std::vector<Point>& contour = contours[count++];
 								contour.resize(nPoints);
 
@@ -3247,19 +3283,29 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 									continue;
 								}
 
+								point._cropOriginal.copyTo(crop_colored);
+
 								double fx = point._crop_mat_scalefactor;
 								Point2f& off = point._crop_mat_offset;
 
 								Point a = (Point2f(contour[0]) + Point2f(0.5, 0.5) - (off)) * fx;
 								for (int j = 1; j < contour.size(); ++j) {
 									Point b = (Point2f(contour[j]) + Point2f(0.5, 0.5) - (off)) * fx;
-									cv::line(crop_colored, a, b, Scalar(0, (size_t)count*256, (size_t)255 * 256));
+									cv::Scalar color; 
+									if (size_increment > 0) {
+										color = Scalar(0, (size_t)count * 256, (size_t)255 * 256); 
+									}
+									else {
+										color = Scalar((size_t)255 * 256, 0, (size_t)count * 256);
+									}
+									cv::line(crop_colored, a, b, color);
 									a = b;
 								}
-
 							}
 						}
-
+						if (count == 0) {
+							doInvertDirection = true;
+						}
 					}
 				}
 			}
