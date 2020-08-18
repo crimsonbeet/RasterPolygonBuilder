@@ -18,6 +18,10 @@
 //#endif
 
 
+#pragma warning(disable : 26451)
+
+
+
 #define STROther_Instance_running 150019 
 
 
@@ -350,6 +354,7 @@ void OnMouseCallback(int event, int x, int y, int flags, void* userdata) {
 		break;
 	case 3:
 	case 4:
+	case 5:
 		SetEvent(g_event_ContourIsConfirmed);
 		break;
 	default:
@@ -372,6 +377,8 @@ bool DisplayReconstructionData(SPointsReconstructionCtl& reconstruction_ctl, SIm
 	static Mat cv_edges[2];
 	static Mat cv_background[4];
 
+	static Mat cv_unchangedImage[2]; 
+
 	int nrows = 0;
 	int ncols = 0;
 
@@ -389,14 +396,14 @@ bool DisplayReconstructionData(SPointsReconstructionCtl& reconstruction_ctl, SIm
 
 	cv::Rect roi[2];
 
-	double fx = 1;
-	double fy = 1;
+	double fx[5] = { 1, 1, 1, 1, 1 };
+	double fy[5] = { 1, 1, 1, 1, 1 };
 
 	static int s_windows_painted = 0;
 	static Mat s_windows_default_image;
 
-	static bool onMouse_isActive[4] = { 0, 0, 0, 0 };
-	static MouseCallbackParameters mouse_callbackParams[4];
+	static bool onMouse_isActive[5] = { 0, 0, 0, 0, 0 };
+	static MouseCallbackParameters mouse_callbackParams[5];
 
 
 	gate.lock();
@@ -432,6 +439,8 @@ bool DisplayReconstructionData(SPointsReconstructionCtl& reconstruction_ctl, SIm
 			matCV_16UC1_memcpy(cv_edges[0], reconstruction_ctl._cv_edges[0]);
 			matCV_16UC1_memcpy(cv_edges[1], reconstruction_ctl._cv_edges[1]);
 
+			cv_unchangedImage[0] = reconstruction_ctl._unchangedImage[0].clone(); 
+
 			nrows = cv_edges[0].rows;
 			ncols = cv_edges[0].cols;
 
@@ -442,6 +451,19 @@ bool DisplayReconstructionData(SPointsReconstructionCtl& reconstruction_ctl, SIm
 
 		reconstruction_ctl._gate.unlock();
 	}
+
+	auto scaleImage = [](const std::string& winName, double &fx, double &fy, Mat &image) {
+		HWND hwnd = (HWND)cvGetWindowHandle(winName.c_str());
+		RECT clrect;
+		if (GetWindowRect(GetParent(hwnd), &clrect)) {
+			fx = (double)(clrect.right - clrect.left) / (double)image.cols;
+			fy = (double)(clrect.bottom - clrect.top) / (double)image.rows;
+			Mat image_scaled;
+			cv::resize(image, image_scaled, cv::Size(0, 0), fx, fy, INTER_AREA);
+			image = image_scaled.clone();
+			image_scaled = Mat();
+		}
+	};
 
 
 
@@ -458,22 +480,22 @@ bool DisplayReconstructionData(SPointsReconstructionCtl& reconstruction_ctl, SIm
 			cvtColor(cv_edges[0], cv_image[0] = Mat(), CV_GRAY2RGB);
 			cvtColor(cv_edges[1], cv_image[1] = Mat(), CV_GRAY2RGB);
 
-			fx = 700.0 / cv_image[0].cols;
-			fy = 400.0 / cv_image[0].rows;
-			//fy = fx; 
+			for (int j = 0; j < 2; ++j) {
+				scaleImage(imagewin_names[j], fx[j], fy[j], cv_image[j]);
+				//fx[j] = 700.0 / cv_image[0].cols;
+				//fy[j] = 400.0 / cv_image[0].rows;
+				////fy = fx; 
 
-			HWND hwnd = (HWND)cvGetWindowHandle(imagewin_names[0].c_str());
-			RECT clrect;
-			if (GetWindowRect(GetParent(hwnd), &clrect)) {
-				fx = (double)(clrect.right - clrect.left) / (double)cv_image[0].cols;
-				fy = (double)(clrect.bottom - clrect.top) / (double)cv_image[0].rows;
+				//HWND hwnd = (HWND)cvGetWindowHandle(imagewin_names[j].c_str());
+				//RECT clrect;
+				//if (GetWindowRect(GetParent(hwnd), &clrect)) {
+				//	fx[j] = (double)(clrect.right - clrect.left) / (double)cv_image[j].cols;
+				//	fy[j] = (double)(clrect.bottom - clrect.top) / (double)cv_image[j].rows;
+				//}
+				//cv::resize(cv_image[j], cv_edges[j] = Mat(), cv::Size(0, 0), fx[j], fy[j], INTER_AREA);
+				//cv_image[j] = cv_edges[j];
 			}
-
-			cv::resize(cv_image[0], cv_edges[0] = Mat(), cv::Size(0, 0), fx, fy, INTER_AREA);
-			cv::resize(cv_image[1], cv_edges[1] = Mat(), cv::Size(0, 0), fx, fy, INTER_AREA);
-
-			cv_image[0] = cv_edges[0];
-			cv_image[1] = cv_edges[1];
+			scaleImage(imagewin_names[4], fx[4], fy[4], cv_unchangedImage[0]);
 		}
 
 
@@ -494,12 +516,12 @@ bool DisplayReconstructionData(SPointsReconstructionCtl& reconstruction_ctl, SIm
 		if (data_isok && image_isok) { // draw rectified images with detected objects and epipolar lines.
 			for (int j = 0; j < 2; ++j) {
 				if (roi[j].height > 0 && roi[j].width > 0) {
-					rectangle(cv_image[j], Point((int)(roi[j].x * fx), (int)(roi[j].y * fx)), Point((int)((roi[j].x + roi[j].width) * fx), (int)((roi[j].y + roi[j].height) * fx)), Scalar(0, 0, 255 * cdf));
+					rectangle(cv_image[j], Point((int)(roi[j].x * fx[j]), (int)(roi[j].y * fy[j])), Point((int)((roi[j].x + roi[j].width) * fx[j]), (int)((roi[j].y + roi[j].height) * fy[j])), Scalar(0, 0, 255 * cdf));
 				}
 
 				for (auto& box : boxes[j]) {
 					if ((box.x[0] > 0 || box.x[1] < cv_edges[j].cols) && (box.y[0] > 0 || box.y[1] < cv_edges[j].rows))
-						rectangle(cv_image[j], Point((int)(box.x[0] * fx), (int)(box.y[0] * fy)), Point((int)(box.x[1] * fx), (int)(box.y[1] * fy)), Scalar(0, 0, 255 * cdf));
+						rectangle(cv_image[j], Point((int)(box.x[0] * fx[j]), (int)(box.y[0] * fy[j])), Point((int)(box.x[1] * fx[j]), (int)(box.y[1] * fy[j])), Scalar(0, 0, 255 * cdf));
 				}
 
 				if (!g_configuration._supervised_LoG) {
@@ -531,8 +553,8 @@ bool DisplayReconstructionData(SPointsReconstructionCtl& reconstruction_ctl, SIm
 
 				for (auto& point : cv_points[j]) {
 					if (point._cluster != -1) {
-						point.x = std::floor(point.x * fx + 0.5);
-						point.y = std::floor((nrows - point.y) * fy + 0.5);
+						point.x = std::floor(point.x * fx[0] + 0.5);
+						point.y = std::floor((nrows - point.y) * fy[0] + 0.5);
 					}
 
 					//point._crop_center.x += range_rand(10);
@@ -594,49 +616,57 @@ bool DisplayReconstructionData(SPointsReconstructionCtl& reconstruction_ctl, SIm
 
 					Mat crop;
 					int image_count = 0;
-					int i = 0;
-					while (image_count < 5 && i < sorted_bycircularity.size()) {
-						if (sorted_bycircularity[i]->_crop.rows > 0) {
-							Mat& newcrop = sorted_bycircularity[i]->_crop;
-							int crop_x_offset = crop_max_center_x[j] - (int)(sorted_bycircularity[i]->_crop_center.x + 0.5);
-							Size newsize(crop.cols + newcrop.cols + crop_x_offset, crop_rows_max[j]);
-							Mat out = cv::Mat::zeros(newsize, newcrop.type());
-							if (crop.cols) {
-								crop.copyTo(out(cv::Rect(0, 0, crop.cols, crop.rows)));
+					if (sorted_bycircularity.size() > 1) {
+						int i = 0;
+						while (image_count < 5 && i < sorted_bycircularity.size()) {
+							if (sorted_bycircularity[i]->_crop.rows > 0) {
+								Mat& newcrop = sorted_bycircularity[i]->_crop;
+								int crop_x_offset = crop_max_center_x[j] - (int)(sorted_bycircularity[i]->_crop_center.x + 0.5);
+								Size newsize(crop.cols + newcrop.cols + crop_x_offset, crop_rows_max[j]);
+								Mat out = cv::Mat::zeros(newsize, newcrop.type());
+								if (crop.cols) {
+									crop.copyTo(out(cv::Rect(0, 0, crop.cols, crop.rows)));
+								}
+								int crop_offset = crop_center_line_avg[j] - (int)(sorted_bycircularity[i]->_crop_center.y + 0.5);
+								if (crop_offset < 0) {
+									crop_offset = 0;
+								}
+								newcrop.copyTo(out(cv::Rect(crop.cols + crop_x_offset, crop_offset, newcrop.cols, newcrop.rows)));
+								out.copyTo(crop = Mat());
+								if (++image_count < 3) {
+									circle(cv_image[j], Point(*sorted_bycircularity[i]), 3, Scalar(0, 255 * cdf, 0), -1);
+								}
+								newcrop = Mat();
 							}
-							int crop_offset = crop_center_line_avg[j] - (int)(sorted_bycircularity[i]->_crop_center.y + 0.5);
-							if (crop_offset < 0) {
-								crop_offset = 0;
-							}
-							newcrop.copyTo(out(cv::Rect(crop.cols + crop_x_offset, crop_offset, newcrop.cols, newcrop.rows)));
-							out.copyTo(crop = Mat());
-							if (++image_count < 3) {
-								circle(cv_image[j], Point(*sorted_bycircularity[i]), 3, Scalar(0, 255 * cdf, 0), -1);
-							}
-							newcrop = Mat();
+							++i;
 						}
-						++i;
+					}
+					else
+					{
+						image_count = 1; 
+						crop = sorted_bycircularity[0]->_crop.clone();
 					}
 					if (image_count > 0 && imagewin_names[j + 2].size() > 0) {
 						int q = j + 2;
-						HWND hwnd = (HWND)cvGetWindowHandle(imagewin_names[q].c_str());
-						RECT clrect;
-						if (GetWindowRect(GetParent(hwnd), &clrect)) {
-							Mat crop_scaled;
-							Size dsize = Size(clrect.right - clrect.left, clrect.bottom - clrect.top);
-							cv::resize(crop, crop_scaled, dsize, 0, 0, INTER_AREA);
-							crop = crop_scaled.clone();
-							crop_scaled = Mat();
-						}
-						else {
-							bool err = true;
-						}
+						scaleImage(imagewin_names[q], fx[q], fy[q], crop);
+						//HWND hwnd = (HWND)cvGetWindowHandle(imagewin_names[q].c_str());
+						//RECT clrect;
+						//if (GetWindowRect(GetParent(hwnd), &clrect)) {
+						//	Mat crop_scaled;
+						//	Size dsize = Size(clrect.right - clrect.left, clrect.bottom - clrect.top);
+						//	cv::resize(crop, crop_scaled, dsize, 0, 0, INTER_AREA);
+						//	crop = crop_scaled.clone();
+						//	crop_scaled = Mat();
+						//}
+						//else {
+						//	bool err = true;
+						//}
 						cv::imshow(imagewin_names[q], crop);
 						if (!onMouse_isActive[q]) {
-							mouse_callbackParams[q].scaleFactors.fx = fx;
-							mouse_callbackParams[q].scaleFactors.fy = fy;
+							mouse_callbackParams[q].scaleFactors.fx = fx[q];
+							mouse_callbackParams[q].scaleFactors.fy = fy[q];
 							mouse_callbackParams[q].windowNumber = q + 1;
-							setMouseCallback(imagewin_names[q], OnMouseCallback, (void*)&mouse_callbackParams[q]);
+							setMouseCallback(imagewin_names[q], OnMouseCallback, (void*)&mouse_callbackParams[q]); // initiate merge with final contours.
 							onMouse_isActive[q] = true;
 						}
 					}
@@ -648,15 +678,20 @@ bool DisplayReconstructionData(SPointsReconstructionCtl& reconstruction_ctl, SIm
 			for (int j = 0; j < 2; ++j) {
 				if (imagewin_names[j].size() > 0) {
 					if (roi[j].height > 0 && roi[j].width > 0) {
-						rectangle(cv_image[j], Point((int)(roi[j].x * fx), (int)(roi[j].y * fx)), Point((int)((roi[j].x + roi[j].width) * fx), (int)((roi[j].y + roi[j].height) * fx)), Scalar(0, 0, 255 * 256));
+						rectangle(cv_image[j], Point((int)(roi[j].x * fx[j]), (int)(roi[j].y * fy[j])), Point((int)((roi[j].x + roi[j].width) * fx[j]), (int)((roi[j].y + roi[j].height) * fy[j])), Scalar(0, 0, 255 * 256));
 					}
 					cv::imshow(imagewin_names[j], cv_image[j]);
 				}
+			}
+			show_image(cv_unchangedImage[0], imagewin_names[4]); 
+
+			int indices[3] = {0, 1, 4}; 
+			for (int j : indices) {
 				if (!onMouse_isActive[j]) {
-					mouse_callbackParams[j].scaleFactors.fx = fx;
-					mouse_callbackParams[j].scaleFactors.fy = fy;
+					mouse_callbackParams[j].scaleFactors.fx = fx[j];
+					mouse_callbackParams[j].scaleFactors.fy = fy[j];
 					mouse_callbackParams[j].windowNumber = j + 1;
-					setMouseCallback(imagewin_names[j], OnMouseCallback, (void*)&mouse_callbackParams[j]);
+					setMouseCallback(imagewin_names[j], OnMouseCallback, (void*)&mouse_callbackParams[j]); // initiate new evaluation
 					onMouse_isActive[j] = true;
 				}
 			}
@@ -804,7 +839,7 @@ int main() {
 			_g_images_frame->NEW_StereoConfiguration(g_configuration);
 		}
 
-		std::string imagewin_names[4];
+		std::string imagewin_names[5];
 		rootCVWindows(_g_images_frame, ARRAY_NUM_ELEMENTS(imagewin_names), 1, imagewin_names);
 
 		while (!g_bTerminated) {
@@ -882,6 +917,9 @@ int main() {
 		CreateProcessA(myName, NULL, NULL, NULL, FALSE, NULL, NULL, NULL, &si, &pi);
 		if (pi.hProcess != NULL) {
 			CloseHandle(pi.hProcess);
+		}
+		if (pi.hThread != NULL) {
+			CloseHandle(pi.hThread);
 		}
 	}
 

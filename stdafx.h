@@ -228,6 +228,301 @@ template<typename T> struct ATLSMatrixvar {
 };
 
 
+template<typename T> inline int mysign(T v) { return v >= +0 ? 1 : -1; }
+
+
+
+
+template<typename T> struct ATLSMatrix : public ATLSMatrixvar<T> {
+	std::vector<size_t> _permutation_vector; // permutation vector returned by lu-decomposition. 
+
+	ATLSMatrix<T>() : ATLSMatrixvar<T>() {
+	}
+	ATLSMatrix<T>(const ATLSMatrix<T>& other) : ATLSMatrixvar<T>() {
+		if (other._a_dimension > 0 || other._b_dimension > 0) {
+			SetDimensions(other._a_dimension, other._b_dimension);
+			for (size_t j = 0; j < _a_dimension; ++j) {
+				memcpy(_vector[j], other._vector[j], _b_dimension * sizeof(T));
+			}
+		}
+	}
+	inline void Erase() {
+		if (_matrix) {
+			delete[] _matrix;
+		}
+		if (_vector && sizeof(T*) > sizeof(T)) {
+			delete[] _vector;
+		}
+		_matrix = 0;
+		_vector = 0;
+		_a_dimension = 0;
+		_b_dimension = 0;
+	}
+	~ATLSMatrix<T>() {
+		Erase();
+	}
+	ATLSMatrix<T>& operator=(const ATLSMatrix<T>& other) {
+		Erase();
+		SetDimensions(other._a_dimension, other._b_dimension);
+		for (size_t j = 0; j < _a_dimension; ++j) {
+			memcpy(_vector[j], other._vector[j], _b_dimension * sizeof(T));
+		}
+		return *this;
+	}
+	bool LUDecompose() {
+		// Triangular matrix factorization with column pivot search. 
+		bool ok = true;
+
+		const size_t N = std::min(_a_dimension, _b_dimension);
+		_permutation_vector.resize(N);
+		size_t* p = &_permutation_vector[0];
+		for (size_t j = 0; j < N; ++j) {
+			p[j] = j;
+		}
+
+		for (size_t j = 0; j < (N - 1); ++j) {
+
+			// Pivot search: column-down-search starting with diagonal element (j, j) 
+			size_t i = j;
+			T abs_value = std::abs(_vector[i][j]);
+			T pivot_value = abs_value;
+			size_t pivot_index = i;
+			while (++i < N) {
+				if (pivot_value < (abs_value = std::abs(_vector[i][j]))) {
+					pivot_index = i;
+					pivot_value = abs_value;
+				}
+			}
+			if (pivot_index != j) {
+				std::swap(_vector[j], _vector[pivot_index]);
+				std::swap(p[j], p[pivot_index]);
+			}
+			if (pivot_value < (1.0e-10)) {
+				_vector[j][j] = (1.0e-10) * mysign(_vector[j][j]);
+				ok = false;
+			}
+			pivot_value = _vector[j][j];
+
+			// For each row below row j: 
+			// Calculate element ij (it actually means that the column j is calculated when rows are processed). 
+			// Adjust all elements to the right from j.
+			i = j;
+			while (++i < N) {
+				double vector_ij = (_vector[i][j] /= pivot_value);
+				for (size_t k = j + 1; k < N; ++k) {
+					_vector[i][k] -= _vector[j][k] * vector_ij;
+				}
+			}
+		}
+
+		return ok;
+	}
+	void LUBacksubstitute(std::vector<T>& conditions_vector) {
+		LUBacksubstitute(&conditions_vector[0]);
+	}
+	void LUBacksubstitute(T* b) {
+		// Solves the set of n linear equations A·X = B. 
+		// Here _matrix is input, not as the matrix A but rather as its LU decomposition. 
+		// _permutation_vector is input as the permutation vector returned by lu-decomposition. 
+		// b[0..N-1] is input as the right-hand side vector B, and returns with the solution vector X. 
+		// _matrix and _permutation_vector are not modified by this routine and 
+		// can be left in place for successive calls with different right-hand sides b. 
+		// This routine takes into account the possibility that b will begin with many zero elements, 
+		// so it is efficient for use in matrix inversion.
+		const size_t N = std::min(_a_dimension, _b_dimension);
+		std::vector<T> results_vector;
+		results_vector.resize(N); // it also initializes with default values. 
+		T* c = &results_vector[0];
+		size_t* p = &_permutation_vector[0];
+
+		T sum;
+		for (int i = 0, ii = -1; i < (int)N; ++i) { // Now we do the forward substitution.
+			sum = b[p[i]]; // Unscramble the permutation.
+
+			// When ii is set to a positive value, it becomes the index of the first nonvanishing element of b. 
+
+			if (ii != -1) {
+				for (int j = ii; j < i; ++j) { // We now do the forward substitution. 
+					sum -= _vector[i][j] * c[j];
+				}
+				c[i] = sum;
+			}
+			else
+				if (sum != (T)0.0) {
+					// A nonzero element was encountered, so from now on it will have to 
+					// do the sums in the loop above.
+					ii = i;
+					c[i] = sum;
+				}
+		}
+		for (int i = (int)N - 1; i >= 0; --i) { // Now we do the backsubstitution.
+			sum = c[i];
+			for (size_t j = i + 1; j < N; ++j) {
+				sum -= _vector[i][j] * c[j];
+			}
+			c[i] = sum / _vector[i][i]; // Store a component of the solution vector X.
+		}
+
+		memcpy(b, c, (char*)(b + _b_dimension) - (char*)b);
+	}
+	ATLSMatrix<T>& Inverse() {
+		LUDecompose();
+
+		ATLSMatrix<T> y;
+		y.SetDimensions(_a_dimension, _b_dimension);
+
+		const size_t N = std::min(_a_dimension, _b_dimension);
+		std::vector<T> unit_vector;
+		unit_vector.resize(N);
+		T* col = &unit_vector[0];
+		for (size_t j = 0; j < N; ++j) { // Find inverse by columns.
+			col[j] = (T)1.0;
+			LUBacksubstitute(unit_vector);
+			for (size_t i = 0; i < N; ++i) {
+				y._vector[i][j] = col[i];
+				col[i] = 0.0;
+			}
+		}
+
+		std::swap(_vector, y._vector);
+		std::swap(_matrix, y._matrix);
+
+		y._permutation_vector.swap(_permutation_vector);
+
+		return (*this);
+	}
+
+	template<typename T1, typename T2>
+	ATLSMatrix<T>& Multiply(const ATLSMatrix<T1>& L, const ATLSMatrix<T2>& R) {
+		SetDimensions(L._a_dimension, R._b_dimension);
+		for (size_t i = 0; i < _a_dimension; ++i) {
+			for (size_t n = 0; n < _b_dimension; ++n) {
+				T& val = _vector[i][n];
+				val = 0;
+				for (size_t k = 0; k < R._a_dimension; ++k) {
+					val += L(i, k) * R(k, n);
+				}
+			}
+		}
+		_permutation_vector.resize(0);
+
+		return (*this);
+	}
+	template<typename T1, typename T2>
+	ATLSMatrix<T>& AxBTMultiply(const ATLSMatrix<T1>& L, const ATLSMatrix<T2>& R) { // right matrix will be transposed.
+		SetDimensions(L._a_dimension, R._a_dimension);
+		for (size_t i = 0; i < _a_dimension; ++i) {
+			for (size_t n = 0; n < _b_dimension; ++n) {
+				T& val = _vector[i][n];
+				val = 0;
+				for (size_t k = 0; k < R._b_dimension; ++k) {
+					val += L(i, k) * R(n, k);
+				}
+			}
+		}
+		_permutation_vector.resize(0);
+
+		return (*this);
+	}
+	template<typename T1, typename T2>
+	ATLSMatrix<T>& ATxBMultiply(const ATLSMatrix<T1>& L, const ATLSMatrix<T2>& R) { // left matrix will be transposed.
+		SetDimensions(L._b_dimension, R._b_dimension);
+		for (size_t i = 0; i < _a_dimension; ++i) {
+			for (size_t n = 0; n < _b_dimension; ++n) {
+				T& val = _vector[i][n];
+				val = 0;
+				for (size_t k = 0; k < R._a_dimension; ++k) {
+					val += L(k, i) * R(k, n);
+				}
+			}
+		}
+		_permutation_vector.resize(0);
+
+		return (*this);
+	}
+	template<typename T1>
+	ATLSMatrix<T>& MxMTMultiply(const ATLSMatrix<T1>& M) { // M×MT i.e. Transpose multiply where transpose matr. is on the right
+		SetDimensions(M._a_dimension, M._a_dimension);
+		for (size_t i = 0; i < _a_dimension; ++i) {
+			for (size_t n = 0; n < _a_dimension; ++n) {
+				T& val = _vector[i][n];
+				val = 0;
+				for (size_t k = 0; k < M._b_dimension; ++k) {
+					val += M(i, k) * M(n, k);
+				}
+			}
+		}
+		_permutation_vector.resize(0);
+
+		return (*this);
+	}
+	template<typename T1>
+	ATLSMatrix<T>& MTxMMultiply(const ATLSMatrix<T1>& M) { // MT×M i.e. Transpose multiply where transpose matr. is on the left
+		SetDimensions(M._b_dimension, M._b_dimension);
+		for (size_t i = 0; i < _a_dimension; ++i) {
+			for (size_t n = 0; n < _a_dimension; ++n) {
+				T& val = _vector[i][n];
+				val = 0;
+				for (size_t k = 0; k < M._a_dimension; ++k) {
+					val += M(k, i) * M(k, n);
+				}
+			}
+		}
+		_permutation_vector.resize(0);
+
+		return (*this);
+	}
+	template<typename T1, typename T2>
+	void Split(ATLSMatrix<T1>& L, ATLSMatrix<T2>& R) { // It is meaningful after LUDecomposition
+		L.SetDimensions(_a_dimension, _b_dimension);
+		R.SetDimensions(_a_dimension, _b_dimension);
+		L._permutation_vector = _permutation_vector;
+		R._permutation_vector = _permutation_vector;
+		for (size_t i = 0; i < _a_dimension; ++i) {
+			for (size_t j = 0; j < _b_dimension; ++j) {
+				if (i <= j) {
+					R(i, j) = _vector[i][j];
+					L(i, j) = i == j ? 1 : 0;
+				}
+				else {
+					R(i, j) = 0;
+					L(i, j) = _vector[i][j];
+				}
+			}
+		}
+	}
+	void Print(char* pFormat = "%14.7f", std::string* pmsg = 0) {
+		char buf[256];
+		std::ostringstream ostr;
+		if (pmsg == 0) {
+			std::cout << std::endl;
+		}
+		for (size_t i = 0; i < _a_dimension; ++i) {
+			for (size_t j = 0; j < _b_dimension; ++j) {
+				sprintf(buf, pFormat, _vector[i][j]);
+				if (pmsg == 0) {
+					std::cout << buf << '\t';
+				}
+				else {
+					ostr << buf << '\t';
+				}
+			}
+			if (pmsg == 0) {
+				std::cout << std::endl;
+			}
+			else {
+				ostr << std::endl;
+			}
+		}
+		if (pmsg) {
+			*pmsg = ostr.str();
+		}
+	}
+};
+
+
+
+
 
 
 
@@ -249,6 +544,7 @@ struct ABox {
 		return x[0] < x[1] && y[0] < y[1];
 	}
 	std::vector<Point> contour;
+	std::vector<Point> contour_notsmoothed;
 };
 
 
@@ -759,6 +1055,7 @@ struct SPointsReconstructionCtl {
 
 	Mat _cv_image[2];
 	Mat _cv_edges[2]; // rectified _cv_image
+	Mat _unchangedImage[2]; 
 
 	std::vector<ABox> _boxes[2];
 	std::vector<ClusteredPoint> _cv_points[2];
@@ -781,6 +1078,7 @@ struct SPointsReconstructionCtl {
 		_local_acquisition_hasfinished = false;
 		_world_transform_timestamp = std::numeric_limits<long long>::min();
 		_foreground_extraction_isvalid = false;
+		_coordsystem_label = -1; 
 	}
 };
 

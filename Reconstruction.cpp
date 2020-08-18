@@ -6,6 +6,8 @@
 #include "FrameMain.h"
 #include "LoGSeedPoint.h"
 
+#pragma warning(disable : 26451)
+
 
 extern bool g_bTerminated;
 extern bool g_bRestart;
@@ -33,6 +35,34 @@ int g_max_boxsize_pixels = 25;
 #ifndef M_SQRT2
 #define M_SQRT2 1.4142135623730950488016887242097
 #endif
+
+
+
+ATLSMatrix<double> X_XXI_X;
+
+void Prefetch_PolyspaceProjection(int sampleSize = 33) {
+	ATLSMatrix<double> X;
+	X.SetDimensions(sampleSize, 3);
+
+	double t = (2 * M_PI) / sampleSize;
+
+	for (int n = 0; n < sampleSize; ++n) {
+		X(n, 0) = 1;
+		//X(n, 1) = n - sampleSize / 2;
+		//X(n, 2) = sampleSize / 2 - n;
+		//X(n, 2) = pow(n, 1.5);
+		X(n, 1) = pow(sampleSize - n, 2.0);
+		X(n, 2) = pow(n, 2.0);
+		//X(n, 2) = sin(t * n) * sampleSize / 2;
+		//X(n, 2) = cos(t * n) * sampleSize / 2;
+	}
+
+	ATLSMatrix<double> aux; 
+
+	X_XXI_X.MTxMMultiply(X);
+	X_XXI_X.Inverse();
+	X_XXI_X.AxBTMultiply(aux.Multiply(X, X_XXI_X), X);
+}
 
 
 
@@ -1472,7 +1502,7 @@ void AnisotropicDiffusion(Mat& x0, int bytedepth_scalefactor = 0) { // x0 become
 
 	double lambda = 0.25; // Defined in equation (7)
 	double lambda_convergence_factor = 1.0; 
-	double K = 10 * bytedepth_scalefactor; // defined after equation(13) in text
+	double K = 20 * bytedepth_scalefactor; // defined after equation(13) in text
 
 	double global_maxD = std::numeric_limits<double>::min();
 
@@ -1596,8 +1626,6 @@ double approximate_withQuad100(const std::vector<Point>& contour, std::vector<Po
 
 	//std::vector<Point2f> minarea_rect2f(4);
 	//minarea_rect.points(&minarea_rect2f[0]);
-	std::vector<Point2f> ellipse_rect2f(4);
-	ellipse_rect.points(&ellipse_rect2f[0]);
 
 	//for(auto& approx_point : minarea_rect2f) {
 	//	approx_point = (approx_point * 2.0 + Point2f(find_closest(contour100, Point(approx_point))) * 2.0) * (1.0f / 4.0f);
@@ -1605,6 +1633,14 @@ double approximate_withQuad100(const std::vector<Point>& contour, std::vector<Po
 	//for(auto& point : minarea_rect2f) {
 	//	min_quad2i.push_back(point);
 	//}
+
+
+	std::vector<Point2f> ellipse_rect2f(4);
+	ellipse_rect.points(&ellipse_rect2f[0]); // points ==> ellipse_rect2f
+
+	/*
+	this moves closer the rectangle's points to real points. 
+	*/
 	for(auto& approx_point : ellipse_rect2f) {
 		approx_point = (approx_point * 2.0 + Point2f(find_closest(contour100, Point(approx_point))) * 2.0) * (1.0f / 4.0f);
 	}
@@ -1726,7 +1762,7 @@ void smoothContour(std::vector<Point_<T>>& contour) {
 		m2 = m2 % N;
 
 		Point2d point(contour[j]); 
-		if (L > 1) {
+		if (L > 11) {
 			point += Point2d(contour[k] + contour[m] + contour[k1] + contour[m1] + contour[k2] + contour[m2]);
 			point *= 1.0 / 7.0;
 		}
@@ -1754,7 +1790,209 @@ void smoothContour(std::vector<Point_<T>>& contour) {
 	}
 }
 
-bool fitRectangleToPoints(const std::vector<Point>& contour, std::vector<Point>& corners/*in/out*/, double scale = 100) { 
+template<typename T>
+void projectContour(std::vector<Point_<T>>& contour) {
+	const size_t L = (int)contour.size();
+	const size_t N = (contour[0] == contour[L - 1]) ? (L - 1) : L;
+
+	constexpr size_t M = 17;
+	constexpr size_t M2 = M / 2;
+
+	if (X_XXI_X._a_dimension != M || X_XXI_X._b_dimension != M) {
+		Prefetch_PolyspaceProjection(M);
+	}
+
+	smoothContour(contour);
+	smoothContour(contour);
+	for (size_t c = contour.size(), nc = c - 1; c > nc; nc = contour.size()) {
+		c = nc; 
+		linearizeContour(contour, 1, 7);
+	}
+	return;
+
+	//// build prefetched buffer
+	//// on each ireation later on we replace one point in it. 
+	//std::vector<Point2d> prefetchProj(M); 
+	//for (size_t n = 0; n < M; ++n) {
+	//	prefetchProj[n].x = X_XXI_X(M2, n) * contour[n].x;
+	//	prefetchProj[n].y = X_XXI_X(M2, n) * contour[n].y;
+	//}
+
+	std::vector<Point_<T>> aux(contour.size());
+
+	for (size_t j = M2, k = M, c = 0; c < N; ++j, ++k, ++c) {
+		Point_<T>& point = aux[j % N];
+		point.x = point.y = 0;
+
+		for (size_t n = j - M2, c = 0; c < M; ++n, ++c) {
+			point.x += X_XXI_X(M2, c) * contour[n % N].x;
+			point.y += X_XXI_X(M2, c) * contour[n % N].y;
+		}
+
+		//for (size_t n = 0; n < M; ++n) {
+		//	Point2d& proj = prefetchProj[n];
+		//	point.x += proj.x;
+		//	point.y += proj.y;
+		//}
+
+		//size_t n = k % M; 
+		//size_t m = k % N;
+		//prefetchProj[n].x = X_XXI_X(M2, M-1) * contour[m].x;
+		//prefetchProj[n].y = X_XXI_X(M2, M-1) * contour[m].y;
+	}
+
+	contour.swap(aux); 
+
+	if (L > N) {
+		contour[N] = contour[0];
+	}
+}
+
+
+struct AContainingBox {
+	double x[2] = { 0, 0 };
+	double y[2] = { 0, 0 };
+	bool IsValid() const {
+		return x[0] < x[1] && y[0] < y[1];
+	}
+	Point2d endpoints[2] = { { 0, 0 }, { 0, 0 } };
+	void Add(Point2d aPoint) {
+		int isEndpoint = 0;
+
+		if (aPoint.x <= x[0]) {
+			isEndpoint |= 1; // on left
+			x[0] = aPoint.x;
+		}
+		else
+		if (aPoint.x >= x[1]) {
+			isEndpoint |= 2; // on right
+			x[1] = aPoint.x;
+		}
+
+		if (aPoint.y <= y[0]) {
+			isEndpoint |= 4; // on bottom
+			y[0] = aPoint.y;
+		}
+		else
+		if (aPoint.y >= y[1]) {
+			isEndpoint |= 8; // on top
+			y[1] = aPoint.y;
+		}
+
+		if (isEndpoint & (1 | 4)) {
+			endpoints[0] = aPoint;
+		}
+		else
+		if (isEndpoint & (2 | 8)) {
+			endpoints[1] = aPoint;
+		}
+	}
+};
+
+Point round2dPoint(Point2d p) {
+	Point r; 
+	r.x = floor(p.x + 0.5); 
+	r.y = floor(p.y + 0.5);
+	return r;
+}
+
+void printPoint(const std::string& prefix, Point p) {
+	std::ostringstream ostr; 
+	ostr << prefix << ':' << p.x << ',' << p.y << std::endl; 
+	printf("%s", ostr.str().c_str()); 
+}
+
+void fitLine2Segment(std::vector<Point2f> &segment, std::vector<Point>& aux) {
+	Vec4f aLine;
+	fitLine(segment, aLine, CV_DIST_L2, 0, 0.001, 0.001);
+	Point2d norm(-aLine[1], aLine[0]); // normal (unit length now, but is going to be offset).
+	Point2d mean;
+	mean.x = aLine[2];
+	mean.y = aLine[3];
+
+	norm = norm * mean.ddot(norm); // make it normal offset
+
+	Point2d colVec(aLine[0], aLine[1]); // collinear normalized
+
+	// find end points of segment
+
+	// Project end points of original set on collinear vector
+	Point2d first = colVec * colVec.ddot(segment[0]) + norm;
+	Point2d second = colVec * colVec.ddot(segment[segment.size() - 1]) + norm;
+
+	aux.push_back(round2dPoint(first));
+	aux.push_back(round2dPoint(second));
+}
+
+void linearizeContour(std::vector<Point>& contour, size_t stepSize, const size_t maxSegmentSize) { 
+	// find first point that has its both neighbours farther than stepSize
+	size_t n = contour.size() - 1;
+	const size_t N = contour[0] == contour[n]? n: n+1;
+	const double D = pow(stepSize, 2) * 2; 
+	bool prevIsOk = false; 
+	Point2f aPoint = contour[0];
+	Point2f aNext;
+	size_t k;
+	for (k = 1; k < N; ++k) {
+		aNext = contour[k % N]; 
+		double d = pow(aPoint.x - aNext.x, 2) + pow(aPoint.y - aNext.y, 2); 
+		if (d > D) {
+			if (prevIsOk) {
+				break; 
+			}
+			prevIsOk = true; 
+		}
+		else {
+			prevIsOk = false;
+		}
+		aPoint = aNext;
+	}
+
+	k = k % N; 
+
+	std::vector<Point> aux; 
+	aux.push_back(aPoint);
+
+	aPoint = aNext;
+	size_t m;
+	std::vector<Point2f> segment;
+	for (m = k + 1; (m % N) != k; ++m) {
+		aNext = contour[m % N];
+		double d = pow(aPoint.x - aNext.x, 2) + pow(aPoint.y - aNext.y, 2);
+		if (d > D || segment.size() == maxSegmentSize) {
+			if (segment.size() == 0) {
+				aux.push_back(aPoint);
+			}
+			else
+			if (segment.size() == 2) {
+				aux.push_back(round2dPoint((segment[0] + segment[1]) * 0.5));
+			}
+			else {
+				fitLine2Segment(segment, aux); 
+			}
+			segment.resize(0); 
+		}
+		else {
+			if (segment.size() == 0) {
+				segment.push_back(aPoint);
+			}
+			segment.push_back(aNext);
+		}
+		aPoint = aNext;
+	}
+	if (segment.size()) {
+		fitLine2Segment(segment, aux);
+	}
+
+	contour.swap(aux); 
+
+	n = contour.size() - 1;
+	if (contour[0] != contour[n]) {
+		contour.push_back(contour[0]);
+	}
+}
+
+bool fitRectangleToPoints(const std::vector<Point>& contour, std::vector<Point>& corners/*in/out*/, double scale = 100) {
 	scale = 1.0 / scale;
 
 	// 1. for each point from contour find a closest segment from corners, i.e. do group the points by segments . 
@@ -1986,6 +2224,7 @@ int BlobCentersLoG(std::vector<ABox>& boxes, std::vector<ClusteredPoint>& points
 	int max_shapemeasure_rectangle_index = -1;
 	double max_shapemeasure = std::numeric_limits<double>::min();
 
+	std::vector<Point> contour_notsmoothed;
 	std::vector<Point> contour;
 	std::vector<Point> contourRight;
 	std::vector<Point> contourSmoothed;
@@ -2070,18 +2309,17 @@ int BlobCentersLoG(std::vector<ABox>& boxes, std::vector<ClusteredPoint>& points
 							contour.push_back(contour[0]);
 						}
 
-						contourSmoothed = contour;
-
+						contour_notsmoothed = contour; 
 
 						bool isValid = true;
 
-						double contour_area = contourArea(contourSmoothed, false/*cannot be negative*/);
-						double contour_perimeter = arcLength(contourSmoothed, false/*tell it to treat as not closed because it is closed*/);
+						double contour_area = contourArea(contour, false/*cannot be negative*/);
+						double contour_perimeter = arcLength(contour, false/*tell it to treat as not closed because it is closed*/);
 						double contour_circularity = 4 * CV_PI * std::abs(contour_area) / std::pow(contour_perimeter, 2);
 
 						hull.clear();
-						hull.reserve(contourSmoothed.size());
-						cv::convexHull(contourSmoothed, hull);
+						hull.reserve(contour.size());
+						cv::convexHull(contour, hull);
 						double hull_area = contourArea(hull, true/*can be negative*/);
 						double hull_perimeter = arcLength(hull, true/*tell it to close it because it is not closed*/);
 						double hull_circularity = 4 * CV_PI * std::abs(hull_area) / std::pow(hull_perimeter, 2);
@@ -2093,8 +2331,11 @@ int BlobCentersLoG(std::vector<ABox>& boxes, std::vector<ClusteredPoint>& points
 						double corners_area = 0; // defined further down
 
 
+						contourSmoothed = contour;
+
 						if (supervised_LoG) {
-							smoothContour(contourSmoothed);
+							//smoothContour(contourSmoothed);
+							projectContour(contourSmoothed);
 							contour = contourSmoothed; 
 						}
 						else {
@@ -2450,6 +2691,7 @@ int BlobCentersLoG(std::vector<ABox>& boxes, std::vector<ClusteredPoint>& points
 
 						if ((isValid || supervised_LoG)) {
 							aBox.contour.swap(contour); 
+							aBox.contour_notsmoothed.swap(contour_notsmoothed);
 							boxes.push_back(aBox);
 						}
 						else {
@@ -3171,8 +3413,8 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 					int pass_number = 0;
 					int size_increment = 1; 
-					int iteration_number = 1; 
-					int max_passes = 2; 
+					int iteration_number = 3; 
+					int max_passes = 1; 
 
 					bool doInvertDirection = false; 
 
@@ -3245,12 +3487,13 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 						}
 
 
-						//MASEvaluate1(MAS_OverlapElim, file_name.c_str(), out_layer_name.str().c_str());
-						//MASEvaluate1(MAS_Or, out_layer_name.str().c_str(), "out");
-
 						MASEvaluate1(MAS_OverlapElim, file_name.c_str(), out_layer_name.str().c_str());
-						MASSize(out_layer_name.str().c_str(), "out", size_increment);
-						//MASEvaluate1(MAS_OverlapElim, "sized", "out");
+						MASEvaluate1(MAS_Or, out_layer_name.str().c_str(), "out");
+
+						//MASEvaluate1(MAS_OverlapElim, file_name.c_str(), out_layer_name.str().c_str());
+						//MASSize(out_layer_name.str().c_str(), "out", size_increment);
+						////MASEvaluate1(MAS_OverlapElim, "sized", "out");
+
 						MASEvaluate1(MAS_ActivateLayer, "out");
 
 						size_t nFirst = 0;
@@ -3258,50 +3501,60 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 
 						size_t count = 0;
-						for (size_t n = nFirst; count < nPolygons && n < ((size_t)nPolygons<<2); ++n) {
+						for (size_t n = nFirst; count < nPolygons && n < ((size_t)nPolygons << 2); ++n) {
 							_sAlong x;
 							_sAlong y;
 							long nPoints = MASLayerGetRTPolygon("out", n, x, y);
-							if (nPoints > 20) {
-								if(count == 0) {
+							if (nPoints > 10) {
+								if (count == 0) {
 									contours.resize(0);
-									contours.resize(nPolygons);
+									contours.resize(nPolygons + 1);
 								}
 
 								std::vector<Point>& contour = contours[count++];
 								contour.resize(nPoints);
 
 								long j = 0;
-								while(j < nPoints) {
+								while (j < nPoints) {
 									contour[j] = Point(x[j], y[j]);
 									++j;
 								}
-
-								ClusteredPoint& point = cv_points[1][0];
-								Mat& crop_colored = point._crop;
-								if (crop_colored.rows == 0) {
-									continue;
-								}
-
-								point._cropOriginal.copyTo(crop_colored);
-
-								double fx = point._crop_mat_scalefactor;
-								Point2f& off = point._crop_mat_offset;
-
-								Point a = (Point2f(contour[0]) + Point2f(0.5, 0.5) - (off)) * fx;
-								for (int j = 1; j < contour.size(); ++j) {
-									Point b = (Point2f(contour[j]) + Point2f(0.5, 0.5) - (off)) * fx;
-									cv::Scalar color; 
-									if (size_increment > 0) {
-										color = Scalar(0, (size_t)count * 256, (size_t)255 * 256); 
-									}
-									else {
-										color = Scalar((size_t)255 * 256, 0, (size_t)count * 256);
-									}
-									cv::line(crop_colored, a, b, color);
-									a = b;
-								}
 							}
+						}
+						contours[count] = boxes[1][0].contour_notsmoothed;
+
+						ClusteredPoint& point = cv_points[1][0];
+						Mat& crop_colored = point._crop;
+						if (crop_colored.rows == 0) {
+							continue;
+						}
+
+						point._cropOriginal.copyTo(crop_colored);
+
+						for (int n = count; n >= 0; --n) {
+							std::vector<Point>& contour = contours[n];
+
+							double fx = point._crop_mat_scalefactor;
+							Point2f& off = point._crop_mat_offset;
+
+							Point a = (Point2f(contour[0]) + Point2f(0.5, 0.5) - (off)) * fx;
+							for (int j = 1; j < contour.size(); ++j) {
+								Point b = (Point2f(contour[j]) + Point2f(0.5, 0.5) - (off)) * fx;
+								cv::Scalar color;
+								if (n == count) {
+									color = Scalar((size_t)255 * 256, 0, 0);
+								}
+								else 
+								if (size_increment > 0) {
+									color = Scalar(0, (size_t)count * 256, (size_t)255 * 256);
+								}
+								else {
+									color = Scalar((size_t)255 * 256, 0, (size_t)count * 256);
+								}
+								cv::line(crop_colored, a, b, color);
+								a = b;
+							}
+
 						}
 						if (count == 0) {
 							doInvertDirection = true;

@@ -15,16 +15,44 @@ extern bool g_bTerminated;
 extern bool g_bRestart; 
 
 
-void StandardizeImage(Mat& image) {
+
+void ConvertColoredImage2Mono(Mat& image, double chWeights[3], std::function<double(uchar)> convert) {
+	cv::Mat aux(image.size(), CV_16UC1);
+	typedef Vec<uchar, 3> Vec3c;
+	for (int r = 0; r < aux.rows; ++r) {
+		for (int c = 0; c < aux.cols; ++c) {
+			Vec3c& pixVec = image.at<Vec3c>(r, c);
+			ushort& pix = aux.at<ushort>(r, c);
+			pix = 0;
+			for (int j = 0; j < 3; ++j) {
+				pix += (ushort)std::floor(convert(pixVec[j]) * chWeights[j] + 0.5);
+			}
+		}
+	}
+	image = aux.clone();
+}
+
+
+void StandardizeImage(Mat& image, double chWeights[3]) {
+	if (image.type() == CV_8UC3) {
+		ConvertColoredImage2Mono(image, chWeights, [](uchar ch) {
+			return (double)ch * 256;
+		});
+	}
 	if(image.type() != CV_16UC1) {
 		if(image.type() != CV_8UC1) {
 			image.clone().convertTo(image, CV_8UC1);
 		}
 		image.clone().convertTo(image, CV_16UC1);
-		image *= (size_t)16 * 16;
+		image *= (size_t)256;
 	}
 }
-void SquareImage(Mat& image) {
+void SquareImage(Mat& image, double chWeights[3]) {
+	if (image.type() == CV_8UC3) {
+		ConvertColoredImage2Mono(image, chWeights, [](uchar ch) {
+			return (double)pow(ch, 2);
+		});
+	}
 	if (image.type() != CV_16UC1) {
 		if (image.type() != CV_8UC1) {
 			image.clone().convertTo(image, CV_8UC1);
@@ -35,9 +63,31 @@ void SquareImage(Mat& image) {
 		image = aux.clone();
 	}
 }
+void BuildWeightsByChannel(Mat& image, Point& pt, double weights_out[3]) {
+	if (image.type() == CV_8UC3) {
+		double weights[3] = {0,0,0};
+		double sum = 0;
+		typedef Vec<uchar, 3> Vec3c;
+		for (int r = pt.y - 1; r < image.rows && r < pt.y + 2; ++r) {
+			for (int c = pt.x - 1; c < image.cols && c < pt.x + 2; ++c) {
+				Vec3c& pixVec = image.at<Vec3c>(r, c);
+				for (int j = 0; j < 3; ++j) {
+					double w = pow(pixVec[j], 2);
+					sum += w; 
+					weights[j] += w;
+				}
+			}
+		}
+		for(auto& w : weights) w /= sum; 
+		memcpy(weights_out, weights, sizeof(weights));
+	}
+}
+
 bool GetImagesFromFile(Mat& left_image, Mat& right_image, const std::string& current_N) {
 	std::string nl = current_N;
 	std::string nr = current_N;
+
+	double chWeights[3] = { 1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0 };
 
 	//std::string nl = std::to_string(current_N);
 	//std::string nr = std::to_string(current_N);
@@ -68,17 +118,22 @@ bool GetImagesFromFile(Mat& left_image, Mat& right_image, const std::string& cur
 		right_image = imread(std::string(g_path_calib_images_dir) + nr + 'r' + ".jpg", CV_LOAD_IMAGE_ANYDEPTH); // Mar.4 2015.
 	}
 
-	StandardizeImage(left_image);
-	StandardizeImage(right_image);
+	if (left_image.rows != 0 && left_image.cols != 0) {
+		StandardizeImage(left_image, chWeights);
+	}
+	if (right_image.rows != 0 || right_image.cols != 0) {
+		StandardizeImage(right_image, chWeights);
+	}
 
 	if (left_image.rows == 0 || left_image.cols == 0) {
-		left_image = imread(std::string(g_path_calib_images_dir) + current_N + ".jpg", CV_LOAD_IMAGE_ANYDEPTH);
-		StandardizeImage(left_image);
+		//left_image = imread(std::string(g_path_calib_images_dir) + current_N + ".jpg", CV_LOAD_IMAGE_ANYDEPTH);
+		left_image = imread(std::string(g_path_calib_images_dir) + current_N + ".jpg", CV_LOAD_IMAGE_ANYDEPTH | CV_LOAD_IMAGE_ANYCOLOR);
+		StandardizeImage(left_image, chWeights);
 	}
 	if (right_image.rows == 0 || right_image.cols == 0) {
-		right_image = imread(std::string(g_path_calib_images_dir) + current_N + ".jpg", CV_LOAD_IMAGE_ANYDEPTH);
-		//StandardizeImage(right_image);
-		SquareImage(right_image);
+		//right_image = imread(std::string(g_path_calib_images_dir) + current_N + ".jpg", CV_LOAD_IMAGE_ANYDEPTH);
+		right_image = imread(std::string(g_path_calib_images_dir) + current_N + ".jpg", CV_LOAD_IMAGE_ANYDEPTH | CV_LOAD_IMAGE_ANYCOLOR);
+		SquareImage(right_image, chWeights);
 	}
 
 	if(left_image.rows <= 10 || right_image.rows <= 10 || left_image.rows != right_image.rows) {

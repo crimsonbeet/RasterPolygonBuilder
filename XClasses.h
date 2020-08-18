@@ -22,19 +22,19 @@
 
 
 
-struct VCRFPoint { 
+struct VSPoint { 
 	double _xyz[3]; 
-	VCRFPoint() {
+	VSPoint() {
 		memset(_xyz, 0, sizeof(_xyz));
 	}
-	VCRFPoint(double x, double y, double z) {
+	VSPoint(double x, double y, double z) {
 		_xyz[0] = x;
 		_xyz[1] = y;
 		_xyz[2] = z;
 	}
 }; 
 
-BEGIN_WSI_SERIALIZATION_OBJECT(VCRFPoint)
+BEGIN_WSI_SERIALIZATION_OBJECT(VSPoint)
 CONTAINS_FLAT_MEMBER(_xyz, P)
 END_WSI_SERIALIZATION_OBJECT()
 
@@ -43,8 +43,8 @@ END_WSI_SERIALIZATION_OBJECT()
 
 
 struct VSPrincipalDirection_FitLine {
-	std::vector<VCRFPoint> _input_points; // in; empty in response 
-	VCRFPoint _output_direction; // out; on return it is a normalized vector pointing along the line. 
+	std::vector<VSPoint> _input_points; // in; empty in response 
+	VSPoint _output_direction; // out; on return it is a normalized vector pointing along the line. 
 	int _ok; // out
 
 	VSPrincipalDirection_FitLine() {

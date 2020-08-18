@@ -39,6 +39,10 @@ $
 >< $ Situation Left=1 Top=650 Bottom=880 Right=500 IsAbsolute=1 FontFace='Segoe UI' FontHeight=10 Name='Camera2Fit' >< BackColor Hex=D3D3D3 $ 
 $ 
 
+>< $ Canvas DataType='openCV_Container' 
+>< $ Situation Left=1 Top=70 Bottom=420 Right=500 IsAbsolute=1 FontFace='Segoe UI' FontHeight=10 Name='CombinedFit' >< BackColor Hex=D3D3D3 $ 
+$ 
+
 
 
 
