@@ -68,11 +68,14 @@ void BuildWeightsByChannel(Mat& image, Point& pt, double weights_out[3]) {
 		double weights[3] = {0,0,0};
 		double sum = 0;
 		typedef Vec<uchar, 3> Vec3c;
-		for (int r = pt.y - 1; r < image.rows && r < pt.y + 2; ++r) {
-			for (int c = pt.x - 1; c < image.cols && c < pt.x + 2; ++c) {
+		for (int r = pt.y - 2; r < image.rows && r < pt.y + 3; ++r) {
+			for (int c = pt.x - 2; c < image.cols && c < pt.x + 3; ++c) {
+				if (r < 0 || c < 0) {
+					continue; 
+				}
 				Vec3c& pixVec = image.at<Vec3c>(r, c);
 				for (int j = 0; j < 3; ++j) {
-					double w = pow(pixVec[j], 2);
+					double w = pow(pixVec[j], 3);
 					sum += w; 
 					weights[j] += w;
 				}
@@ -86,8 +89,6 @@ void BuildWeightsByChannel(Mat& image, Point& pt, double weights_out[3]) {
 bool GetImagesFromFile(Mat& left_image, Mat& right_image, const std::string& current_N) {
 	std::string nl = current_N;
 	std::string nr = current_N;
-
-	double chWeights[3] = { 1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0 };
 
 	//std::string nl = std::to_string(current_N);
 	//std::string nr = std::to_string(current_N);
@@ -118,22 +119,13 @@ bool GetImagesFromFile(Mat& left_image, Mat& right_image, const std::string& cur
 		right_image = imread(std::string(g_path_calib_images_dir) + nr + 'r' + ".jpg", CV_LOAD_IMAGE_ANYDEPTH); // Mar.4 2015.
 	}
 
-	if (left_image.rows != 0 && left_image.cols != 0) {
-		StandardizeImage(left_image, chWeights);
-	}
-	if (right_image.rows != 0 || right_image.cols != 0) {
-		StandardizeImage(right_image, chWeights);
-	}
-
 	if (left_image.rows == 0 || left_image.cols == 0) {
 		//left_image = imread(std::string(g_path_calib_images_dir) + current_N + ".jpg", CV_LOAD_IMAGE_ANYDEPTH);
 		left_image = imread(std::string(g_path_calib_images_dir) + current_N + ".jpg", CV_LOAD_IMAGE_ANYDEPTH | CV_LOAD_IMAGE_ANYCOLOR);
-		StandardizeImage(left_image, chWeights);
 	}
 	if (right_image.rows == 0 || right_image.cols == 0) {
 		//right_image = imread(std::string(g_path_calib_images_dir) + current_N + ".jpg", CV_LOAD_IMAGE_ANYDEPTH);
 		right_image = imread(std::string(g_path_calib_images_dir) + current_N + ".jpg", CV_LOAD_IMAGE_ANYDEPTH | CV_LOAD_IMAGE_ANYCOLOR);
-		SquareImage(right_image, chWeights);
 	}
 
 	if(left_image.rows <= 10 || right_image.rows <= 10 || left_image.rows != right_image.rows) {

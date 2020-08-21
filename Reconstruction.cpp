@@ -38,6 +38,12 @@ int g_max_boxsize_pixels = 25;
 
 
 
+void StandardizeImage(Mat& image, double chWeights[3]);
+void SquareImage(Mat& image, double chWeights[3]);
+void BuildWeightsByChannel(Mat& image, Point& pt, double weights_out[3]);
+
+
+
 ATLSMatrix<double> X_XXI_X;
 
 void Prefetch_PolyspaceProjection(int sampleSize = 33) {
@@ -1025,8 +1031,8 @@ void BlobLoG(std::vector<ABoxedblob>& blobs,
 	/*
 	 a bright background can make LoG fail, so a value > 21 * g_bytedepth_scalefactor makes it work in that situation.
 	*/
-	const double min_LoG_value = (7.0 / kncols) * (91.0 / 255.0) * image.at<unsigned short>((int)aSeed.y, (int)aSeed.x);
-	//const double min_LoG_value = 21 * g_bytedepth_scalefactor;
+	const double min_LoG_value = (7.0 / kncols) * (121.0 / 255.0) * image.at<unsigned short>((int)aSeed.y, (int)aSeed.x);
+	const double max_LoG_value = (23.0 / kncols) * (121.0 / 255.0) * image.at<unsigned short>((int)aSeed.y, (int)aSeed.x);
 
 	int min_max_rows[2] = {200, 200/*g_max_boxsize_pixels, g_max_boxsize_pixels*/};
 
@@ -1078,7 +1084,7 @@ void BlobLoG(std::vector<ABoxedblob>& blobs,
 										}
 									}
 								}
-								if(val > min_LoG_value) { 
+								if(val > min_LoG_value && val < max_LoG_value) {
 									if(vincr != 0) {
 										const int next_vert = currentrow + vincr; 
 										ABoxedrow& arow_next_vert = rowarray[next_vert];
@@ -1493,7 +1499,7 @@ void HoughLineContour(const std::vector<Point>& contour, const Point& offset, ve
 	}
 }
 
-void AnisotropicDiffusion(Mat& x0, int bytedepth_scalefactor = 0) { // x0 becomes CV_32FC1
+void AnisotropicDiffusion(Mat& x0, int anysotropicIntensity = 15, int bytedepth_scalefactor = 0) { // x0 becomes CV_32FC1
 	if(bytedepth_scalefactor <= 0) {
 		bytedepth_scalefactor = g_bytedepth_scalefactor;
 	}
@@ -1502,7 +1508,7 @@ void AnisotropicDiffusion(Mat& x0, int bytedepth_scalefactor = 0) { // x0 become
 
 	double lambda = 0.25; // Defined in equation (7)
 	double lambda_convergence_factor = 1.0; 
-	double K = 20 * bytedepth_scalefactor; // defined after equation(13) in text
+	double K = anysotropicIntensity * bytedepth_scalefactor; // defined after equation(13) in text
 
 	double global_maxD = std::numeric_limits<double>::min();
 
@@ -1792,6 +1798,14 @@ void smoothContour(std::vector<Point_<T>>& contour) {
 
 template<typename T>
 void projectContour(std::vector<Point_<T>>& contour) {
+	smoothContour(contour);
+	smoothContour(contour);
+	for (size_t c = contour.size(), nc = c - 1; c > nc && nc > 0; nc = contour.size()) {
+		c = nc; 
+		linearizeContour(contour, 1, 7);
+	}
+	return;
+
 	const size_t L = (int)contour.size();
 	const size_t N = (contour[0] == contour[L - 1]) ? (L - 1) : L;
 
@@ -1801,22 +1815,6 @@ void projectContour(std::vector<Point_<T>>& contour) {
 	if (X_XXI_X._a_dimension != M || X_XXI_X._b_dimension != M) {
 		Prefetch_PolyspaceProjection(M);
 	}
-
-	smoothContour(contour);
-	smoothContour(contour);
-	for (size_t c = contour.size(), nc = c - 1; c > nc; nc = contour.size()) {
-		c = nc; 
-		linearizeContour(contour, 1, 7);
-	}
-	return;
-
-	//// build prefetched buffer
-	//// on each ireation later on we replace one point in it. 
-	//std::vector<Point2d> prefetchProj(M); 
-	//for (size_t n = 0; n < M; ++n) {
-	//	prefetchProj[n].x = X_XXI_X(M2, n) * contour[n].x;
-	//	prefetchProj[n].y = X_XXI_X(M2, n) * contour[n].y;
-	//}
 
 	std::vector<Point_<T>> aux(contour.size());
 
@@ -1926,6 +1924,10 @@ void fitLine2Segment(std::vector<Point2f> &segment, std::vector<Point>& aux) {
 
 void linearizeContour(std::vector<Point>& contour, size_t stepSize, const size_t maxSegmentSize) { 
 	// find first point that has its both neighbours farther than stepSize
+	if (contour.size() < 3) {
+		contour.resize(0); 
+		return; 
+	}
 	size_t n = contour.size() - 1;
 	const size_t N = contour[0] == contour[n]? n: n+1;
 	const double D = pow(stepSize, 2) * 2; 
@@ -1959,6 +1961,9 @@ void linearizeContour(std::vector<Point>& contour, size_t stepSize, const size_t
 	for (m = k + 1; (m % N) != k; ++m) {
 		aNext = contour[m % N];
 		double d = pow(aPoint.x - aNext.x, 2) + pow(aPoint.y - aNext.y, 2);
+		if (d == 0) {
+		}
+		else 
 		if (d > D || segment.size() == maxSegmentSize) {
 			if (segment.size() == 0) {
 				aux.push_back(aPoint);
@@ -1984,10 +1989,14 @@ void linearizeContour(std::vector<Point>& contour, size_t stepSize, const size_t
 		fitLine2Segment(segment, aux);
 	}
 
+	if (aux.size() < 3) {
+		aux.resize(0); 
+	}
+
 	contour.swap(aux); 
 
 	n = contour.size() - 1;
-	if (contour[0] != contour[n]) {
+	if (contour.size() && contour[0] != contour[n]) {
 		contour.push_back(contour[0]);
 	}
 }
@@ -3102,7 +3111,7 @@ void OptimizeSelectionOfQuadrilaterals(int idx[2], std::vector<ClusteredPoint> c
 }
 
 
-bool GetFramesFromFilesWithSubdirectorySearch(Mat cv_image[2]/*out*/, bool& arff_file_requested/*out*/, std::string& file_name) {
+bool GetFramesFromFilesWithSubdirectorySearch(Mat cv_image[2]/*out*/, bool& arff_file_requested/*out*/, std::string& file_name, std::string& path_name) {
 	bool image_isok = false; 
 
 	static int s_arff_file_requested = 0;
@@ -3115,7 +3124,7 @@ bool GetFramesFromFilesWithSubdirectorySearch(Mat cv_image[2]/*out*/, bool& arff
 
 	if(s_file_number > -1) {
 		file_name = "raw-" + (s_file_number < 0 ? std::string() : std::to_string(++s_file_number));
-		std::string path_name = s_sub_dir + file_name;
+		path_name = s_sub_dir + file_name;
 		image_isok = GetImagesFromFile(cv_image[0], cv_image[1], path_name);
 		if (!image_isok) {
 			std::ostringstream ostr;
@@ -3127,8 +3136,6 @@ bool GetFramesFromFilesWithSubdirectorySearch(Mat cv_image[2]/*out*/, bool& arff
 			image_isok = GetImagesFromFile(cv_image[0], cv_image[1], path_name);
 		}
 		std::cout << path_name << ' ' << (image_isok? "Ok": "NOk") << std::endl;
-
-
 	}
 	else {
 		image_isok = false;
@@ -3241,6 +3248,97 @@ return_t __stdcall EvaluateOtsuThreshold(LPVOID lp) {
 }
 
 
+void IntensifyImage(Mat& cv_image) {
+	normalize(cv_image.clone(), cv_image, 0, (size_t)255 * g_bytedepth_scalefactor, NORM_MINMAX, CV_16UC1, Mat());
+	Mat aux; 
+	aux = cv_image.clone();
+	//medianBlur(cv_image, aux, 3);
+	AnisotropicDiffusion(aux, 12);
+	aux.convertTo(cv_image, CV_16UC1);
+}
+
+
+size_t ConductOverlapElimination(const std::vector<std::vector<cv::Point>>& contours, 
+	std::vector<std::vector<cv::Point>>& final_contours,
+	bool conduct_size = false, int size_increment = -1) {
+
+	if (contours.size() == 0) {
+		return 0; 
+	}
+
+	MASInitialize(1, 1);
+
+	size_t cntrNmbr = 0;
+	for (auto& contour : contours) {
+		std::ostringstream ostr;
+		ostr << "contour" << '_' << ++cntrNmbr;
+
+		std::string layer_name(ostr.str());
+
+		MASLayerCreateDBStorage(layer_name.c_str());
+
+		_sAlong x;
+		_sAlong y;
+		size_t j = 0;
+		for (auto p : contour) {
+			x[j] = p.x;
+			y[j] = p.y;
+			++j;
+		}
+		if (j > 0) {
+			MASLayerAddPolygon2DBStorage(layer_name.c_str(), x, y);
+		}
+
+		if (cntrNmbr == 1) {
+			MASEvaluate1(MAS_OverlapElim, layer_name.c_str(), "out");
+		}
+		else {
+			MASEvaluate1(MAS_OverlapElim, layer_name.c_str());
+
+			const char* layers[] = { "out", layer_name.c_str() };
+			MASEvaluate2(MAS_Or, layers, 2, "out");
+		}
+	}
+
+	if (conduct_size) {
+		if (size_increment != 0) {
+			MASSize("out", "out", size_increment);
+			MASSize("out", "out", -size_increment);
+		}
+	}
+
+	MASEvaluate1(MAS_ActivateLayer, "out");
+
+	size_t nFirst = 0;
+	long nPolygons = MASLayerCountRTPolygons("out", &nFirst);
+
+
+	size_t count = 0;
+	for (size_t n = nFirst; count < nPolygons && n < ((size_t)nPolygons << 2); ++n) {
+		_sAlong x;
+		_sAlong y;
+		long nPoints = MASLayerGetRTPolygon("out", n, x, y);
+		if (nPoints > 4) {
+			if (count == 0) {
+				final_contours.resize(0);
+				final_contours.resize(nPolygons + 1);
+			}
+
+			std::vector<Point>& contour = final_contours[count++];
+			contour.resize(nPoints);
+
+			long j = 0;
+			while (j < nPoints) {
+				contour[j] = Point(x[j], y[j]);
+				++j;
+			}
+		}
+	}
+
+	return count; 
+}
+
+
 return_t __stdcall EvaluateContours(LPVOID lp) {
 	SPointsReconstructionCtl *ctl = (SPointsReconstructionCtl*)lp;
 
@@ -3260,26 +3358,34 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 	std::vector<ClusteredPoint> cv_points[2];
 
 
+
+	std::vector<std::vector<cv::Point>> final_contours(1);
+
+
 	bool image_isok = false;
 	while (!g_bTerminated && !ctl->_terminated) {
 
 		Mat cv_edges[6];
 
+		Mat unchangedImage; 
+		Mat finalContoursImage; 
+
 		bool arff_file_requested = false;
 
 		std::string file_name; 
+		std::string path_name;
 
 		if (g_configuration._frames_from_files > 0) {
 			if (!image_isok || g_configuration._frames_from_files == 1/* >1 means iterate through the first image (for profiling and leakage testing)*/) {
 				ctl->_gate.lock();
-				image_isok = GetFramesFromFilesWithSubdirectorySearch(cv_image/*out*/, arff_file_requested/*out*/, file_name);
+				image_isok = GetFramesFromFilesWithSubdirectorySearch(cv_image/*out*/, arff_file_requested/*out*/, file_name, path_name);
 				ctl->_gate.unlock();
 			}
 
 			_g_images_frame->Invalidate();
 		}
 
-
+		final_contours.resize(0); 
 
 		if (image_isok) {
 			if (cv_image[0].cols == 0 || cv_image[1].cols == 0) {
@@ -3288,42 +3394,65 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 			__int64 time_start = OSDayTimeInMilliseconds();
 
+			auto prepReadyImages = [&cv_image, &cv_edges](double chWeights[3]) {
+				StandardizeImage(cv_image[0], chWeights);
+				SquareImage(cv_image[1], chWeights);
 
-			normalize(cv_image[0].clone(), cv_image[0], 0, (size_t)255 * g_bytedepth_scalefactor, NORM_MINMAX, CV_16UC1, Mat());
-			//cv_edges[4] = cv_image[0].clone();
-			medianBlur(cv_image[0], cv_edges[4], 3);
-			AnisotropicDiffusion(cv_edges[4]);
-			cv_edges[4].convertTo(cv_image[0], CV_16UC1);
-			
-			cv_edges[0] = cv_image[0].clone();
+				IntensifyImage(cv_image[0]);
+				cv_image[1] = mat_loginvert2word(cv_image[1]);
+				IntensifyImage(cv_image[1]);
 
-
-
-			cv_image[1] = mat_loginvert2word(cv_image[1]);
-			normalize(cv_image[1].clone(), cv_image[1], 0, (size_t)255 * g_bytedepth_scalefactor, NORM_MINMAX, CV_16UC1, Mat());
-			//cv_edges[5] = cv_image[1].clone();
-			medianBlur(cv_image[1], cv_edges[5], 3);
-			AnisotropicDiffusion(cv_edges[5]);
-			cv_edges[5].convertTo(cv_image[1], CV_16UC1);
-
-			cv_edges[1] = cv_image[1].clone();
+				cv_edges[0] = cv_image[0].clone();
+				cv_edges[1] = cv_image[1].clone();
+			};
 
 
+			double chWeights[3] = { 1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0 };
+
+			prepReadyImages(chWeights);
+
+
+
+			unchangedImage = imread(std::string(g_path_calib_images_dir) + path_name + ".jpg", CV_LOAD_IMAGE_ANYDEPTH | CV_LOAD_IMAGE_ANYCOLOR);
+			finalContoursImage = unchangedImage.clone(); 
 
 
 			g_imageSize = cv_image[0].size();
 
 
-			ctl->_gate.lock();
-			matCV_16UC1_memcpy(ctl->_cv_image[0], cv_image[0]);
-			matCV_16UC1_memcpy(ctl->_cv_image[1], cv_image[1]);
-			matCV_16UC1_memcpy(ctl->_cv_edges[0], cv_edges[0]);
-			matCV_16UC1_memcpy(ctl->_cv_edges[1], cv_edges[1]);
-			ctl->_pixel_threshold = 91;
-			ctl->_data_isvalid = false;
-			ctl->_image_isvalid = true;
-			ctl->_last_image_timestamp = image_localtime;
-			ctl->_gate.unlock();
+			auto submitGraphics = [&](Mat& originalImage, bool data_is_valid = false) {
+				ctl->_gate.lock();
+				matCV_16UC1_memcpy(ctl->_cv_image[0], cv_image[0]);
+				matCV_16UC1_memcpy(ctl->_cv_image[1], cv_image[1]);
+				matCV_16UC1_memcpy(ctl->_cv_edges[0], cv_edges[0]);
+				matCV_16UC1_memcpy(ctl->_cv_edges[1], cv_edges[1]);
+				ctl->_pixel_threshold = 91;
+				ctl->_data_isvalid = false;
+				ctl->_image_isvalid = true;
+				ctl->_last_image_timestamp = image_localtime;
+				ctl->_unchangedImage[0] = originalImage.clone();
+				ctl->_unchangedImage[1] = unchangedImage.clone();
+
+				if (data_is_valid) {
+					ctl->_boxes[0] = boxes[0];
+					ctl->_boxes[1] = boxes[1];
+					ctl->_cv_points[0] = cv_points[0];
+					ctl->_cv_points[1] = cv_points[1];
+					ctl->_data_isvalid = true;
+				}
+				ctl->_gate.unlock();
+
+				SetEvent(g_event_SFrameIsAvailable);
+			};
+
+
+			submitGraphics(unchangedImage);
+
+
+
+			std::vector<std::vector<cv::Point>> contours(1);
+			size_t contours_count = 0;
+
 
 			while (!g_bTerminated && !ctl->_terminated) {
 				HANDLE handles[] = { g_event_SeedPointIsAvailable, g_event_ContourIsConfirmed };
@@ -3332,7 +3461,37 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 					continue;
 				}
 				if (anEvent == (WAIT_OBJECT_0 + 1)) {
-					break; 
+					if (g_LoG_seedPoint.params.windowNumber == 5) {
+						break; 
+					}
+
+					switch (g_LoG_seedPoint.params.windowNumber) {
+					case 3:
+					case 4:
+						break;
+
+					}
+
+					contours.resize(contours_count);
+					for (auto& contour : final_contours) {
+						contours.push_back(contour);
+					}
+
+					ConductOverlapElimination(contours, final_contours, true);
+
+					finalContoursImage = unchangedImage.clone();
+					for (auto& contour:final_contours) {
+						if (contour.size()) {
+							Point a = Point2f(contour[0]);
+							for (int j = 1; j < contour.size(); ++j) {
+								Point b = Point2f(contour[j]);
+								cv::line(finalContoursImage, a, b, Scalar(0, (size_t)256 * 256, 0));
+								a = b;
+							}
+						}
+					}
+
+					submitGraphics(finalContoursImage);
 				}
 				if (anEvent == WAIT_OBJECT_0) {
 					int pixel_threshold = (int)g_otsu_threshold; // gets calculated in separate thread. 
@@ -3368,6 +3527,15 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 					Point pt;
 					pt.x = roi.x + roi.width / 2;
 					pt.y = roi.y + roi.height / 2;
+
+
+					double chWeights[3];
+					BuildWeightsByChannel(unchangedImage, pt, chWeights);
+					cv_image[0] = unchangedImage.clone();
+					cv_image[1] = unchangedImage.clone();
+
+
+					prepReadyImages(chWeights);
 
 
 					cv_edges[0].convertTo(cv_edges[4], CV_8UC1);
@@ -3407,10 +3575,6 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 
 
-					std::vector<std::vector<cv::Point>> contours(1); 
-					contours[0] = boxes[1][0].contour; 
-
-
 					int pass_number = 0;
 					int size_increment = 1; 
 					int iteration_number = 3; 
@@ -3419,31 +3583,15 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 					bool doInvertDirection = false; 
 
 					while (0<1) {
+						submitGraphics(finalContoursImage, true);
 
-						ctl->_gate.lock();
-						matCV_16UC1_memcpy(ctl->_cv_image[0], cv_image[0]);
-						matCV_16UC1_memcpy(ctl->_cv_image[1], cv_image[1]);
-						matCV_16UC1_memcpy(ctl->_cv_edges[0], cv_edges[0]);
-						matCV_16UC1_memcpy(ctl->_cv_edges[1], cv_edges[1]);
-						ctl->_pixel_threshold = (int)std::floor(effective_threshold_min / g_bytedepth_scalefactor + 0.5);
-						ctl->_image_isvalid = true;
-						ctl->_last_image_timestamp = image_localtime;
+						if (boxes[1].size() == 0) {
+							contours_count = 0;
+							break;
+						}
 
-
-						ctl->_boxes[0] = (boxes[0]);
-						ctl->_boxes[1] = (boxes[1]);
-
-						ctl->_cv_points[0] = cv_points[0];
-						ctl->_cv_points[1] = cv_points[1];
-
-						ctl->_data_isvalid = true;
-
-						ctl->_last_image_timestamp = image_localtime;
-
-						ctl->_gate.unlock();
-
-						SetEvent(g_event_SFrameIsAvailable);
-
+						contours.resize(1);
+						contours[0] = boxes[1][0].contour;
 
 
 						if (doInvertDirection || pass_number++ == max_passes) {
@@ -3463,65 +3611,16 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 							}
 						}
 
+						size_t count = ConductOverlapElimination(contours, contours);
 
 
-						std::ostringstream out_layer_name;
-						out_layer_name << file_name << "_" << pass_number;
-
-						MASInitialize(1, 1);
-
-						MASLayerCreateDBStorage(file_name.c_str());
-
-						for (auto& contour : contours) {
-							_sAlong x;
-							_sAlong y;
-							size_t j = 0;
-							for (auto p : contour) {
-								x[j] = p.x;
-								y[j] = p.y;
-								++j;
-							}
-							if (contour.size() > 0) {
-								MASLayerAddPolygon2DBStorage(file_name.c_str(), x, y);
-							}
-						}
-
-
-						MASEvaluate1(MAS_OverlapElim, file_name.c_str(), out_layer_name.str().c_str());
-						MASEvaluate1(MAS_Or, out_layer_name.str().c_str(), "out");
-
-						//MASEvaluate1(MAS_OverlapElim, file_name.c_str(), out_layer_name.str().c_str());
-						//MASSize(out_layer_name.str().c_str(), "out", size_increment);
-						////MASEvaluate1(MAS_OverlapElim, "sized", "out");
-
-						MASEvaluate1(MAS_ActivateLayer, "out");
-
-						size_t nFirst = 0;
-						long nPolygons = MASLayerCountRTPolygons("out", &nFirst);
-
-
-						size_t count = 0;
-						for (size_t n = nFirst; count < nPolygons && n < ((size_t)nPolygons << 2); ++n) {
-							_sAlong x;
-							_sAlong y;
-							long nPoints = MASLayerGetRTPolygon("out", n, x, y);
-							if (nPoints > 10) {
-								if (count == 0) {
-									contours.resize(0);
-									contours.resize(nPolygons + 1);
-								}
-
-								std::vector<Point>& contour = contours[count++];
-								contour.resize(nPoints);
-
-								long j = 0;
-								while (j < nPoints) {
-									contour[j] = Point(x[j], y[j]);
-									++j;
-								}
-							}
-						}
 						contours[count] = boxes[1][0].contour_notsmoothed;
+						contours_count = count; 
+						if (count == 0) {
+							continue;
+						}
+
+
 
 						ClusteredPoint& point = cv_points[1][0];
 						Mat& crop_colored = point._crop;
@@ -3544,12 +3643,8 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 								if (n == count) {
 									color = Scalar((size_t)255 * 256, 0, 0);
 								}
-								else 
-								if (size_increment > 0) {
-									color = Scalar(0, (size_t)count * 256, (size_t)255 * 256);
-								}
 								else {
-									color = Scalar((size_t)255 * 256, 0, (size_t)count * 256);
+									color = Scalar(0, (size_t)((double)n / count) * 255 * 256, (size_t)255 * 256);
 								}
 								cv::line(crop_colored, a, b, color);
 								a = b;
