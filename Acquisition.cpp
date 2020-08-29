@@ -75,7 +75,7 @@ void BuildWeightsByChannel(Mat& image, Point& pt, double weights_out[3]) {
 				}
 				Vec3c& pixVec = image.at<Vec3c>(r, c);
 				for (int j = 0; j < 3; ++j) {
-					double w = pow(pixVec[j], 3);
+					double w = pow(pixVec[j], 5);
 					sum += w; 
 					weights[j] += w;
 				}

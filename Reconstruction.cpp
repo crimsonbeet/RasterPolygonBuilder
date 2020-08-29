@@ -1755,8 +1755,427 @@ void subPixels(Mat& crop, std::vector<Point2f>& corners, int ws) {
 	}
 }
 
+
+// FIR15 low-pass least-squares Fpass 0.1, Fstop 0.5, Fs 6.25
+static double fir_h[15] = { 0.021650121520005953, 0.035527801315147732, 0.051061255474874737, 0.06688253424484937, 0.081431003402810065, 0.093166162384329704, 0.1007883612361113, 0.10343054711643812, 0.1007883612361113, 0.093166162384329704, 0.081431003402810065, 0.06688253424484937, 0.051061255474874737, 0.035527801315147732, 0.021650121520005953 };
+//static double fir_h_gain = 1.011992;
+static double fir_h_gain = 1.004445;
+static double fir_h_lowpass = 1;
+
+// FIR15 low-pass equiripple Fpass 1.0, Fstop 3.0, Fs 25 (Fpass 0.25, Fstop 0.75, Fs 6.25)
+static double fir_h2[15] = { -0.032640248918755936, 0.010310761506497982, 0.030918235414101738, 0.061797451018658113, 0.097450419366571825, 0.13069501065073361, 0.15427159413808236, 0.16277411805378134, 0.15427159413808236, 0.13069501065073361, 0.097450419366571825, 0.061797451018658113, 0.030918235414101738, 0.010310761506497982, -0.032640248918755936 };
+static double fir_h_gain2 = 1.068380564;
+static double fir_h_lowpass2 = 1;
+
+
+// FIR31 low-pass equiripple Fpass 0.1, Fstop 2.0, Fs 25
+static double fir_h3[31] = {
+-0.0019405441221921158, 
+ 0.00021290204002300688, 
+ 0.0014300506394972258, 
+ 0.0036700073983595501, 
+ 0.0071036510002612917, 
+ 0.011841436920247922, 
+ 0.017888775504615775, 
+ 0.025129802358795174, 
+ 0.033303292007835543, 
+ 0.042017094622616179, 
+ 0.050779635536499383, 
+ 0.059026098905632089, 
+ 0.066187174918655459, 
+ 0.071734765422246063, 
+ 0.075247964514827154, 
+ 0.076449266526105675, 
+ 0.075247964514827154, 
+ 0.071734765422246063, 
+ 0.066187174918655459, 
+ 0.059026098905632089, 
+ 0.050779635536499383, 
+ 0.042017094622616179, 
+ 0.033303292007835543, 
+ 0.025129802358795174, 
+ 0.017888775504615775, 
+ 0.011841436920247922, 
+ 0.0071036510002612917, 
+ 0.0036700073983595501, 
+ 0.0014300506394972258, 
+ 0.00021290204002300688, 
+-0.0019405441221921158 
+}; 
+static double fir_h_gain3 = 1.003713; 
+static double fir_h_lowpass3 = 1;
+
+
+// FIR31 low-pass equiripple Fpass 0.2, Fstop 2.0, Fs 25
+static double fir_h4[31] = {
+-0.0059597715268290379, 
+-0.0033255066471542527, 
+-0.0030943467787952726, 
+-0.0016883473101459237, 
+ 0.0012622984347179019, 
+ 0.0060085788655133074, 
+ 0.012668745713483077, 
+ 0.021153442438654222, 
+ 0.03117063212795055,  
+ 0.042206945980534413, 
+ 0.053572753037717545, 
+ 0.064465905535645782, 
+ 0.074052339267823022, 
+ 0.081550732685986824, 
+ 0.086327349723932259, 
+ 0.087966531488072763, 
+ 0.086327349723932259, 
+ 0.081550732685986824, 
+ 0.074052339267823022, 
+ 0.064465905535645782, 
+ 0.053572753037717545, 
+ 0.042206945980534413, 
+ 0.03117063212795055,  
+ 0.021153442438654222, 
+ 0.012668745713483077, 
+ 0.0060085788655133074, 
+ 0.0012622984347179019, 
+-0.0016883473101459237, 
+-0.0030943467787952726, 
+-0.0033255066471542527, 
+-0.0059597715268290379 
+}; 
+static double fir_h_gain4 = 1.008710035; 
+static double fir_h_lowpas4s = 1;
+
+
+// FIR31 low-pass equiripple Fpass 0.4, Fstop 2.0, Fs 25
+static double fir_h5[31] = {
+-0.0099292582092195599,
+-0.0067525236171752726,
+-0.0075324671209586963,
+-0.0069516201113122436,
+-0.0044812383329006552,
+ 0.00026980560047938954,
+ 0.0075264138110493987,
+ 0.017240760690068219,
+ 0.029072637531392994,
+ 0.042388997822594157,
+ 0.056319462751242541,
+ 0.069821830791183565,
+ 0.081797918604640182,
+ 0.091212125369844924,
+ 0.097226530964753782,
+ 0.099293523239023393,
+ 0.097226530964753782,
+ 0.091212125369844924,
+ 0.081797918604640182,
+ 0.069821830791183565,
+ 0.056319462751242541,
+ 0.042388997822594157,
+ 0.029072637531392994,
+ 0.017240760690068219,
+ 0.0075264138110493987,
+ 0.00026980560047938954,
+-0.0044812383329006552,
+-0.0069516201113122436,
+-0.0075324671209586963,
+-0.0067525236171752726,
+-0.0099292582092195599
+};
+static double fir_h_gain5 = 1.013752;
+static double fir_h_lowpass5 = 1;
+
+
+// FIR31 low-pass equiripple Fpass 1.0, Fstop 2.0, Fs 25
+static double fir_h6[31] = {
+ 0.0061473588925496925,
+-0.024828335051403173,
+-0.018123887209341438,
+-0.018357282045492977,
+-0.01785715861237289,
+-0.014348109109504927,
+-0.00703846736991969,
+ 0.0043366950282197397,
+ 0.019430567915095332,
+ 0.037378022312583602,
+ 0.05687086124862379,
+ 0.076272459872352857,
+ 0.093801399975206437,
+ 0.10777147244930367,
+ 0.11676932516015852,
+ 0.11987779266255399,
+ 0.11676932516015852,
+ 0.10777147244930367,
+ 0.093801399975206437,
+ 0.076272459872352857,
+ 0.05687086124862379,
+ 0.037378022312583602,
+ 0.019430567915095332,
+ 0.0043366950282197397,
+-0.00703846736991969,
+-0.014348109109504927,
+-0.01785715861237289,
+-0.018357282045492977,
+-0.018123887209341438,
+-0.024828335051403173,
+ 0.0061473588925496925
+}; 
+static double fir_h_gain6 = 0.95632764; 
+static double fir_h_lowpass6 = 1;
+
+
+
+template<typename T>
+void filterContour(std::vector<Point_<T>>& contour) {
+	double* l_fir_h = fir_h5;
+	double l_fir_h_gain = fir_h_gain5;
+	const int NFilter = ARRAY_NUM_ELEMENTS(fir_h5);
+	const int NFilter2 = NFilter/2;
+
+
+	const int L = (int)contour.size();
+	const int N = (contour[0] == contour[L - 1]) ? (L - 1) : L;
+
+	std::vector<Point_<T>> aux(L);
+
+	Mat_<double> Zet(2, 2);  // movement variance
+	Zet(0, 0) = 0;
+	Zet(1, 1) = 0;
+	Zet(0, 1) = 0;
+	Zet(1, 0) = 0;
+
+	Mat_<double> pastMeasurements((int)NFilter2, 2);
+	Point2d pastMeasurement(0, 0);
+
+	Mat_<double> futureMovements((int)NFilter2, 2);
+	Point2d lastMovement(0, 0);
+
+	std::vector<Point2d> deltas(NFilter2);
+
+	for (int k = 0, m = NFilter2; k < N; ++k, ++m) {
+		Point2d point(contour[m % N]);
+
+		Point2d futurePoint(contour[(k + NFilter - 1) % N]);
+
+		Point2d delta = futurePoint;// -lastMovement;
+		deltas[m % NFilter2] = delta;
+
+
+		futureMovements(m % NFilter2, 0) = delta.x;
+		futureMovements(m % NFilter2, 1) = delta.y;
+
+		lastMovement = futurePoint;
+
+
+		// measurement: apply FIR filter. 
+		// calculated point is in the center of filter's transfer function. 
+		// NFilter/2 future points, and NFilter/2 past points. 
+
+		Point2d measurement(0, 0);
+		for (int j = 0, i = k + NFilter - 1; j < NFilter; ++j, --i) {
+			measurement += Point2d(contour[i % N]) * l_fir_h[j];
+		}
+		measurement.x /= l_fir_h_gain;
+		measurement.y /= l_fir_h_gain;
+
+		pastMeasurements(m % NFilter2, 0) = measurement.x;// -pastMeasurement.x;
+		pastMeasurements(m % NFilter2, 1) = measurement.y;// -pastMeasurement.y;
+
+		pastMeasurement = measurement; 
+
+		// measurement: calculate variance of NFilter/2 last points -> R
+		if (m >= (NFilter - 1)) {
+
+			//std::ostringstream ostr;
+
+			Mat_<double> maux;
+
+			Mat_<double> Q;
+			calcCovarMatrix(futureMovements, Q, maux = Mat(), CV_COVAR_NORMAL | CV_COVAR_ROWS);
+			//ostr << "Q(0,0):" << Q(0, 0) << " Q(1,0):" << Q(1, 0) << " Q(0,1):" << Q(0, 1) << " Q(1,1):" << Q(1, 1) << std::endl;
+			Q(0, 1) = 0;
+			Q(1, 0) = 0;
+
+			Zet += Q;
+			//ostr << "Zet(0,0):" << Zet(0, 0) << " Zet(1,0):" << Zet(1, 0) << " Zet(0,1):" << Zet(0, 1) << " Zet(1,1):" << Zet(1, 1) << std::endl;
+
+			Mat_<double> R;
+			calcCovarMatrix(pastMeasurements, R, maux = Mat(), CV_COVAR_NORMAL | CV_COVAR_ROWS);
+			//ostr << "R(0,0):" << R(0, 0) << " R(1,0):" << R(1, 0) << " R(0,1):" << R(0, 1) << " R(1,1):" << R(1, 1) << std::endl;
+			R *= 0.5;
+			R(0, 1) = 0;
+			R(1, 0) = 0;
+
+			Mat_<double> K(2, 2);
+
+			Mat_<double> X(2, 2);
+			invert(Zet + R, X, DECOMP_SVD);
+			K = Zet * X;
+			//ostr << "X(0,0):" << X(0, 0) << " X(1,0):" << X(1, 0) << " X(0,1):" << X(0, 1) << " X(1,1):" << X(1, 1) << std::endl;
+			//ostr << "K(0,0):" << K(0, 0) << " K(1,0):" << K(1, 0) << " K(0,1):" << K(0, 1) << " K(1,1):" << K(1, 1) << std::endl;
+			K(0, 1) = 0;
+			K(1, 0) = 0;
+
+			Mat_<double> Z(2, 1);
+			Point2d shock = -point + measurement;
+			Z(0, 0) = shock.x;
+			Z(1, 0) = shock.y;
+			//ostr << "Z(0,0):" << Z(0, 0) << " Z(1,0):" << Z(1, 0) << std::endl;
+
+			Z = K * Z;
+			//ostr << "Z(0,0):" << Z(0, 0) << " Z(1,0):" << Z(1, 0) << std::endl;
+
+			point.x += Z(0, 0);
+			point.y += Z(1, 0);
+
+			Mat_<double> I(2, 2);
+			I(0, 0) = 1;
+			I(1, 1) = 1; 
+
+			Zet = (I - K) * Zet; 
+			//ostr << "Zet(0,0):" << Zet(0, 0) << " Zet(1,0):" << Zet(1, 0) << " Zet(0,1):" << Zet(0, 1) << " Zet(1,1):" << Zet(1, 1) << std::endl;
+			//ostr << std::endl;
+
+			//printf("%s", ostr.str().c_str());
+		}
+		else {
+			point = measurement; 
+		}
+
+
+		if (T(1 + 0.1) == T(1)) {
+			aux[m % N].x = (T)(point.x + 0.49999);
+			aux[m % N].y = (T)(point.y + 0.49999);
+		}
+		else {
+			aux[m % N].x = (T)(point.x);
+			aux[m % N].y = (T)(point.y);
+		}
+
+	}
+
+	if (L > N) {
+		aux[N] = aux[0];
+	}
+
+	contour.swap(aux); 
+}
+
+template<typename T>
+void filterContour2(std::vector<Point_<T>>& contour) {
+	double* l_fir_h = fir_h5;
+	double l_fir_h_gain = fir_h_gain5;
+	const int NFilter = ARRAY_NUM_ELEMENTS(fir_h5);
+	const int NFilter2 = NFilter / 2;
+
+
+	const int L = (int)contour.size();
+	const int N = (contour[0] == contour[L - 1]) ? (L - 1) : L;
+
+	std::vector<Point_<T>> aux(L);
+
+	Mat_<double> Zet(2, 2);  // movement variance
+	Zet(0, 0) = 0;
+	Zet(1, 1) = 0;
+	Zet(0, 1) = 0;
+	Zet(1, 0) = 0;
+
+	for (int k = 0, m = NFilter2; k < N; ++k, ++m) {
+		// movement: apply FIR filter. 
+		// calculated point is in the center of filter's transfer function. 
+		// NFilter/2 future points, and NFilter/2 past points. 
+
+		Mat_<double> futurePoints((int)NFilter2, 2);
+
+		Point2d point(0, 0);
+		for (int j = 0, i = k + NFilter - 1; j < NFilter; ++j, --i) {
+			point += Point2d(contour[i % N]) * l_fir_h[j];
+			if (j < NFilter2) {
+				futurePoints(j, 0) = contour[i % N].x;
+				futurePoints(j, 1) = contour[i % N].y;
+			}
+		}
+		point.x /= l_fir_h_gain;
+		point.y /= l_fir_h_gain;
+
+		Point2d shock = Point2d(contour[m % N]) - point;
+
+		Zet(0, 0) += pow(shock.x, 2);// / NFilter2;
+		Zet(1, 1) += pow(shock.y, 2);// / NFilter2;
+
+		std::ostringstream ostr;
+		ostr << "Zet(0,0):" << Zet(0, 0) << " Zet(1,0):" << Zet(1, 0) << " Zet(0,1):" << Zet(0, 1) << " Zet(1,1):" << Zet(1, 1) << std::endl;
+
+		// measurement: calculate variance of NFilter/2 future points -> R
+		if (m >= (NFilter - 1)) {
+			Mat_<double> maux;
+			Mat_<double> R;
+			calcCovarMatrix(futurePoints, R, maux = Mat(), CV_COVAR_NORMAL | CV_COVAR_ROWS);
+			ostr << "R(0,0):" << R(0, 0) << " R(1,0):" << R(1, 0) << " R(0,1):" << R(0, 1) << " R(1,1):" << R(1, 1) << std::endl;
+
+			Mat_<double> X(2, 2);
+			invert(Zet + R, X);
+			ostr << "X(0,0):" << X(0, 0) << " X(1,0):" << X(1, 0) << " X(0,1):" << X(0, 1) << " X(1,1):" << X(1, 1) << std::endl;
+
+			Mat_<double> K(2, 2);
+			K = Zet * X;
+			ostr << "K(0,0):" << K(0, 0) << " K(1,0):" << K(1, 0) << " K(0,1):" << K(0, 1) << " K(1,1):" << K(1, 1) << std::endl;
+			K(0, 1) = 0;
+			K(1, 0) = 0;
+
+			Mat_<double> Z(2, 1);
+			Z(0, 0) = contour[m % N].x - point.x;
+			Z(1, 0) = contour[m % N].y - point.y;
+			ostr << "Z(0,0):" << Z(0, 0) << " Z(1,0):" << Z(1, 0) << std::endl;
+
+			Z = K * Z;
+			ostr << "Z(0,0):" << Z(0, 0) << " Z(1,0):" << Z(1, 0) << std::endl;
+
+			point.x -= Z(0, 0);
+			point.y -= Z(1, 0);
+
+			Mat_<double> I(2, 2);
+			I(0, 0) = 1;
+			I(1, 1) = 1;
+			ostr << "I(0,0):" << I(0, 0) << " I(1,0):" << I(1, 0) << " I(0,1):" << I(0, 1) << " I(1,1):" << I(1, 1) << std::endl;
+
+			Zet = (I - K) * Zet;
+			ostr << "Zet(0,0):" << Zet(0, 0) << " Zet(1,0):" << Zet(1, 0) << " Zet(0,1):" << Zet(0, 1) << " Zet(1,1):" << Zet(1, 1) << std::endl;
+			ostr << std::endl;
+		}
+
+		printf("%s", ostr.str().c_str());
+
+
+		if (T(1 + 0.1) == T(1)) {
+			aux[m % N].x = (T)(point.x + 0.49999);
+			aux[m % N].y = (T)(point.y + 0.49999);
+		}
+		else {
+			aux[m % N].x = (T)(point.x);
+			aux[m % N].y = (T)(point.y);
+		}
+
+	}
+
+	if (L > N) {
+		aux[N] = aux[0];
+	}
+
+	contour.swap(aux);
+}
+
 template<typename T>
 void smoothContour(std::vector<Point_<T>>& contour) {
+	for (int j = 1; j < contour.size(); ++j) {
+		while (contour[j] == contour[j - 1]) {
+			contour.erase(contour.begin() + j); 
+			if (j == contour.size()) {
+				break; 
+			}
+		}
+	}
+	filterContour(contour); 
+}
+
+template<typename T>
+void smoothContour2(std::vector<Point_<T>>& contour) {
 	const int L = (int)contour.size(); 
 	const int N = (contour[0] == contour[L - 1])? (L - 1): L;
 	for(int j = 0, k = N - 1, k1 = N - 2, k2 = N - 3, m = 1, m1 = 2, m2 = 3; j < N; ++j, ++k, ++k1, ++k2, ++m, ++m1, ++m2) {
@@ -1798,7 +2217,7 @@ void smoothContour(std::vector<Point_<T>>& contour) {
 
 template<typename T>
 void projectContour(std::vector<Point_<T>>& contour) {
-	smoothContour(contour);
+	//smoothContour(contour);
 	smoothContour(contour);
 	for (size_t c = contour.size(), nc = c - 1; c > nc && nc > 0; nc = contour.size()) {
 		c = nc; 
@@ -3270,6 +3689,9 @@ size_t ConductOverlapElimination(const std::vector<std::vector<cv::Point>>& cont
 
 	size_t cntrNmbr = 0;
 	for (auto& contour : contours) {
+		if (contour.size() < 3) {
+			continue; 
+		}
 		std::ostringstream ostr;
 		ostr << "contour" << '_' << ++cntrNmbr;
 
@@ -3477,7 +3899,7 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 						contours.push_back(contour);
 					}
 
-					ConductOverlapElimination(contours, final_contours, true);
+					ConductOverlapElimination(contours, final_contours, true, -1);
 
 					finalContoursImage = unchangedImage.clone();
 					for (auto& contour:final_contours) {
