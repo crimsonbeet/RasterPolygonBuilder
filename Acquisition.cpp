@@ -16,7 +16,7 @@ extern bool g_bRestart;
 
 
 
-void ConvertColoredImage2Mono(Mat& image, double chWeights[3], std::function<double(uchar)> convert) {
+void ConvertColoredImage2Mono(Mat& image, double chWeights[3], std::function<double(double)> convert) {
 	cv::Mat aux(image.size(), CV_16UC1);
 	typedef Vec<uchar, 3> Vec3c;
 	for (int r = 0; r < aux.rows; ++r) {
@@ -31,16 +31,14 @@ void ConvertColoredImage2Mono(Mat& image, double chWeights[3], std::function<dou
 	}
 	image = aux.clone();
 }
-
-
 void StandardizeImage(Mat& image, double chWeights[3]) {
 	if (image.type() == CV_8UC3) {
-		ConvertColoredImage2Mono(image, chWeights, [](uchar ch) {
-			return (double)ch * 256;
+		ConvertColoredImage2Mono(image, chWeights, [](double ch) {
+			return ch * 256;
 		});
 	}
-	if(image.type() != CV_16UC1) {
-		if(image.type() != CV_8UC1) {
+	if (image.type() != CV_16UC1) {
+		if (image.type() != CV_8UC1) {
 			image.clone().convertTo(image, CV_8UC1);
 		}
 		image.clone().convertTo(image, CV_16UC1);
@@ -49,8 +47,8 @@ void StandardizeImage(Mat& image, double chWeights[3]) {
 }
 void SquareImage(Mat& image, double chWeights[3]) {
 	if (image.type() == CV_8UC3) {
-		ConvertColoredImage2Mono(image, chWeights, [](uchar ch) {
-			return (double)pow(ch, 2);
+		ConvertColoredImage2Mono(image, chWeights, [](double ch) {
+			return pow(ch, 2);
 		});
 	}
 	if (image.type() != CV_16UC1) {
@@ -59,32 +57,110 @@ void SquareImage(Mat& image, double chWeights[3]) {
 		}
 		image.clone().convertTo(image, CV_16UC1);
 		cv::Mat aux;
-		multiply(image, image, aux); 
+		multiply(image, image, aux);
 		image = aux.clone();
 	}
 }
 void BuildWeightsByChannel(Mat& image, Point& pt, double weights_out[3]) {
 	if (image.type() == CV_8UC3) {
-		double weights[3] = {0,0,0};
+		double weights[3] = { 0, 0, 0 };
 		double sum = 0;
+		typedef Vec<uchar, 3> Vec3c;
+		for (int r = pt.y - 2; r < image.rows && r < pt.y + 3; ++r) {
+			for (int c = pt.x - 2; c < image.cols && c < pt.x + 3; ++c) {
+				if (r < 0 || c < 0) {
+					continue;
+				}
+				Vec3c& pixVec = image.at<Vec3c>(r, c);
+				for (int j = 0; j < 3; ++j) {
+					double w = pow(pixVec[j], 2);
+					sum += w;
+					weights[j] += w;
+				}
+			}
+		}
+		for (auto& w : weights) w /= sum;
+		memcpy(weights_out, weights, sizeof(weights));
+	}
+}
+
+
+
+void ConvertColoredImage2Mono_Likeness(Mat& image, uchar chIdeal[3], std::function<double(uchar)> convert) {
+	cv::Mat aux(image.size(), CV_16UC1);
+	double powIdeal2[3] = { pow(chIdeal[0], 2), pow(chIdeal[1], 2), pow(chIdeal[2], 2) };
+	typedef Vec<uchar, 3> Vec3c;
+	for (int r = 0; r < aux.rows; ++r) {
+		for (int c = 0; c < aux.cols; ++c) {
+			Vec3c& pixVec = image.at<Vec3c>(r, c);
+			ushort& pix = aux.at<ushort>(r, c);
+			double w = 1;
+			for (int j = 0; j < 3; ++j) {
+				double ch = pixVec[j]; 
+				w *= (2.0 * ch * chIdeal[j]) / (pow(ch, 2) + powIdeal2[j]);
+			}
+			pix = (ushort)std::floor(convert(w * 256) + 0.5); ;
+		}
+	}
+	image = aux.clone();
+}
+void StandardizeImage_Likeness(Mat& image, uchar chIdeal[3]) {
+	if (image.type() == CV_8UC3) {
+		ConvertColoredImage2Mono_Likeness(image, chIdeal, [](double ch) {
+			return ch * 256;
+		});
+	}
+	if (image.type() != CV_16UC1) {
+		if (image.type() != CV_8UC1) {
+			image.clone().convertTo(image, CV_8UC1);
+		}
+		image.clone().convertTo(image, CV_16UC1);
+		image *= (size_t)256;
+	}
+}
+void SquareImage_Likeness(Mat& image, uchar chIdeal[3]) {
+	if (image.type() == CV_8UC3) {
+		ConvertColoredImage2Mono_Likeness(image, chIdeal, [](double ch) {
+			return pow(ch, 2);
+		});
+	}
+	if (image.type() != CV_16UC1) {
+		if (image.type() != CV_8UC1) {
+			image.clone().convertTo(image, CV_8UC1);
+		}
+		image.clone().convertTo(image, CV_16UC1);
+		cv::Mat aux;
+		multiply(image, image, aux);
+		image = aux.clone();
+	}
+}
+void BuildWeightsByChannel_Likeness(Mat& image, Point& pt, uchar likeness_out[3]) {
+	if (image.type() == CV_8UC3) {
+		double likeness[3] = {0,0,0};
+		double cnt = 0;
 		typedef Vec<uchar, 3> Vec3c;
 		for (int r = pt.y - 2; r < image.rows && r < pt.y + 3; ++r) {
 			for (int c = pt.x - 2; c < image.cols && c < pt.x + 3; ++c) {
 				if (r < 0 || c < 0) {
 					continue; 
 				}
+				++cnt; 
 				Vec3c& pixVec = image.at<Vec3c>(r, c);
 				for (int j = 0; j < 3; ++j) {
-					double w = pow(pixVec[j], 5);
-					sum += w; 
-					weights[j] += w;
+					likeness[j] += pixVec[j]; 
 				}
 			}
 		}
-		for(auto& w : weights) w /= sum; 
-		memcpy(weights_out, weights, sizeof(weights));
+		for (auto& w : likeness) {
+			w /= cnt;
+		} 
+		for (int j = 0; j < 3; ++j) {
+			likeness_out[j] = (uchar)std::floor(likeness[j] + 0.5);
+		}
 	}
 }
+
+
 
 bool GetImagesFromFile(Mat& left_image, Mat& right_image, const std::string& current_N) {
 	std::string nl = current_N;
