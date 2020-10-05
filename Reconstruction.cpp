@@ -2000,8 +2000,8 @@ void filterContour(std::vector<Point_<T>>& contour) {
 	Mat_<double> Z(2, 1);
 
 	Mat_<double> pastMeasurements((int)NFilter2, 2);
-	//Mat_<double> futureMovements((int)NFilter4, 2);
 
+	//Mat_<double> futureMovements((int)NFilter4, 2);
 	Mat_<double> futureMovements((int)NFilter2, 2);
 
 	for (int k = 0, m = NFilter2; k < N; ++k, ++m) {
@@ -2011,7 +2011,7 @@ void filterContour(std::vector<Point_<T>>& contour) {
 		futureMovements(m % NFilter2, 0) = futurePoint.x;
 		futureMovements(m % NFilter2, 1) = futurePoint.y;
 
-		//Point2d futurePoint(contour[(k + NFilter2 + 1) % N]);
+		//Point2d futurePoint(contour[(k + NFilter + NFilter4) % N]);
 		//futureMovements(m % NFilter4, 0) = futurePoint.x;
 		//futureMovements(m % NFilter4, 1) = futurePoint.y;
 
@@ -2098,7 +2098,6 @@ void filterContour(std::vector<Point_<T>>& contour) {
 	}
 
 	//lowpassFilterContour(aux, contour);
-
 	contour.swap(aux); 
 }
 
@@ -3740,10 +3739,10 @@ void IntensifyImage(Mat& cv_image) {
 	//aux = cv_image.clone();
 	//AnisotropicDiffusion(aux, 12);
 
-	//medianBlur(cv_image, aux, 3);
+	medianBlur(cv_image, aux, 3);
 	//AnisotropicDiffusion(aux, 14);
 
-	GaussianBlur(cv_image, aux, Size(5, 5), 0.9, 0.9);
+	GaussianBlur(cv_image, aux, Size(5, 5), 0.7, 0.7);
 	AnisotropicDiffusion(aux, 21);
 
 	aux.convertTo(cv_image, CV_16UC1);
@@ -3807,11 +3806,13 @@ size_t ConductOverlapElimination(const std::vector<std::vector<cv::Point>>& cont
 		return 0; 
 	}
 
+	bool ok = true; 
 	if (size_increment != 0) {
-		if (MASSize(cl.c_str()/*"out"*/, "out", size_increment)) {
+		ok = MASSize(cl.c_str()/*"out"*/, "out", size_increment);
+		if (ok) {
 			cl = "out";
 			if (!conduct_size) {
-				MASSize("out", "out", -size_increment);
+				ok = MASSize("out", "out", -size_increment);
 			}
 		}
 	}
@@ -3844,9 +3845,32 @@ size_t ConductOverlapElimination(const std::vector<std::vector<cv::Point>>& cont
 		}
 	}
 
-	return count; 
+	return ok? count: 0; 
 }
 
+size_t ConductOverlapEliminationEx(const std::vector<std::vector<cv::Point>>& contours, std::vector<std::vector<cv::Point>>& final_contours,
+	bool conduct_size = false, int size_increment = -1) {
+
+	size_t count = ConductOverlapElimination(contours, final_contours, conduct_size, size_increment);
+	if (count == 0) {
+		size_t j = 0; 
+		std::vector<std::vector<cv::Point>> aux(contours.size());
+		for (auto& contour : contours) {
+			if (contour.size()) {
+				aux[j].resize(contour.size());
+				std::reverse_copy(contour.cbegin(), contour.cend(), aux[j].begin());
+				filterContour(aux[j]);
+				for (size_t c = aux[j].size(), nc = c - 1; c > nc && nc > 0; nc = aux[j].size()) {
+					c = nc;
+					linearizeContour(aux[j], 1, 5);
+				}
+				++j;
+			}
+		}
+		count = ConductOverlapElimination(aux, final_contours, conduct_size, size_increment);
+	}
+	return count; 
+}
 
 return_t __stdcall EvaluateContours(LPVOID lp) {
 	SPointsReconstructionCtl *ctl = (SPointsReconstructionCtl*)lp;
@@ -3999,7 +4023,10 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 						}
 					}
 
-					ConductOverlapElimination(contours, final_contours, false, -1);
+					size_t count = ConductOverlapEliminationEx(contours, final_contours, false, -1);
+					if (count == 0 && contours.size() != 0) {
+						ConductOverlapEliminationEx(contours, final_contours, false, 0);
+					}
 
 					finalContoursImage = unchangedImage.clone();
 					for (auto& contour:final_contours) {
@@ -4103,6 +4130,10 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 					}
 
 
+					if (boxes[1].size() == 0) {
+						continue;
+
+					}
 					contours.resize(1);
 					contours[0] = boxes[1][0].contour;
 
@@ -4129,7 +4160,7 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 							doInvertDirection = false;
 							pass_number = 0;
 							size_increment = -size_increment;
-							if (++iteration_number == 3) {
+							if (++iteration_number >= 3) {
 								break;
 							}
 							switch (iteration_number) {
@@ -4144,9 +4175,13 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 						std::vector<std::vector<cv::Point>> local_contours;
 
-						size_t count = ConductOverlapElimination(contours, local_contours, true, size_increment);
+						size_t count = ConductOverlapEliminationEx(contours, local_contours, true, size_increment);
+
 						if (count == 0) {
-							doInvertDirection = true;
+							contours.resize(1);
+							contours[0] = boxes[1][0].contour;
+							pass_number == max_passes;
+							iteration_number = 3; 
 							continue;
 						}
 

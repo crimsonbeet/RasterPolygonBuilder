@@ -84,7 +84,32 @@ void BuildWeightsByChannel(Mat& image, Point& pt, double weights_out[3]) {
 	}
 }
 
+template<typename T, typename S>
+double cosineDistance3d(const T& left, const S& right) {
+	double dot = 0; 
+	for (int j = 0; j < 3; ++j) {
+		double r = (double)right[j] - left[j];
+		dot += approx_log2(abs(r)) * (double)left[j];
+		//dot += (abs(r)) * (double)left[j];
+	}
+	return dot;
+}
 
+
+void ConvertColoredImage2Mono_CosineLikeness(Mat& image, uchar chIdeal[3], std::function<double(uchar)> convert) {
+	cv::Mat aux(image.size(), CV_16UC1);
+	double powIdeal1[3] = { pow(chIdeal[0], 1), pow(chIdeal[1], 1), pow(chIdeal[2], 1) };
+	typedef Vec<uchar, 3> Vec3c;
+	for (int r = 0; r < aux.rows; ++r) {
+		for (int c = 0; c < aux.cols; ++c) {
+			Vec3c& pixVec = image.at<Vec3c>(r, c);
+			double w = cosineDistance3d(chIdeal, pixVec) / 256;
+			ushort& pix = aux.at<ushort>(r, c);
+			pix = (ushort)std::floor(convert(w) + 0.5); ;
+		}
+	}
+	image = aux.clone();
+}
 
 void ConvertColoredImage2Mono_Likeness(Mat& image, uchar chIdeal[3], std::function<double(uchar)> convert) {
 	cv::Mat aux(image.size(), CV_16UC1);
@@ -106,7 +131,7 @@ void ConvertColoredImage2Mono_Likeness(Mat& image, uchar chIdeal[3], std::functi
 }
 void StandardizeImage_Likeness(Mat& image, uchar chIdeal[3]) {
 	if (image.type() == CV_8UC3) {
-		ConvertColoredImage2Mono_Likeness(image, chIdeal, [](double ch) {
+		ConvertColoredImage2Mono_CosineLikeness(image, chIdeal, [](double ch) {
 			return ch * 256;
 		});
 	}
@@ -120,7 +145,7 @@ void StandardizeImage_Likeness(Mat& image, uchar chIdeal[3]) {
 }
 void SquareImage_Likeness(Mat& image, uchar chIdeal[3]) {
 	if (image.type() == CV_8UC3) {
-		ConvertColoredImage2Mono_Likeness(image, chIdeal, [](double ch) {
+		ConvertColoredImage2Mono_CosineLikeness(image, chIdeal, [](double ch) {
 			return pow(ch, 2);
 		});
 	}
