@@ -43,9 +43,14 @@ void SquareImage(Mat& image, double chWeights[3]);
 void BuildWeightsByChannel(Mat& image, Point& pt, double weights_out[3]);
 
 
+void StandardizeImage_Likeness(Mat& image, double chIdeal[3]);
+void SquareImage_Likeness(Mat& image, double chIdeal[3]);
+void BuildWeightsByChannel_Likeness(Mat& image, Point& pt, double likeness_out[3]);
+
 void StandardizeImage_Likeness(Mat& image, uchar chIdeal[3]);
 void SquareImage_Likeness(Mat& image, uchar chIdeal[3]);
 void BuildWeightsByChannel_Likeness(Mat& image, Point& pt, uchar likeness_out[3]);
+
 
 
 ATLSMatrix<double> X_XXI_X;
@@ -1762,7 +1767,7 @@ void subPixels(Mat& crop, std::vector<Point2f>& corners, int ws) {
 
 // FIR15 low-pass least-squares Fpass 0.1, Fstop 0.5, Fs 6.25
 static double fir_h1[15] = { 0.021650121520005953, 0.035527801315147732, 0.051061255474874737, 0.06688253424484937, 0.081431003402810065, 0.093166162384329704, 0.1007883612361113, 0.10343054711643812, 0.1007883612361113, 0.093166162384329704, 0.081431003402810065, 0.06688253424484937, 0.051061255474874737, 0.035527801315147732, 0.021650121520005953 };
-static double fir_h_gain1 = 1.004445;
+static double fir_h_gain1 = 1.004445026;
 static double fir_h_lowpass1 = 1;
 
 // FIR15 low-pass equiripple Fpass 1.0, Fstop 3.0, Fs 25 (Fpass 0.25, Fstop 0.75, Fs 6.25)
@@ -1922,11 +1927,51 @@ static double fir_h_gain6 = 0.95632764;
 static double fir_h_lowpass6 = 1;
 
 
+/*
+FIR filter designed with
+ http://t-filter.appspot.com
+
+sampling frequency: 25 Hz
+
+* 0Hz - 2Hz
+  gain = 1.210707
+  desired ripple = 5 dB
+  actual ripple = 3.7160174286567322 dB
+
+* 4Hz - 12.5Hz
+  gain = 0
+  desired attenuation = -40 dB
+  actual attenuation = -40.97956469696445 dB
+*/
+static double fir_h7[17] = {
+	-0.010933361502522962,
+	-0.014672567998546163,
+	-0.011698583129917173,
+	0.007782962239944857,
+	0.04758542654735151,
+	0.10347621545687319,
+	0.16277625120028424,
+	0.20832353497766573,
+	0.22542732058293752,
+	0.20832353497766573,
+	0.16277625120028424,
+	0.10347621545687319,
+	0.04758542654735151,
+	0.007782962239944857,
+	-0.011698583129917173,
+	-0.014672567998546163,
+	-0.010933361502522962
+};
+static double fir_h_gain7 = 1.210707;
+static double fir_h_lowpass7 = 1;
+
+
+
 template<typename T>
 void lowpassFilterContour(const std::vector<Point_<T>>& aux/*in*/, std::vector<Point_<T>>& contour) {
-	double* l_fir_h = fir_h2;
-	double l_fir_h_gain = fir_h_gain2;
-	const int NFilter = ARRAY_NUM_ELEMENTS(fir_h2);
+	double* l_fir_h = fir_h7;
+	double l_fir_h_gain = fir_h_gain7;
+	const int NFilter = ARRAY_NUM_ELEMENTS(fir_h7);
 	const int NFilter2 = NFilter / 2;
 
 	if (contour.size() != aux.size()) {
@@ -2007,7 +2052,7 @@ void filterContour(std::vector<Point_<T>>& contour) {
 	for (int k = 0, m = NFilter2; k < N; ++k, ++m) {
 		Point2d point(contour[m % N]);
 
-		Point2d futurePoint(contour[(k + NFilter + NFilter2) % N]);
+		Point2d futurePoint(contour[(k + NFilter + /*NFilter2 + */1) % N]);
 		futureMovements(m % NFilter2, 0) = futurePoint.x;
 		futureMovements(m % NFilter2, 1) = futurePoint.y;
 
@@ -2043,8 +2088,6 @@ void filterContour(std::vector<Point_<T>>& contour) {
 			R(0, 1) = 0;
 			R(1, 0) = 0;
 
-			//R *= 0.1;
-
 			invert(Zet + R, X, DECOMP_SVD);
 			K = Zet * X;
 			//ostr << "X(0,0):" << X(0, 0) << " X(1,0):" << X(1, 0) << " X(0,1):" << X(0, 1) << " X(1,1):" << X(1, 1) << std::endl;
@@ -2052,12 +2095,14 @@ void filterContour(std::vector<Point_<T>>& contour) {
 			K(0, 1) = 0;
 			K(1, 0) = 0;
 
-			if (K(1, 0) > 1) {
-				K(1, 0) = 1;
+			if (K(0, 0) > 1) {
+				K(0, 0) = 1;
 			}
-			if (K(0, 1) > 1) {
-				K(0, 1) = 1;
+			if (K(1, 1) > 1) {
+				K(1, 1) = 1;
 			}
+
+			//ostr << "K(0,0):" << K(0, 0) << " K(1,1):" << K(1, 1) << std::endl;
 
 			Point2d shock = -point + measurement;
 			Z(0, 0) = shock.x;
@@ -3733,17 +3778,14 @@ return_t __stdcall EvaluateOtsuThreshold(LPVOID lp) {
 
 
 void IntensifyImage(Mat& cv_image) {
-	normalize(cv_image.clone(), cv_image, 0, (size_t)255 * g_bytedepth_scalefactor, NORM_MINMAX, CV_16UC1, Mat());
+	normalize(cv_image.clone(), cv_image, 0, (size_t)256 * g_bytedepth_scalefactor, NORM_MINMAX, CV_16UC1, Mat());
 	Mat aux; 
 
-	//aux = cv_image.clone();
-	//AnisotropicDiffusion(aux, 12);
-
-	medianBlur(cv_image, aux, 3);
-	//AnisotropicDiffusion(aux, 14);
-
-	GaussianBlur(cv_image, aux, Size(5, 5), 0.7, 0.7);
+	GaussianBlur(cv_image, aux, Size(5, 5), 0.9, 0.9);
 	AnisotropicDiffusion(aux, 21);
+	medianBlur(cv_image, aux, 3);
+	GaussianBlur(cv_image, aux, Size(5, 5), 0.9, 0.9);
+	AnisotropicDiffusion(aux, 14);
 
 	aux.convertTo(cv_image, CV_16UC1);
 }
@@ -3932,7 +3974,7 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 				SquareImage(cv_image[1], chWeights);
 			};
 
-			auto prepImages_Likeness = [&cv_image](uchar chIdeal[3]) {
+			auto prepImages_Likeness = [&cv_image](double chIdeal[3]) {
 				StandardizeImage_Likeness(cv_image[0], chIdeal);
 				SquareImage_Likeness(cv_image[1], chIdeal);
 			};
@@ -4081,8 +4123,15 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 					//double chWeights[3];
 					//BuildWeightsByChannel(unchangedImage, pt, chWeights);
 
-					//uchar chIdeal[3]; 
+					//double chWeights[3] = {0.002, 0.308, 0.689};
+					//double chIdeal[3] = {0.002, 0.308, 0.689};
 					//BuildWeightsByChannel_Likeness(unchangedImage, pt, chIdeal);
+
+					//for (auto& sub_boxes : boxes) {
+					//	for (auto& box : sub_boxes) {
+					//		box = ABox(); 
+					//	}
+					//}
 
 					//cv_image[0] = unchangedImage.clone();
 					//cv_image[1] = unchangedImage.clone();
@@ -4090,6 +4139,7 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 					//prepImages_Likeness(chIdeal);
 					//readyImages();
+					//submitGraphics(unchangedImage);
 
 
 					cv_edges[0].convertTo(cv_edges[4], CV_8UC1);
