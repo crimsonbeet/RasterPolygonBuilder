@@ -2398,8 +2398,8 @@ struct AContainingBox {
 
 Point round2dPoint(Point2d p) {
 	Point r; 
-	r.x = floor(p.x + 0.5); 
-	r.y = floor(p.y + 0.5);
+	r.x = (int)floor(p.x + 0.5); 
+	r.y = (int)floor(p.y + 0.5);
 	return r;
 }
 
@@ -4260,10 +4260,10 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 								Point b = (Point2f(contour[j]) + Point2f(0.5, 0.5) - (off)) * fx;
 								cv::Scalar color;
 								if (n == count) {
-									color = Scalar((size_t)255 * 256, 0, 0);
+									color = Scalar(255.0 * 256.0, 0, 0);
 								}
 								else {
-									color = Scalar(0, (size_t)((double)n / count) * 255 * 256, (size_t)255 * 256);
+									color = Scalar(0, (((double)n / count) * 255.0 * 256.0), (double)255 * 256);
 								}
 								cv::line(crop_colored, a, b, color);
 								a = b;
