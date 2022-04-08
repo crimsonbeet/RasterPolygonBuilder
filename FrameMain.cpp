@@ -4,6 +4,8 @@
 
 #include "FrameMain.h"
 
+#include "opencv2\highgui\highgui_c.h"
+
 
 const std::string _g_arrow_images[2] = { 
 	IMG_ARROW_LEFT, 

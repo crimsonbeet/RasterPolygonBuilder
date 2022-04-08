@@ -1,7 +1,7 @@
 
 library(zoom)
 
-file_name <- "2020Oct3_153058_626_ShapesCombined.csv"
+file_name <- "2022Apr7_223735_723_LoadFragment.csv"
 
 max_col <- max(count.fields(file_name, sep = ','))
 col_names = paste0("V",seq_len(max_col))
@@ -41,7 +41,7 @@ for(j in 1:nrow(size_segments)) {
 #lines(x1,y1, col="red")
 
 
-file_name <- "2020Oct3_153101_681_LbBead_UnloadFailed.csv"
+file_name <- "2022Apr7_223735_721_LoadFragment.csv"
 
 max_col <- max(count.fields(file_name, sep = ','))
 col_names = paste0("V",seq_len(max_col))
@@ -51,7 +51,37 @@ size_segments <- read.csv(file_name, col.names=col_names, strip.white=T, header=
 x <- size_segments[, seq(1, max_col, by=2)]
 y <- size_segments[, seq(2, max_col, by=2)]
 
-plot(0,0, xlim = range(x, na.rm=T), ylim = range(y, na.rm=T), type = "n")
+for(j in 1:nrow(size_segments)) { 
+	do_expand <- FALSE
+	if(is.na(x[j,length(x[j,])])) {
+		x[j,length(x[j,])] = x[j, 1]
+		y[j,length(x[j,])] = y[j, 1]
+	} 
+	else {
+		do_expand <- TRUE
+	} 
+	
+	a <- as.numeric(na.omit(as.numeric(x[j,])))
+	b <- as.numeric(na.omit(as.numeric(y[j,])))
+	
+	if(do_expand) {
+		a <- as.numeric(cbind(t(a), c(x[j, 1]), deparse.level = 0))
+		b <- as.numeric(cbind(t(b), c(y[j, 1]), deparse.level = 0))
+	}
+	
+	lines(a,b, col=sample(rainbow(nrow(size_segments))))
+}
+
+
+file_name <- "2022Apr8_05921_546_out.csv"
+
+max_col <- max(count.fields(file_name, sep = ','))
+col_names = paste0("V",seq_len(max_col))
+size_segments <- read.csv(file_name, col.names=col_names, strip.white=T, header=F, row.names = NULL)
+
+
+x <- size_segments[, seq(1, max_col, by=2)]
+y <- size_segments[, seq(2, max_col, by=2)]
 
 for(j in 1:nrow(size_segments)) { 
 	do_expand <- FALSE

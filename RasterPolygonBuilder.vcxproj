@@ -88,20 +88,21 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>false</ConformanceMode>
-      <AdditionalIncludeDirectories>$(SolutionDir)..\XDS7\Include;$(SolutionDir)..\XDS7\KWindows;opencv\build\include;$(SolutionDir)..\Polymorpher\Mascot_2016\Mascot</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)..\XDS7\Include;$(SolutionDir)..\XDS7\KWindows;C:\opencv455\include;$(SolutionDir)..\Polymorpher\Mascot_2016\Mascot</AdditionalIncludeDirectories>
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>opencv\build\$(PlatformTarget)\vc12\lib;$(OutDir)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(SolutionDir)..\VisionSystem\opencv\build\lib\Debug;$(OutDir)</AdditionalLibraryDirectories>
     </Link>
     <CustomBuildStep>
       <Command>
       </Command>
     </CustomBuildStep>
     <PostBuildEvent>
-      <Command>copy C:\opencv\bin\*.* $(OutDir)*.*</Command>
+      <Command>
+      </Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -112,7 +113,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>false</ConformanceMode>
-      <AdditionalIncludeDirectories>$(SolutionDir)..\XDS7\Include;$(SolutionDir)..\XDS7\KWindows;opencv\build\include;$(SolutionDir)..\Polymorpher\Mascot_2016\Mascot</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)..\XDS7\Include;$(SolutionDir)..\XDS7\KWindows;C:\opencv455\include;$(SolutionDir)..\Polymorpher\Mascot_2016\Mascot</AdditionalIncludeDirectories>
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
     <Link>
@@ -120,14 +121,15 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>opencv\build\$(PlatformTarget)\vc12\lib;$(OutDir)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(OPENCV_DIR)\lib;$(OutDir)</AdditionalLibraryDirectories>
     </Link>
     <CustomBuildStep>
       <Command>
       </Command>
     </CustomBuildStep>
     <PostBuildEvent>
-      <Command>copy C:\opencv\bin\*.* $(OutDir)*.*</Command>
+      <Command>
+      </Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -137,21 +139,22 @@
       </SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>false</ConformanceMode>
-      <AdditionalIncludeDirectories>$(SolutionDir)..\XDS7\Include;$(SolutionDir)..\XDS7\KWindows;opencv\build\include;$(SolutionDir)..\Polymorpher\Mascot_2016\Mascot</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)..\XDS7\Include;$(SolutionDir)..\XDS7\KWindows;C:\opencv455\include;$(SolutionDir)..\Polymorpher\Mascot_2016\Mascot</AdditionalIncludeDirectories>
       <SupportJustMyCode>false</SupportJustMyCode>
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>opencv\build\$(PlatformTarget)\vc12\lib;$(OutDir)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(SolutionDir)..\VisionSystem\opencv\build\lib\Debug;$(OutDir)</AdditionalLibraryDirectories>
     </Link>
     <CustomBuildStep>
       <Command>
       </Command>
     </CustomBuildStep>
     <PostBuildEvent>
-      <Command>copy C:\opencv\bin\*.* $(OutDir)*.*</Command>
+      <Command>
+      </Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -162,7 +165,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>false</ConformanceMode>
-      <AdditionalIncludeDirectories>$(SolutionDir)..\XDS7\Include;$(SolutionDir)..\XDS7\KWindows;opencv\build\include;$(SolutionDir)..\Polymorpher\Mascot_2016\Mascot</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)..\XDS7\Include;$(SolutionDir)..\XDS7\KWindows;C:\opencv455\include;$(SolutionDir)..\Polymorpher\Mascot_2016\Mascot</AdditionalIncludeDirectories>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <Optimization>Disabled</Optimization>
     </ClCompile>
@@ -171,14 +174,15 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>opencv\build\$(PlatformTarget)\vc12\lib;$(OutDir)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(OPENCV_DIR)\lib;$(OutDir)</AdditionalLibraryDirectories>
     </Link>
     <CustomBuildStep>
       <Command>
       </Command>
     </CustomBuildStep>
     <PostBuildEvent>
-      <Command>copy C:\opencv\bin\*.* $(OutDir)*.*</Command>
+      <Command>
+      </Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>

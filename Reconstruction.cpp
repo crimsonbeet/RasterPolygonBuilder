@@ -1484,7 +1484,7 @@ inline bool RowsCenter(const std::vector<ABoxedrow>& rows, ClusteredPoint& point
 }
 
 
-void HoughLineContour(const std::vector<Point>& contour, const Point& offset, vector<Vec2f>& houghLines, const int max_rho, const int scale = 100) {
+void HoughLineContour(const std::vector<Point>& contour, const Point& offset, std::vector<Vec2f>& houghLines, const int max_rho, const int scale = 100) {
 	ATLSMatrixvar<int> accumulator; 
 	accumulator.SetDimensions(max_rho, 180); 
 
@@ -1705,12 +1705,12 @@ double approximate_withQuad100(const std::vector<Point>& contour, std::vector<Po
 	//return flattening;
 }
 
-void cornerSubPixGravity(Mat& image, std::vector<Point2f>& corners, Size winSize, const unsigned int min_intensity, const unsigned int avg_intensity, TermCriteria criteria = TermCriteria(CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, 5, 0.1)) {
+void cornerSubPixGravity(Mat& image, std::vector<Point2f>& corners, Size winSize, const unsigned int min_intensity, const unsigned int avg_intensity, TermCriteria criteria = TermCriteria(TermCriteria::EPS + TermCriteria::MAX_ITER, 5, 0.1)) {
 	std::vector<ABoxedrow> rows; 
 	double lambda = 1.0 / sqrt(pow(winSize.height, 2) + pow(winSize.width, 2)); 
 	rows.reserve(winSize.height * 2 + 1);
 	for(auto& corner : corners) {
-		const int nSteps = (criteria.type & CV_TERMCRIT_ITER) != 0? criteria.maxCount: 1;
+		const int nSteps = (criteria.type & TermCriteria::MAX_ITER) != 0? criteria.maxCount: 1;
 		for(int n = 0; n < nSteps; ++n) {
 			int columns[2] = {(int)corner.x - winSize.width, (int)ceil(corner.x) + winSize.width};
 			if(columns[0] < 0) {
@@ -1731,7 +1731,7 @@ void cornerSubPixGravity(Mat& image, std::vector<Point2f>& corners, Size winSize
 				point.y = image.rows - point.y; 
 				corner += (corner - (Point2f)point) * lambda;
 			}
-			if((criteria.type & CV_TERMCRIT_EPS) != 0) {
+			if((criteria.type & TermCriteria::EPS) != 0) {
 				Point2f diff = corner - prevCorner;
 				if(sqrt(diff.ddot(diff)) < criteria.epsilon) {
 					break;
@@ -2075,7 +2075,7 @@ void filterContour(std::vector<Point_<T>>& contour) {
 
 			//std::ostringstream ostr;
 
-			calcCovarMatrix(futureMovements, Q, maux = Mat(), CV_COVAR_NORMAL | CV_COVAR_ROWS);
+			cv::calcCovarMatrix(futureMovements, Q, maux = Mat(), CovarFlags::COVAR_NORMAL | CovarFlags::COVAR_ROWS);
 			//ostr << "Q(0,0):" << Q(0, 0) << " Q(1,0):" << Q(1, 0) << " Q(0,1):" << Q(0, 1) << " Q(1,1):" << Q(1, 1) << std::endl;
 			Q(0, 1) = 0;
 			Q(1, 0) = 0;
@@ -2083,12 +2083,12 @@ void filterContour(std::vector<Point_<T>>& contour) {
 			Zet += Q;
 			//ostr << "Zet(0,0):" << Zet(0, 0) << " Zet(1,0):" << Zet(1, 0) << " Zet(0,1):" << Zet(0, 1) << " Zet(1,1):" << Zet(1, 1) << std::endl;
 
-			calcCovarMatrix(pastMeasurements, R, maux = Mat(), CV_COVAR_NORMAL | CV_COVAR_ROWS);
+			cv::calcCovarMatrix(pastMeasurements, R, maux = Mat(), CovarFlags::COVAR_NORMAL | CovarFlags::COVAR_ROWS);
 			//ostr << "R(0,0):" << R(0, 0) << " R(1,0):" << R(1, 0) << " R(0,1):" << R(0, 1) << " R(1,1):" << R(1, 1) << std::endl;
 			R(0, 1) = 0;
 			R(1, 0) = 0;
 
-			invert(Zet + R, X, DECOMP_SVD);
+			cv::invert(Zet + R, X, DECOMP_SVD);
 			K = Zet * X;
 			//ostr << "X(0,0):" << X(0, 0) << " X(1,0):" << X(1, 0) << " X(0,1):" << X(0, 1) << " X(1,1):" << X(1, 1) << std::endl;
 			//ostr << "K(0,0):" << K(0, 0) << " K(1,0):" << K(1, 0) << " K(0,1):" << K(0, 1) << " K(1,1):" << K(1, 1) << std::endl;
@@ -2411,7 +2411,7 @@ void printPoint(const std::string& prefix, Point p) {
 
 void fitLine2Segment(std::vector<Point2f> &segment, std::vector<Point>& aux) {
 	Vec4f aLine;
-	fitLine(segment, aLine, CV_DIST_L2, 0, 0.001, 0.001);
+	fitLine(segment, aLine, DistanceTypes::DIST_L2, 0, 0.001, 0.001);
 	Point2d norm(-aLine[1], aLine[0]); // normal (unit length now, but is going to be offset).
 	Point2d mean;
 	mean.x = aLine[2];
@@ -2583,7 +2583,7 @@ bool fitRectangleToPoints(const std::vector<Point>& contour, std::vector<Point>&
 		std::vector<Point2f>& points = groups[n];
 
 		Vec4f aLine; 
-		fitLine(points, aLine, CV_DIST_L2, 0, 0.001, 0.001);
+		fitLine(points, aLine, DistanceTypes::DIST_L2, 0, 0.001, 0.001);
 
 		N2[n].x = -aLine[1]; 
 		N2[n].y = aLine[0];
@@ -2872,7 +2872,7 @@ int BlobCentersLoG(std::vector<ABox>& boxes, std::vector<ClusteredPoint>& points
 						contourSmoothed = contour;
 
 						if (supervised_LoG) {
-							//smoothContour(contourSmoothed);
+							////smoothContour(contourSmoothed);
 							projectContour(contourSmoothed);
 							contour = contourSmoothed; 
 						}
@@ -2965,7 +2965,7 @@ int BlobCentersLoG(std::vector<ABox>& boxes, std::vector<ClusteredPoint>& points
 
 						if (g_configuration._visual_diagnostics) {
 							crop.convertTo(crop_colored, CV_16UC1, std::max(256 / (int)g_bytedepth_scalefactor, 1));
-							cv::cvtColor(crop_colored, maux, CV_GRAY2RGB);
+							cv::cvtColor(crop_colored, maux, ColorConversionCodes::COLOR_GRAY2RGB);
 							crop_colored = Mat();
 							cv::resize(maux, crop_colored, cv::Size(0, 0), fx, fx, INTER_AREA);
 							crop_colored.copyTo(crop_coloredOriginal);
@@ -2974,7 +2974,7 @@ int BlobCentersLoG(std::vector<ABox>& boxes, std::vector<ClusteredPoint>& points
 
 
 
-						if (crop_colored.rows > 0) {
+						if (contour.size() > 0 && crop_colored.rows > 0) {
 							Point a = (Point2f(contour[0]) + Point2f(0.5, 0.5) - (offset)) * fx; 
 							for (int j = 1; j < contour.size(); ++j) {
 								Point b = (Point2f(contour[j]) + Point2f(0.5, 0.5) - (offset)) * fx;
@@ -3036,7 +3036,7 @@ int BlobCentersLoG(std::vector<ABox>& boxes, std::vector<ClusteredPoint>& points
 						}
 
 						Mat covarMat;
-						calcCovarMatrix(vectorized_crop, covarMat, maux = Mat(), CV_COVAR_NORMAL | CV_COVAR_ROWS);
+						calcCovarMatrix(vectorized_crop, covarMat, maux = Mat(), CovarFlags::COVAR_NORMAL | CovarFlags::COVAR_ROWS);
 
 						double covar = -mat_get<double>(covarMat, 0, 1);
 						if (covar < 0) {
@@ -3106,8 +3106,8 @@ int BlobCentersLoG(std::vector<ABox>& boxes, std::vector<ClusteredPoint>& points
 							maux = Mat();
 							threshold(crop, maux, thresholdVal, (size_t)255 * g_bytedepth_scalefactor, THRESH_TOZERO);
 							Mat binarizedImage = mat_binarize2byte(maux);
-							vector<vector<Point> > contours;
-							findContours(binarizedImage, contours, CV_RETR_LIST, CV_CHAIN_APPROX_SIMPLE);
+							std::vector<std::vector<cv::Point> > contours;
+							findContours(binarizedImage, contours, RetrievalModes::RETR_LIST, ContourApproximationModes::CHAIN_APPROX_SIMPLE);
 							if(contours.size() > 1) {
 								isValid = false;
 							}
@@ -3779,11 +3779,11 @@ return_t __stdcall EvaluateOtsuThreshold(LPVOID lp) {
 
 void IntensifyImage(Mat& cv_image) {
 	normalize(cv_image.clone(), cv_image, 0, (size_t)256 * g_bytedepth_scalefactor, NORM_MINMAX, CV_16UC1, Mat());
-	Mat aux; 
 
-	GaussianBlur(cv_image, aux, Size(5, 5), 0.9, 0.9);
-	AnisotropicDiffusion(aux, 21);
-	medianBlur(cv_image, aux, 3);
+	Mat aux = cv_image.clone();
+	//GaussianBlur(cv_image, aux, Size(5, 5), 0.9, 0.9);
+	//AnisotropicDiffusion(aux, 21);
+	medianBlur(aux, cv_image, 3);
 	GaussianBlur(cv_image, aux, Size(5, 5), 0.9, 0.9);
 	AnisotropicDiffusion(aux, 14);
 
@@ -3901,15 +3901,25 @@ size_t ConductOverlapEliminationEx(const std::vector<std::vector<cv::Point>>& co
 			if (contour.size()) {
 				aux[j].resize(contour.size());
 				std::reverse_copy(contour.cbegin(), contour.cend(), aux[j].begin());
-				filterContour(aux[j]);
+				if (!size_increment) {
+					filterContour(aux[j]);
+				}
 				for (size_t c = aux[j].size(), nc = c - 1; c > nc && nc > 0; nc = aux[j].size()) {
 					c = nc;
 					linearizeContour(aux[j], 1, 5);
 				}
+				if (!size_increment) {
+					final_contours.push_back(aux[j]);
+				}
 				++j;
 			}
 		}
-		count = ConductOverlapElimination(aux, final_contours, conduct_size, size_increment);
+		if (size_increment) {
+			count = ConductOverlapElimination(aux, final_contours, conduct_size, size_increment);
+		}
+		else {
+			count = j;
+		}
 	}
 	return count; 
 }
@@ -3932,6 +3942,9 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 	std::vector<ABox> boxes[2];
 	std::vector<ClusteredPoint> cv_points[2];
 
+	Mat unchangedImage;
+	Mat finalContoursImage;
+
 
 
 	std::vector<std::vector<cv::Point>> final_contours(1);
@@ -3942,9 +3955,6 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 		Mat cv_edges[6];
 
-		Mat unchangedImage; 
-		Mat finalContoursImage; 
-
 		bool arff_file_requested = false;
 
 		std::string file_name; 
@@ -3952,9 +3962,8 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 		if (g_configuration._frames_from_files > 0) {
 			if (!image_isok || g_configuration._frames_from_files == 1/* >1 means iterate through the first image (for profiling and leakage testing)*/) {
-				ctl->_gate.lock();
 				image_isok = GetFramesFromFilesWithSubdirectorySearch(cv_image/*out*/, arff_file_requested/*out*/, file_name, path_name);
-				ctl->_gate.unlock();
+				Sleep(20);
 			}
 
 			_g_images_frame->Invalidate();
@@ -3963,6 +3972,7 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 		final_contours.resize(0); 
 
 		if (image_isok) {
+
 			if (cv_image[0].cols == 0 || cv_image[1].cols == 0) {
 				continue;
 			}
@@ -3999,8 +4009,7 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 
 
-			unchangedImage = imread(std::string(g_path_calib_images_dir) + path_name + ".jpg", CV_LOAD_IMAGE_ANYDEPTH | CV_LOAD_IMAGE_ANYCOLOR);
-			finalContoursImage = unchangedImage.clone(); 
+			unchangedImage = imread(std::string(g_path_calib_images_dir) + path_name + ".jpg", ImreadModes::IMREAD_ANYDEPTH | ImreadModes::IMREAD_ANYCOLOR);
 
 
 			g_imageSize = cv_image[0].size();
@@ -4189,16 +4198,13 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 
 					int pass_number = 0;
-					int size_increment = 1; 
+					int size_increment = -1; 
 					int iteration_number = 0; 
-					int max_passes = 1; 
+					int max_passes = 3; 
 
-					bool doInvertDirection = false; 
-
+					finalContoursImage = unchangedImage.clone();
 					while (0<1) {
 						submitGraphics(finalContoursImage, true);
-
-						//SleepEx(500, TRUE);
 
 						if (boxes[1].size() == 0) {
 							contours_count = 0;
@@ -4206,9 +4212,8 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 						}
 
 
-						if (doInvertDirection || pass_number++ == max_passes) {
-							doInvertDirection = false;
-							pass_number = 0;
+						if (pass_number++ == max_passes) {
+							pass_number = 1;
 							size_increment = -size_increment;
 							if (++iteration_number >= 3) {
 								break;
@@ -4224,6 +4229,12 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 						}
 
 						std::vector<std::vector<cv::Point>> local_contours;
+
+						std::ostringstream ostr;
+						ostr << "---" << "size_increment=" << size_increment << ' ' << "pass_number=" << pass_number << ' ' << "max_passes=" << max_passes << std::endl;
+						printf(ostr.str().c_str());
+
+						//Sleep(500);
 
 						size_t count = ConductOverlapEliminationEx(contours, local_contours, true, size_increment);
 

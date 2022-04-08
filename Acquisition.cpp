@@ -347,26 +347,26 @@ bool GetImagesFromFile(Mat& left_image, Mat& right_image, const std::string& cur
 	fs.release();
 
 	if (left_image.rows == 0 || left_image.cols == 0) {
-		left_image = imread(std::string(g_path_calib_images_dir) + nl + 'l' + "-chess.png", CV_LOAD_IMAGE_ANYDEPTH); // Mar.4 2015.
+		left_image = imread(std::string(g_path_calib_images_dir) + nl + 'l' + "-chess.png", ImreadModes::IMREAD_ANYDEPTH); // Mar.4 2015.
 	}
 	if(right_image.rows == 0 || right_image.cols == 0) {
-		right_image = imread(std::string(g_path_calib_images_dir) + nr + 'r' + "-chess.png", CV_LOAD_IMAGE_ANYDEPTH); // Mar.4 2015.
+		right_image = imread(std::string(g_path_calib_images_dir) + nr + 'r' + "-chess.png", ImreadModes::IMREAD_ANYDEPTH); // Mar.4 2015.
 	}
 
 	if (left_image.rows == 0 || left_image.cols == 0) {
-		left_image = imread(std::string(g_path_calib_images_dir) + nl + 'l' + ".jpg", CV_LOAD_IMAGE_ANYDEPTH); // Mar.4 2015.
+		left_image = imread(std::string(g_path_calib_images_dir) + nl + 'l' + ".jpg", ImreadModes::IMREAD_ANYDEPTH); // Mar.4 2015.
 	}
 	if (right_image.rows == 0 || right_image.cols == 0) {
-		right_image = imread(std::string(g_path_calib_images_dir) + nr + 'r' + ".jpg", CV_LOAD_IMAGE_ANYDEPTH); // Mar.4 2015.
+		right_image = imread(std::string(g_path_calib_images_dir) + nr + 'r' + ".jpg", ImreadModes::IMREAD_ANYDEPTH); // Mar.4 2015.
 	}
 
 	if (left_image.rows == 0 || left_image.cols == 0) {
 		//left_image = imread(std::string(g_path_calib_images_dir) + current_N + ".jpg", CV_LOAD_IMAGE_ANYDEPTH);
-		left_image = imread(std::string(g_path_calib_images_dir) + current_N + ".jpg", CV_LOAD_IMAGE_ANYDEPTH | CV_LOAD_IMAGE_ANYCOLOR);
+		left_image = imread(std::string(g_path_calib_images_dir) + current_N + ".jpg", ImreadModes::IMREAD_ANYDEPTH | ImreadModes::IMREAD_ANYCOLOR);
 	}
 	if (right_image.rows == 0 || right_image.cols == 0) {
 		//right_image = imread(std::string(g_path_calib_images_dir) + current_N + ".jpg", CV_LOAD_IMAGE_ANYDEPTH);
-		right_image = imread(std::string(g_path_calib_images_dir) + current_N + ".jpg", CV_LOAD_IMAGE_ANYDEPTH | CV_LOAD_IMAGE_ANYCOLOR);
+		right_image = imread(std::string(g_path_calib_images_dir) + current_N + ".jpg", ImreadModes::IMREAD_ANYDEPTH | ImreadModes::IMREAD_ANYCOLOR);
 	}
 
 	if(left_image.rows <= 10 || right_image.rows <= 10 || left_image.rows != right_image.rows) {

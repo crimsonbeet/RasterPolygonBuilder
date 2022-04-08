@@ -13,6 +13,8 @@
 #include "OleDate.h" 
 #include "LoGSeedPoint.h"
 
+#include "opencv2\highgui\highgui_c.h"
+
 //#ifdef _DEBUG
 //#include "vld.h"
 //#endif
@@ -366,21 +368,11 @@ void OnMouseCallback(int event, int x, int y, int flags, void* userdata) {
 
 
 bool DisplayReconstructionData(SPointsReconstructionCtl& reconstruction_ctl, SImageAcquisitionCtl& image_acquisition_ctl, std::string imagewin_names[4], int& time_average) {
-	bool stereodata_statistics_changed = false;
-
-	bool data_isok = reconstruction_ctl._data_isvalid;
-	bool image_isok = reconstruction_ctl._image_isvalid;
-
-	__int64 time_start = OSDayTimeInMilliseconds();
-
 	static Mat cv_image[2]; // gets destroyed each time around
 	static Mat cv_edges[2];
 	static Mat cv_background[4];
 
 	static Mat cv_unchangedImage[2]; 
-
-	int nrows = 0;
-	int ncols = 0;
 
 	static std::vector<ABox> boxes[2];
 	static std::vector<ClusteredPoint> cv_points[2];
@@ -392,13 +384,6 @@ bool DisplayReconstructionData(SPointsReconstructionCtl& reconstruction_ctl, SIm
 	static std::vector<ReconstructedPoint> points4Dtransformed;
 	static std::vector<std::vector<ReconstructedPoint>> coordlines4Dtransformed;
 
-	static wsi_gate gate;
-
-	cv::Rect roi[2];
-
-	double fx[5] = { 1, 1, 1, 1, 1 };
-	double fy[5] = { 1, 1, 1, 1, 1 };
-
 	static int s_windows_painted = 0;
 	static Mat s_windows_default_image;
 
@@ -406,7 +391,27 @@ bool DisplayReconstructionData(SPointsReconstructionCtl& reconstruction_ctl, SIm
 	static MouseCallbackParameters mouse_callbackParams[5];
 
 
+	static wsi_gate gate;
 	gate.lock();
+
+
+
+	int nrows = 0;
+	int ncols = 0;
+
+	bool stereodata_statistics_changed = false;
+
+	bool data_isok = reconstruction_ctl._data_isvalid;
+	bool image_isok = reconstruction_ctl._image_isvalid;
+
+	__int64 time_start = OSDayTimeInMilliseconds();
+
+	cv::Rect roi[2];
+
+	double fx[5] = { 1, 1, 1, 1, 1 };
+	double fy[5] = { 1, 1, 1, 1, 1 };
+
+
 
 	if (data_isok || image_isok) { // retrieve data
 		reconstruction_ctl._gate.lock();
@@ -706,7 +711,7 @@ bool DisplayReconstructionData(SPointsReconstructionCtl& reconstruction_ctl, SIm
 		for (int j = 0; j < 4; ++j) {
 			if (imagewin_names[j].size() > 0) {
 				if (s_windows_default_image.rows == 0) {
-					s_windows_default_image = cv::imread(IMG_DELETEDOCUMENT_H, CV_LOAD_IMAGE_COLOR);
+					s_windows_default_image = cv::imread(IMG_DELETEDOCUMENT_H, cv::ImreadModes::IMREAD_COLOR);
 				}
 				if (s_windows_default_image.rows != 0) {
 					cv::imshow(imagewin_names[j], s_windows_default_image);
@@ -857,7 +862,7 @@ int main() {
 				continue;
 			}
 
-			WaitForSingleObject(g_event_SFrameIsAvailable, 10);
+			WaitForSingleObject(g_event_SFrameIsAvailable, 20);
 
 			bool stereodata_statistics_changed = DisplayReconstructionData(reconstruction_ctl, image_acquisition_ctl, imagewin_names, time_average);
 			if (stereodata_statistics_changed) {
@@ -900,32 +905,32 @@ int main() {
 	std::cout << "quit" << std::endl;
 	WaitforWorkItems();
 
-	if (!g_bUserTerminated) {
-		g_bRestart = true;
-	}
+	//if (!g_bUserTerminated) {
+	//	g_bRestart = true;
+	//}
 
-	if (g_bRestart) {
-		STARTUPINFO si;
-		memset(&si, 0, sizeof(si));
-		si.cb = sizeof(si);
+	//if (g_bRestart) {
+	//	STARTUPINFO si;
+	//	memset(&si, 0, sizeof(si));
+	//	si.cb = sizeof(si);
 
-		PROCESS_INFORMATION pi;
-		memset(&pi, 0, sizeof(pi));
+	//	PROCESS_INFORMATION pi;
+	//	memset(&pi, 0, sizeof(pi));
 
-		char myName[MAX_PATH + 16];
-		GetModuleFileNameA(GetModuleHandle(0), myName, _MAX_PATH);
-		CreateProcessA(myName, NULL, NULL, NULL, FALSE, NULL, NULL, NULL, &si, &pi);
-		if (pi.hProcess != NULL) {
-			CloseHandle(pi.hProcess);
-		}
-		if (pi.hThread != NULL) {
-			CloseHandle(pi.hThread);
-		}
-	}
+	//	char myName[MAX_PATH + 16];
+	//	GetModuleFileNameA(GetModuleHandle(0), myName, _MAX_PATH);
+	//	CreateProcessA(myName, NULL, NULL, NULL, FALSE, NULL, NULL, NULL, &si, &pi);
+	//	if (pi.hProcess != NULL) {
+	//		CloseHandle(pi.hProcess);
+	//	}
+	//	if (pi.hThread != NULL) {
+	//		CloseHandle(pi.hThread);
+	//	}
+	//}
 
-	//_CrtDumpMemoryLeaks();
+	////_CrtDumpMemoryLeaks();
 
-	TerminateProcess(GetCurrentProcess(), 0);
+	//TerminateProcess(GetCurrentProcess(), 0);
 
 	return 0;
 }

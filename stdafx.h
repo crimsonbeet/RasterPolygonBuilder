@@ -32,27 +32,33 @@
 #endif
 
 
-#include "opencv2/core/core.hpp"
-#include "opencv2/imgproc/imgproc.hpp"
-#include "opencv2/calib3d/calib3d.hpp"
-#include "opencv2/highgui/highgui.hpp"
+#define HAVE_OPENCV_CALIB3D
+#define HAVE_OPENCV_FEATURES2D
+#define HAVE_OPENCV_DNN
+#define HAVE_OPENCV_FLANN
+#define HAVE_OPENCV_HIGHGUI
+#define HAVE_OPENCV_IMGCODECS
+
+#include "opencv2/opencv.hpp"
 
 using namespace cv;
 
 #if defined(_DEBUG)
-#pragma comment(lib, "opencv_core249d.lib")
-#pragma comment(lib, "opencv_imgproc249d.lib")
-#pragma comment(lib, "opencv_calib3d249d.lib")
-#pragma comment(lib, "opencv_highgui249d.lib")
-#pragma comment(lib, "opencv_objdetect249d.lib")
-#pragma comment(lib, "opencv_features2d249d.lib")
+#pragma comment(lib, "opencv_core455d.lib")
+#pragma comment(lib, "opencv_imgproc455d.lib")
+#pragma comment(lib, "opencv_imgcodecs455d.lib")
+#pragma comment(lib, "opencv_calib3d455d.lib")
+#pragma comment(lib, "opencv_highgui455d.lib")
+#pragma comment(lib, "opencv_objdetect455d.lib")
+#pragma comment(lib, "opencv_features2d455d.lib")
 #else
-#pragma comment(lib, "opencv_core249.lib")
-#pragma comment(lib, "opencv_imgproc249.lib")
-#pragma comment(lib, "opencv_calib3d249.lib")
-#pragma comment(lib, "opencv_highgui249.lib")
-#pragma comment(lib, "opencv_objdetect249.lib")
-#pragma comment(lib, "opencv_features2d249.lib")
+#pragma comment(lib, "opencv_core455.lib")
+#pragma comment(lib, "opencv_imgproc455.lib")
+#pragma comment(lib, "opencv_imgcodecs455.lib")
+#pragma comment(lib, "opencv_calib3d455.lib")
+#pragma comment(lib, "opencv_highgui455.lib")
+#pragma comment(lib, "opencv_objdetect455.lib")
+#pragma comment(lib, "opencv_features2d455.lib")
 #endif
 
 
@@ -925,7 +931,7 @@ Mat_<M> mat_vectorize(Mat& src) { // returns Mat_<M> N by 3.
 // The algorithm is described in "Introduction to Algorithms"
 // by Cormen, Leiserson and Rivest, the chapter "Data structures for disjoint sets"
 template<typename _Tp, class _EqPredicate> int
-partitionEx(const vector<_Tp>& _vec, vector<int>& labels,
+partitionEx(const std::vector<_Tp>& _vec, std::vector<int>& labels,
 _EqPredicate predicate = _EqPredicate()) {
 	int i, j, N = (int)_vec.size();
 	const _Tp* vec = &_vec[0];
@@ -933,7 +939,7 @@ _EqPredicate predicate = _EqPredicate()) {
 	const int PARENT = 0;
 	const int RANK = 1;
 
-	vector<int> _nodes(N * 2);
+	std::vector<int> _nodes(N * 2);
 	int(*nodes)[2] = (int(*)[2])&_nodes[0];
 
 	// The first O(N) pass: create N single-vertex trees
