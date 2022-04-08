@@ -2431,7 +2431,7 @@ void fitLine2Segment(std::vector<Point2f> &segment, std::vector<Point>& aux) {
 	aux.push_back(round2dPoint(second));
 }
 
-void linearizeContour(std::vector<Point>& contour, size_t stepSize, const size_t maxSegmentSize) { 
+void linearizeContour(std::vector<cv::Point>& contour, size_t stepSize, const size_t maxSegmentSize) { 
 	// find first point that has its both neighbours farther than stepSize
 	if (contour.size() < 3) {
 		contour.resize(0); 
@@ -3783,7 +3783,7 @@ void IntensifyImage(Mat& cv_image) {
 	Mat aux = cv_image.clone();
 	//GaussianBlur(cv_image, aux, Size(5, 5), 0.9, 0.9);
 	//AnisotropicDiffusion(aux, 21);
-	medianBlur(aux, cv_image, 3);
+	//medianBlur(aux, cv_image, 3);
 	GaussianBlur(cv_image, aux, Size(5, 5), 0.9, 0.9);
 	AnisotropicDiffusion(aux, 14);
 
@@ -4198,9 +4198,9 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 
 					int pass_number = 0;
-					int size_increment = -1; 
+					int size_increment = 3; 
 					int iteration_number = 0; 
-					int max_passes = 3; 
+					int max_passes = 2; 
 
 					finalContoursImage = unchangedImage.clone();
 					while (0<1) {
@@ -4235,6 +4235,10 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 						printf(ostr.str().c_str());
 
 						//Sleep(500);
+
+						for (int c = 0; c < contours.size(); ++c) {
+							linearizeContour(contours[c], 2, 7);
+						}
 
 						size_t count = ConductOverlapEliminationEx(contours, local_contours, true, size_increment);
 
