@@ -90,6 +90,7 @@
       <ConformanceMode>false</ConformanceMode>
       <AdditionalIncludeDirectories>$(SolutionDir)..\XDS7\Include;$(SolutionDir)..\XDS7\KWindows;C:\opencv455\include;$(SolutionDir)..\Polymorpher\Mascot_2016\Mascot</AdditionalIncludeDirectories>
       <PrecompiledHeader>Use</PrecompiledHeader>
+      <LanguageStandard>stdcpp20</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -115,6 +116,7 @@
       <ConformanceMode>false</ConformanceMode>
       <AdditionalIncludeDirectories>$(SolutionDir)..\XDS7\Include;$(SolutionDir)..\XDS7\KWindows;C:\opencv455\include;$(SolutionDir)..\Polymorpher\Mascot_2016\Mascot</AdditionalIncludeDirectories>
       <PrecompiledHeader>Use</PrecompiledHeader>
+      <LanguageStandard>stdcpp20</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -142,6 +144,7 @@
       <AdditionalIncludeDirectories>$(SolutionDir)..\XDS7\Include;$(SolutionDir)..\XDS7\KWindows;C:\opencv455\include;$(SolutionDir)..\Polymorpher\Mascot_2016\Mascot</AdditionalIncludeDirectories>
       <SupportJustMyCode>false</SupportJustMyCode>
       <PrecompiledHeader>Use</PrecompiledHeader>
+      <LanguageStandard>stdcpp20</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -168,6 +171,7 @@
       <AdditionalIncludeDirectories>$(SolutionDir)..\XDS7\Include;$(SolutionDir)..\XDS7\KWindows;C:\opencv455\include;$(SolutionDir)..\Polymorpher\Mascot_2016\Mascot</AdditionalIncludeDirectories>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <Optimization>Disabled</Optimization>
+      <LanguageStandard>stdcpp20</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>

@@ -1042,6 +1042,8 @@ void BlobLoG(std::vector<ABoxedblob>& blobs,
 	*/
 	const double min_LoG_value = (7.0 / kncols) * (121.0 / 255.0) * image.at<unsigned short>((int)aSeed.y, (int)aSeed.x);
 	const double max_LoG_value = (23.0 / kncols) * (121.0 / 255.0) * image.at<unsigned short>((int)aSeed.y, (int)aSeed.x);
+	//const double min_LoG_value = (9.0 / kncols) * (121.0 / 255.0) * image.at<unsigned short>((int)aSeed.y, (int)aSeed.x);
+	//const double max_LoG_value = (21.0 / kncols) * (121.0 / 255.0) * image.at<unsigned short>((int)aSeed.y, (int)aSeed.x);
 
 	int min_max_rows[2] = {200, 200/*g_max_boxsize_pixels, g_max_boxsize_pixels*/};
 
@@ -4198,7 +4200,7 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 
 					int pass_number = 0;
-					int size_increment = 3; 
+					int size_increment = 1; 
 					int iteration_number = 0; 
 					int max_passes = 2; 
 

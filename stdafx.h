@@ -7,13 +7,13 @@
 
 #define _CRT_SECURE_NO_WARNINGS
 #define _USE_MATH_DEFINES
+#define _HAS_AUTO_PTR_ETC 1
 
 #include "stdafx_windows.h"
 
 #include <stdio.h>
 #include <tchar.h>
 
-#include <regex>
 #include <ios>
 #include <iomanip>
 #include <iostream>
@@ -26,6 +26,10 @@
 #include <algorithm>
 #include <functional>
 #include <random>
+#include <regex>
+#include <vector>
+#include <cmath>
+
 
 #if _MSC_VER > 1700
 #include <unordered_map>
@@ -62,9 +66,6 @@ using namespace cv;
 #endif
 
 
-
-#include <vector>
-#include <cmath>
 
 #include "MASInterface.h"
 
