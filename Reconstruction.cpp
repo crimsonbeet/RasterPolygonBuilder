@@ -2007,7 +2007,7 @@ void lowpassFilterContour(const std::vector<Point_<T>>& aux/*in*/, std::vector<P
 }
 
 template<typename T>
-void filterContour(std::vector<Point_<T>>& contour) {
+void filterContour(std::vector<Point_<T>>& contour, std::vector<Point2d>& shocks) {
 	double* l_fir_h = fir_h1;
 	double l_fir_h_gain = fir_h_gain1;
 	const int NFilter = ARRAY_NUM_ELEMENTS(fir_h1);
@@ -2019,6 +2019,7 @@ void filterContour(std::vector<Point_<T>>& contour) {
 	const int N = (contour[0] == contour[L - 1]) ? (L - 1) : L;
 
 	std::vector<Point_<T>> aux(L);
+	std::vector<Point2d> aux_shocks(L);
 
 	// measurement: apply FIR filter. 
 	// calculated point is in the center of filter's transfer function. 
@@ -2051,8 +2052,9 @@ void filterContour(std::vector<Point_<T>>& contour) {
 	//Mat_<double> futureMovements((int)NFilter4, 2);
 	Mat_<double> futureMovements((int)NFilter2, 2);
 
-	for (int k = 0, m = NFilter2; k < N; ++k, ++m) {
+	for (int k = 0, m = NFilter2; k < N + NFilter2; ++k, ++m) {
 		Point2d point(contour[m % N]);
+		Point2d shock; 
 
 		Point2d futurePoint(contour[(k + NFilter + /*NFilter2 + */1) % N]);
 		futureMovements(m % NFilter2, 0) = futurePoint.x;
@@ -2071,6 +2073,8 @@ void filterContour(std::vector<Point_<T>>& contour) {
 
 		pastMeasurements(m % NFilter2, 0) = measurement.x;
 		pastMeasurements(m % NFilter2, 1) = measurement.y;
+
+		shock = -point + measurement;
 
 		// measurement: calculate variance of NFilter/2 last points -> R
 		if (m >= (NFilter - 1)) {
@@ -2106,7 +2110,6 @@ void filterContour(std::vector<Point_<T>>& contour) {
 
 			//ostr << "K(0,0):" << K(0, 0) << " K(1,1):" << K(1, 1) << std::endl;
 
-			Point2d shock = -point + measurement;
 			Z(0, 0) = shock.x;
 			Z(1, 0) = shock.y;
 			//ostr << "Z(0,0):" << Z(0, 0) << " Z(1,0):" << Z(1, 0) << std::endl;
@@ -2114,8 +2117,12 @@ void filterContour(std::vector<Point_<T>>& contour) {
 			Z = K * Z;
 			//ostr << "Z(0,0):" << Z(0, 0) << " Z(1,0):" << Z(1, 0) << std::endl;
 
+			Point2d point_orig(point);
+
 			point.x += Z(0, 0);
 			point.y += Z(1, 0);
+
+			shock = -point + point_orig;
 
 			Zet = (I - K) * Zet; 
 			//ostr << "Zet(0,0):" << Zet(0, 0) << " Zet(1,0):" << Zet(1, 0) << " Zet(0,1):" << Zet(0, 1) << " Zet(1,1):" << Zet(1, 1) << std::endl;
@@ -2124,7 +2131,7 @@ void filterContour(std::vector<Point_<T>>& contour) {
 			//printf("%s", ostr.str().c_str());
 		}
 		else {
-			point = measurement; 
+			point = measurement;
 		}
 		//point = measurement;
 
@@ -2138,14 +2145,17 @@ void filterContour(std::vector<Point_<T>>& contour) {
 			aux[m % N].y = (T)(point.y);
 		}
 
+		aux_shocks[m % N] = shock;
 	}
 
 	if (L > N) {
 		aux[N] = aux[0];
+		aux_shocks[N] = aux_shocks[0];
 	}
 
 	//lowpassFilterContour(aux, contour);
 	contour.swap(aux); 
+	shocks.swap(aux_shocks); 
 }
 
 template<typename T>
@@ -2262,7 +2272,20 @@ void smoothContour(std::vector<Point_<T>>& contour) {
 			}
 		}
 	}
-	filterContour(contour); 
+	std::vector<Point2d> shocks[2];
+
+	std::vector<Point_<T>> contour_reversed(contour.crbegin(), contour.crend());
+
+	filterContour(contour, shocks[0]);
+	filterContour(contour_reversed, shocks[1]);
+
+	const size_t L = contour.size();
+	for (int j = 0; j < L; ++j) {
+		int k = L - j - 1;
+		if (cv::norm(shocks[0][j]) > cv::norm(shocks[1][k])) {
+			contour[j] = contour_reversed[k];
+		}
+	}
 }
 
 template<typename T>
@@ -2874,7 +2897,6 @@ int BlobCentersLoG(std::vector<ABox>& boxes, std::vector<ClusteredPoint>& points
 						contourSmoothed = contour;
 
 						if (supervised_LoG) {
-							////smoothContour(contourSmoothed);
 							projectContour(contourSmoothed);
 							contour = contourSmoothed; 
 						}
@@ -3904,7 +3926,7 @@ size_t ConductOverlapEliminationEx(const std::vector<std::vector<cv::Point>>& co
 				aux[j].resize(contour.size());
 				std::reverse_copy(contour.cbegin(), contour.cend(), aux[j].begin());
 				if (!size_increment) {
-					filterContour(aux[j]);
+					smoothContour(aux[j]);
 				}
 				for (size_t c = aux[j].size(), nc = c - 1; c > nc && nc > 0; nc = aux[j].size()) {
 					c = nc;
@@ -4200,7 +4222,7 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 
 					int pass_number = 0;
-					int size_increment = 1; 
+					int size_increment = 2; 
 					int iteration_number = 0; 
 					int max_passes = 2; 
 
