@@ -2456,7 +2456,7 @@ void fitLine2Segment(std::vector<Point2f> &segment, std::vector<Point>& aux) {
 	aux.push_back(round2dPoint(second));
 }
 
-void linearizeContour(std::vector<cv::Point>& contour, size_t stepSize, const size_t maxSegmentSize) { 
+void linearizeContour(std::vector<cv::Point>& contour, double stepSize, const size_t maxSegmentSize) { 
 	// find first point that has its both neighbours farther than stepSize
 	if (contour.size() < 3) {
 		contour.resize(0); 
@@ -3814,10 +3814,25 @@ void IntensifyImage(Mat& cv_image) {
 	aux.convertTo(cv_image, CV_16UC1);
 }
 
+std::string BuildMASLayerName(size_t cntrNumber, std::string *out_name = nullptr) {
+	std::ostringstream ostr;
+	ostr << "contour" << '_' << cntrNumber;
+
+	std::string layer_name = ostr.str();
+
+	if (out_name != nullptr) {
+		ostr << "out";
+		(*out_name) = ostr.str();
+	}
+
+	return layer_name;
+}
+
 
 size_t ConductOverlapElimination(const std::vector<std::vector<cv::Point>>& contours, 
 	std::vector<std::vector<cv::Point>>& final_contours,
-	bool conduct_size = false, int size_increment = -1) {
+	bool conduct_size = false, int size_increment = -1, 
+	bool logProblematic = false) {
 
 	if (contours.size() == 0) {
 		return 0; 
@@ -3832,14 +3847,9 @@ size_t ConductOverlapElimination(const std::vector<std::vector<cv::Point>>& cont
 		if (contour.size() < 3) {
 			continue; 
 		}
-		std::ostringstream ostr;
-		ostr << "contour" << '_' << ++cntrNmbr;
 
-		std::string layer_name(ostr.str());
-
-		ostr << "out"; 
-
-		std::string out_name(ostr.str());
+		std::string out_name;
+		std::string layer_name = BuildMASLayerName(++cntrNmbr, &out_name);
 
 		MASLayerCreateDBStorage(layer_name.c_str());
 
@@ -3855,16 +3865,25 @@ size_t ConductOverlapElimination(const std::vector<std::vector<cv::Point>>& cont
 			MASLayerAddPolygon2DBStorage(layer_name.c_str(), x, y);
 		}
 
+		bool rc;
+
 		if (cntrNmbr == 1) {
-			MASEvaluate1(MAS_OverlapElim, layer_name.c_str(), out_name.c_str()/*"out"*/);
+			rc = MASEvaluate1(MAS_OverlapElim, layer_name.c_str(), out_name.c_str()/*"out"*/);
 			cl = out_name.c_str();
 		}
 		else {
-			MASEvaluate1(MAS_OverlapElim, layer_name.c_str());
+			rc = MASEvaluate1(MAS_OverlapElim, layer_name.c_str());
+			if (rc) {
+				const char* layers[] = { cl.c_str()/*"out"*/, layer_name.c_str() };
+				MASEvaluate2(MAS_Or, layers, 2, out_name.c_str()/*"out"*/);
+				cl = out_name.c_str();
+			}
+		}
 
-			const char* layers[] = { cl.c_str()/*"out"*/, layer_name.c_str() };
-			MASEvaluate2(MAS_Or, layers, 2, out_name.c_str()/*"out"*/);
-			cl = out_name.c_str();
+		if (!rc) {
+			if (logProblematic) {
+				MASLogLayer(layer_name.c_str());
+			}
 		}
 	}
 
@@ -3887,7 +3906,6 @@ size_t ConductOverlapElimination(const std::vector<std::vector<cv::Point>>& cont
 
 	size_t nFirst = 0;
 	long nPolygons = MASLayerCountRTPolygons(cl.c_str()/*"out"*/, &nFirst);
-
 
 	size_t count = 0;
 	for (size_t n = nFirst; count < nPolygons && n < ((size_t)nPolygons << 2); ++n) {
@@ -3917,7 +3935,7 @@ size_t ConductOverlapElimination(const std::vector<std::vector<cv::Point>>& cont
 size_t ConductOverlapEliminationEx(const std::vector<std::vector<cv::Point>>& contours, std::vector<std::vector<cv::Point>>& final_contours,
 	bool conduct_size = false, int size_increment = -1) {
 
-	size_t count = ConductOverlapElimination(contours, final_contours, conduct_size, size_increment);
+	size_t count = ConductOverlapElimination(contours, final_contours, conduct_size, size_increment, true);
 	if (count == 0) {
 		size_t j = 0; 
 		std::vector<std::vector<cv::Point>> aux(contours.size());
@@ -3930,7 +3948,7 @@ size_t ConductOverlapEliminationEx(const std::vector<std::vector<cv::Point>>& co
 				}
 				for (size_t c = aux[j].size(), nc = c - 1; c > nc && nc > 0; nc = aux[j].size()) {
 					c = nc;
-					linearizeContour(aux[j], 1, 5);
+					linearizeContour(aux[j], 2.25, 7);
 				}
 				if (!size_increment) {
 					final_contours.push_back(aux[j]);
@@ -4221,10 +4239,13 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 					contours[0] = boxes[1][0].contour;
 
 
+					printf("\n\n");
+
+
 					int pass_number = 0;
-					int size_increment = 2; 
+					int size_increment = 1; 
 					int iteration_number = 0; 
-					int max_passes = 2; 
+					int max_passes = 3; 
 
 					finalContoursImage = unchangedImage.clone();
 					while (0<1) {
@@ -4260,9 +4281,9 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 						//Sleep(500);
 
-						for (int c = 0; c < contours.size(); ++c) {
-							linearizeContour(contours[c], 2, 7);
-						}
+						//for (int c = 0; c < contours.size(); ++c) {
+						//	linearizeContour(contours[c], 2.25, 7);
+						//}
 
 						size_t count = ConductOverlapEliminationEx(contours, local_contours, true, size_increment);
 
