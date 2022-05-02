@@ -20,6 +20,7 @@ struct LoGSeedPoint {
 };
 
 extern LoGSeedPoint g_LoG_seedPoint;
+extern int g_LoG_imageWindowNumber;
 
 
 

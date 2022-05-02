@@ -2008,9 +2008,9 @@ void lowpassFilterContour(const std::vector<Point_<T>>& aux/*in*/, std::vector<P
 
 template<typename T>
 void filterContour(std::vector<Point_<T>>& contour, std::vector<Point2d>& shocks) {
-	double* l_fir_h = fir_h1;
-	double l_fir_h_gain = fir_h_gain1;
-	const int NFilter = ARRAY_NUM_ELEMENTS(fir_h1);
+	double* l_fir_h = fir_h2;
+	double l_fir_h_gain = fir_h_gain2;
+	const int NFilter = ARRAY_NUM_ELEMENTS(fir_h2);
 	const int NFilter2 = NFilter/2;
 	const int NFilter4 = NFilter/4;
 
@@ -2100,13 +2100,18 @@ void filterContour(std::vector<Point_<T>>& contour, std::vector<Point2d>& shocks
 			//ostr << "K(0,0):" << K(0, 0) << " K(1,0):" << K(1, 0) << " K(0,1):" << K(0, 1) << " K(1,1):" << K(1, 1) << std::endl;
 			K(0, 1) = 0;
 			K(1, 0) = 0;
-
-			if (K(0, 0) > 1) {
-				K(0, 0) = 1;
-			}
-			if (K(1, 1) > 1) {
-				K(1, 1) = 1;
-			}
+			//if (K(0, 1) > 1) {
+			//	K(0, 1) = 1;
+			//}
+			//if (K(1, 0) > 1) {
+			//	K(1, 0) = 1;
+			//}
+			//if (K(0, 0) > 1) {
+			//	K(0, 0) = 1;
+			//}
+			//if (K(1, 1) > 1) {
+			//	K(1, 1) = 1;
+			//}
 
 			//ostr << "K(0,0):" << K(0, 0) << " K(1,1):" << K(1, 1) << std::endl;
 
@@ -2117,12 +2122,11 @@ void filterContour(std::vector<Point_<T>>& contour, std::vector<Point2d>& shocks
 			Z = K * Z;
 			//ostr << "Z(0,0):" << Z(0, 0) << " Z(1,0):" << Z(1, 0) << std::endl;
 
-			Point2d point_orig(point);
+			shock.x = Z(0, 0);
+			shock.y = Z(1, 0);
 
-			point.x += Z(0, 0);
-			point.y += Z(1, 0);
-
-			shock = -point + point_orig;
+			point.x += shock.x;
+			point.y += shock.y;
 
 			Zet = (I - K) * Zet; 
 			//ostr << "Zet(0,0):" << Zet(0, 0) << " Zet(1,0):" << Zet(1, 0) << " Zet(0,1):" << Zet(0, 1) << " Zet(1,1):" << Zet(1, 1) << std::endl;
@@ -4230,13 +4234,15 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 						}
 					}
 
+					std::vector<ABox>& boxes_selected = boxes[g_LoG_imageWindowNumber - 1];
 
-					if (boxes[1].size() == 0) {
+
+					if (boxes_selected.size() == 0) {
 						continue;
 
 					}
 					contours.resize(1);
-					contours[0] = boxes[1][0].contour;
+					contours[0] = boxes_selected[0].contour;
 
 
 					printf("\n\n");
@@ -4245,13 +4251,13 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 					int pass_number = 0;
 					int size_increment = 1; 
 					int iteration_number = 0; 
-					int max_passes = 3; 
+					int max_passes = 5; 
 
 					finalContoursImage = unchangedImage.clone();
 					while (0<1) {
 						submitGraphics(finalContoursImage, true);
 
-						if (boxes[1].size() == 0) {
+						if (boxes_selected.size() == 0) {
 							contours_count = 0;
 							break;
 						}
@@ -4289,7 +4295,7 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 						if (count == 0) {
 							contours.resize(1);
-							contours[0] = boxes[1][0].contour;
+							contours[0] = boxes_selected[0].contour;
 							pass_number == max_passes;
 							iteration_number = 3; 
 							continue;
@@ -4305,7 +4311,7 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 						}
 
 						contours.resize(count + 1);
-						contours[count] = boxes[1][0].contour_notsmoothed;
+						contours[count] = boxes_selected[0].contour_notsmoothed;
 
 						point._cropOriginal.copyTo(crop_colored);
 

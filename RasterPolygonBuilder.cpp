@@ -326,7 +326,9 @@ return_t __stdcall ZeroLogHandler(LPVOID lp) {
 HANDLE g_event_SFrameIsAvailable = INVALID_HANDLE_VALUE;
 HANDLE g_event_SeedPointIsAvailable = INVALID_HANDLE_VALUE;
 HANDLE g_event_ContourIsConfirmed = INVALID_HANDLE_VALUE;
+
 LoGSeedPoint g_LoG_seedPoint;
+int g_LoG_imageWindowNumber;
 
 void OnMouseCallback(int event, int x, int y, int flags, void* userdata) {
 	MouseCallbackParameters* params = (MouseCallbackParameters*)userdata;
@@ -349,8 +351,11 @@ void OnMouseCallback(int event, int x, int y, int flags, void* userdata) {
 	g_LoG_seedPoint.x = x;
 	g_LoG_seedPoint.y = y;
 
+	g_LoG_imageWindowNumber = 2;
+
 	switch (params->windowNumber) {
 	case 1: // window 1
+		g_LoG_imageWindowNumber = 1;
 	case 2: // window 2
 		SetEvent(g_event_SeedPointIsAvailable);
 		break;
