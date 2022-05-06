@@ -34,8 +34,7 @@ void ConvertColoredImage2Mono(Mat& image, double chWeights[3], std::function<dou
 void StandardizeImage(Mat& image, double chWeights[3]) {
 	if (image.type() == CV_8UC3) {
 		ConvertColoredImage2Mono(image, chWeights, [](double ch) {
-			return 256.0 * 256.0 - std::min(ch * 256, 256.0 * 256.0);
-			//return ch * 256;
+			return std::min(ch * 256, 256.0 * 256.0);
 		});
 	}
 	if (image.type() != CV_16UC1) {
@@ -49,7 +48,7 @@ void StandardizeImage(Mat& image, double chWeights[3]) {
 void SquareImage(Mat& image, double chWeights[3]) {
 	if (image.type() == CV_8UC3) {
 		ConvertColoredImage2Mono(image, chWeights, [](double ch) {
-			return pow(ch, 2);
+			return pow(ch, 1.5);
 		});
 	}
 	if (image.type() != CV_16UC1) {
@@ -62,120 +61,6 @@ void SquareImage(Mat& image, double chWeights[3]) {
 		image = aux.clone();
 	}
 }
-void BuildWeightsByChannel(Mat& image, Point& pt, double weights_out[3]) {
-	if (image.type() == CV_8UC3) {
-		double weights[3] = { 0, 0, 0 };
-		double sum = 0;
-		typedef Vec<uchar, 3> Vec3c;
-		for (int r = pt.y - 2; r < image.rows && r < pt.y + 3; ++r) {
-			for (int c = pt.x - 2; c < image.cols && c < pt.x + 3; ++c) {
-				if (r < 0 || c < 0) {
-					continue;
-				}
-				Vec3c& pixVec = image.at<Vec3c>(r, c);
-				for (int j = 0; j < 3; ++j) {
-					double w = pow(pixVec[j], 2);
-					sum += w;
-					weights[j] += w;
-				}
-			}
-		}
-		for (auto& w : weights) w /= sum;
-		memcpy(weights_out, weights, sizeof(weights));
-	}
-}
-
-void BuildWeightsByChannel_Likeness(Mat& image, Point& pt, double likeness_out[3]) {
-	if (image.type() == CV_8UC3) {
-		double likeness[3] = { 0, 0, 0 };
-		double cnt = 0;
-		typedef Vec<uchar, 3> Vec3c;
-		for (int r = pt.y - 2; r < image.rows && r < pt.y + 3; ++r) {
-			for (int c = pt.x - 2; c < image.cols && c < pt.x + 3; ++c) {
-				if (r < 0 || c < 0) {
-					continue;
-				}
-				++cnt;
-				Vec3c& pixVec = image.at<Vec3c>(r, c);
-				for (int j = 0; j < 3; ++j) {
-					likeness[j] += pixVec[j];
-				}
-			}
-		}
-		for (auto& w : likeness) {
-			w /= cnt;
-		}
-		int j_min = 0;
-		int j_max = 0;
-		for (int j = 0; j < 3; ++j) {
-			if (likeness[j_min] > likeness[j]) {
-				j_min = j;
-			}
-			if (likeness[j_max] < likeness[j]) {
-				j_max = j;
-			}
-		}
-		double w_min = likeness[j_min]/* + 10*/;
-		double w_max = likeness[j_max]/* - 10*/;
-		int j_mid = -1;
-		for (int j = 0; j < 3; ++j) {
-			if (likeness[j] > w_min && likeness[j] < w_max) {
-				j_mid = j;
-			}
-		}
-		if (j_mid != -1) {
-			likeness[j_mid] *= 127.5;
-			likeness[j_max] *= 256.0;
-		}
-		else {
-			for (int j = 0; j < 3; ++j) {
-				likeness[j] = 256.0 * (1 + 127.5 + 256.0) / 3.0;
-			}
-		}
-
-		//for (int j = 0; j < 3; ++j) {
-		//	likeness_out[j] = likeness[j];
-		//}
-
-		likeness_out[j_min] = likeness[j_max]; 
-		likeness_out[j_mid] = likeness[j_min];
-		likeness_out[j_max] = likeness[j_mid];
-
-		double sum = 0;
-		for (int j = 0; j < 3; ++j) {
-			sum += (likeness_out[j] /= (256.0 * (1 + 127.5 + 256.0)));
-		}
-		for (int j = 0; j < 3; ++j) {
-			likeness_out[j] /= sum;
-		}
-	}
-}
-
-void BuildWeightsByChannel_Likeness(Mat& image, Point& pt, uchar likeness_out[3]) {
-	if (image.type() == CV_8UC3) {
-		double likeness[3] = { 0, 0, 0 };
-		double cnt = 0;
-		typedef Vec<uchar, 3> Vec3c;
-		for (int r = pt.y - 2; r < image.rows && r < pt.y + 3; ++r) {
-			for (int c = pt.x - 2; c < image.cols && c < pt.x + 3; ++c) {
-				if (r < 0 || c < 0) {
-					continue;
-				}
-				++cnt;
-				Vec3c& pixVec = image.at<Vec3c>(r, c);
-				for (int j = 0; j < 3; ++j) {
-					likeness[j] += pixVec[j];
-				}
-			}
-		}
-		for (auto& w : likeness) {
-			w /= cnt;
-		}
-		for (int j = 0; j < 3; ++j) {
-			likeness_out[j] = (uchar)std::floor(likeness[j] + 0.5);
-		}
-	}
-}
 
 template<typename T, typename S>
 double cosineDistance3d(const T& left, const S& right) {
@@ -183,13 +68,12 @@ double cosineDistance3d(const T& left, const S& right) {
 	for (int j = 0; j < 3; ++j) {
 		double r = (double)right[j] - left[j];
 		dot += approx_log2(abs(r)) * (double)left[j];
-		//dot += (abs(r)) * (double)left[j];
 	}
 	return dot;
 }
 
-
-void ConvertColoredImage2Mono_CosineLikeness(Mat& image, double chIdeal[3], std::function<double(uchar)> convert) {
+template<typename T>
+void ConvertColoredImage2Mono_CosineLikeness(Mat& image, T chIdeal[3], std::function<double(uchar)> convert) {
 	cv::Mat aux(image.size(), CV_16UC1);
 	double powIdeal1[3] = { pow(chIdeal[0], 1), pow(chIdeal[1], 1), pow(chIdeal[2], 1) };
 	typedef Vec<uchar, 3> Vec3c;
@@ -204,30 +88,127 @@ void ConvertColoredImage2Mono_CosineLikeness(Mat& image, double chIdeal[3], std:
 	image = aux.clone();
 }
 
+
+
+void BuildWeights_ByChannel(Mat& image, Point& pt, double weights_out[3]) {
+	if (image.type() == CV_8UC3) {
+		double weights[3] = { 0, 0, 0 };
+		double sum = 0;
+		typedef Vec<uchar, 3> Vec3c;
+		for (int r = pt.y - 2; r < image.rows && r < pt.y + 3; ++r) {
+			for (int c = pt.x - 2; c < image.cols && c < pt.x + 3; ++c) {
+				if (r < 0 || c < 0) {
+					continue;
+				}
+				Vec3c& pixVec = image.at<Vec3c>(r, c);
+				for (int j = 0; j < 3; ++j) {
+					double w = pow(pixVec[j], 1.5);
+					sum += w;
+					weights[j] += w;
+				}
+			}
+		}
+		double wMax = std::numeric_limits<double>::min();
+
+		for (auto& w : weights) {
+			w /= sum;
+			if (w > wMax) {
+				wMax = w;
+			}
+		}
+
+		for (auto& w : weights) w /= wMax;
+
+		memcpy(weights_out, weights, sizeof(weights));
+	}
+}
+
+
+
+void BuildIdealChannels_Likeness(Mat& image, Point& pt, double chIdeal[3]) {
+	if (image.type() == CV_8UC3) {
+		double likeness[3] = { 0, 0, 0 };
+		double cnt = 0;
+		typedef Vec<uchar, 3> Vec3c;
+		for (int r = pt.y - 1; r < image.rows && r < pt.y + 2; ++r) {
+			for (int c = pt.x - 1; c < image.cols && c < pt.x + 2; ++c) {
+				if (r < 0 || c < 0) {
+					continue;
+				}
+				++cnt;
+				Vec3c& pixVec = image.at<Vec3c>(r, c);
+				for (int j = 0; j < 3; ++j) {
+					likeness[j] += pixVec[j];
+				}
+			}
+		}
+
+		for (auto& w : likeness) {
+			w /= cnt;
+		}
+
+		memcpy(chIdeal, likeness, sizeof(likeness));
+	}
+}
+
 void ConvertColoredImage2Mono_Likeness(Mat& image, double chIdeal[3], std::function<double(uchar)> convert) {
+	assert(image.type() == CV_8UC3);
+	cv::Mat aux(image.size(), CV_16UC1);
+	typedef Vec<uchar, 3> Vec3c;
+	for (int r = 0; r < aux.rows; ++r) {
+		for (int c = 0; c < aux.cols; ++c) {
+			Vec3c pixVec = image.at<Vec3c>(r, c);
+			double pixt = 1;
+
+			for (int j = 0; j < 3; ++j) {
+				double chMax;
+				double chMin;
+				double ch = pixVec[j];
+				double ch_ideal = chIdeal[j];
+				if (ch_ideal > ch) {
+					chMax = ch_ideal;
+					chMin = ch;
+				}
+				else {
+					chMax = ch;
+					chMin = ch_ideal;
+				}
+
+				pixt += chMin > 0 ? (chMin * chMin / chMax) : 0;
+			}
+
+			aux.at<ushort>(r, c) = (ushort)std::floor(convert(pixt) + 0.5);
+		}
+	}
+	image = aux.clone();
+}
+
+void ConvertColoredImage2Mono_FScore(Mat& image, uchar chIdeal[3], std::function<double(uchar)> convert) {
 	cv::Mat aux(image.size(), CV_16UC1);
 	double powIdeal2[3] = { pow(chIdeal[0], 2), pow(chIdeal[1], 2), pow(chIdeal[2], 2) };
 	typedef Vec<uchar, 3> Vec3c;
 	for (int r = 0; r < aux.rows; ++r) {
 		for (int c = 0; c < aux.cols; ++c) {
 			Vec3c& pixVec = image.at<Vec3c>(r, c);
+			ushort& pix = aux.at<ushort>(r, c);
 			double w = 1;
 			for (int j = 0; j < 3; ++j) {
-				double ch = pixVec[j]; 
-				//w *= convert((2.0 * ch * chIdeal[j]) / (pow(ch, 2) + powIdeal2[j]));
-				w += convert(ch * chIdeal[j]);
+				double ch = pixVec[j];
+				w *= (2.0 * ch * chIdeal[j]) / (pow(ch, 2) + powIdeal2[j]);
 			}
-
-			ushort& pix = aux.at<ushort>(r, c);
-			pix = (ushort)std::floor(w + 0.5); ;
+			pix = (ushort)std::floor(convert(w * 256) + 0.5); ;
 		}
 	}
 	image = aux.clone();
 }
+
+
+
+
 void StandardizeImage_Likeness(Mat& image, double chIdeal[3]) {
 	if (image.type() == CV_8UC3) {
 		ConvertColoredImage2Mono_Likeness(image, chIdeal, [](double ch) {
-			return 256.0 * 256.0 - std::min(ch * 256, 256.0 * 256.0);
+			return std::min(ch * 256, 256.0 * 256.0);
 		});
 	}
 	if (image.type() != CV_16UC1) {
@@ -256,42 +237,6 @@ void SquareImage_Likeness(Mat& image, double chIdeal[3]) {
 }
 
 
-void ConvertColoredImage2Mono_CosineLikeness(Mat& image, uchar chIdeal[3], std::function<double(uchar)> convert) {
-	cv::Mat aux(image.size(), CV_16UC1);
-	double powIdeal1[3] = { pow(chIdeal[0], 1), pow(chIdeal[1], 1), pow(chIdeal[2], 1) };
-	typedef Vec<uchar, 3> Vec3c;
-	for (int r = 0; r < aux.rows; ++r) {
-		for (int c = 0; c < aux.cols; ++c) {
-			Vec3c& pixVec = image.at<Vec3c>(r, c);
-			double w = cosineDistance3d(chIdeal, pixVec) / 256;
-			ushort& pix = aux.at<ushort>(r, c);
-			pix = (ushort)std::floor(convert(w) + 0.5); ;
-		}
-	}
-	image = aux.clone();
-}
-
-
-
-
-void ConvertColoredImage2Mono_Likeness(Mat& image, uchar chIdeal[3], std::function<double(uchar)> convert) {
-	cv::Mat aux(image.size(), CV_16UC1);
-	double powIdeal2[3] = { pow(chIdeal[0], 2), pow(chIdeal[1], 2), pow(chIdeal[2], 2) };
-	typedef Vec<uchar, 3> Vec3c;
-	for (int r = 0; r < aux.rows; ++r) {
-		for (int c = 0; c < aux.cols; ++c) {
-			Vec3c& pixVec = image.at<Vec3c>(r, c);
-			ushort& pix = aux.at<ushort>(r, c);
-			double w = 1;
-			for (int j = 0; j < 3; ++j) {
-				double ch = pixVec[j];
-				w *= (2.0 * ch * chIdeal[j]) / (pow(ch, 2) + powIdeal2[j]);
-			}
-			pix = (ushort)std::floor(convert(w * 256) + 0.5); ;
-		}
-	}
-	image = aux.clone();
-}
 void StandardizeImage_Likeness(Mat& image, uchar chIdeal[3]) {
 	if (image.type() == CV_8UC3) {
 		ConvertColoredImage2Mono_CosineLikeness(image, chIdeal, [](double ch) {

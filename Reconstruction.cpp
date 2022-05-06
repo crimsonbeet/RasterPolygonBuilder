@@ -40,16 +40,15 @@ int g_max_boxsize_pixels = 25;
 
 void StandardizeImage(Mat& image, double chWeights[3]);
 void SquareImage(Mat& image, double chWeights[3]);
-void BuildWeightsByChannel(Mat& image, Point& pt, double weights_out[3]);
+void BuildWeights_ByChannel(Mat& image, Point& pt, double weights_out[3]);
 
 
 void StandardizeImage_Likeness(Mat& image, double chIdeal[3]);
 void SquareImage_Likeness(Mat& image, double chIdeal[3]);
-void BuildWeightsByChannel_Likeness(Mat& image, Point& pt, double likeness_out[3]);
+void BuildIdealChannels_Likeness(Mat& image, Point& pt, double chIdeal[3]);
 
 void StandardizeImage_Likeness(Mat& image, uchar chIdeal[3]);
 void SquareImage_Likeness(Mat& image, uchar chIdeal[3]);
-void BuildWeightsByChannel_Likeness(Mat& image, Point& pt, uchar likeness_out[3]);
 
 
 
@@ -480,8 +479,8 @@ Mat mat_convert2byte(const Mat& src, const int bytedepth_scalefactor/* = g_byted
 template<typename T>
 inline Mat mat_loginvert2byte(const T *src_val, const cv::Size& src_size, const size_t row_step, const int bytedepth_scalefactor) { // returns CV_8UC1 matrix of log inverted values. 
 	const double scalefactor = 1.0 / bytedepth_scalefactor;
-	const double factor = 255.0 / approx_log2(256 * bytedepth_scalefactor * scalefactor);
-	static const double log_255 = approx_log2(255);
+	const double factor = 255.0 / approx_log2(256);
+	const const double log_255 = approx_log2(255);
 	Mat dst(src_size, CV_8UC1);
 	uchar *val = (uchar*)dst.data;
 	char *buf = (char*)src_val;
@@ -493,7 +492,6 @@ inline Mat mat_loginvert2byte(const T *src_val, const cv::Size& src_size, const 
 				*val = 255;
 			}
 			else {
-				//*val = (uchar)floor((log_255 - approx_log2(src_valt)) * factor + 0.5);
 				*val = (uchar)((log_255 - approx_log2(src_valt)) * factor);
 			}
 		}
@@ -530,10 +528,10 @@ Mat mat_loginvert2byte(const Mat& src, const int bytedepth_scalefactor/* = g_byt
 }
 
 template<typename T>
-inline Mat mat_loginvert2word(const T *src_val, const cv::Size& src_size, const size_t row_step, const int bytedepth_scalefactor) { // returns CV_8UC1 matrix of log inverted values. 
+inline Mat mat_loginvert2word(const T *src_val, const cv::Size& src_size, const size_t row_step, const int bytedepth_scalefactor) { // returns CV_16UC1 matrix of log inverted values. 
 	const double scalefactor = bytedepth_scalefactor;
-	const double factor = 65535.0 / approx_log2(65536.0);
-	static const double log_65535 = approx_log2(65535);
+	const double factor = 65535.0 / approx_log2(65536);
+	const const double log_65535 = approx_log2(65535);
 	Mat dst(src_size, CV_16UC1);
 	uint16_t *val = (uint16_t*)dst.data;
 	char *buf = (char*)src_val;
@@ -541,11 +539,11 @@ inline Mat mat_loginvert2word(const T *src_val, const cv::Size& src_size, const 
 		src_val = (T*)buf;
 		for (int j = 0; j < src_size.width; ++j, ++val, ++src_val) {
 			double src_valt = double(*src_val) * scalefactor;
-			if (src_valt <= 1) {
+			if (src_valt <= scalefactor) {
 				*val = 65535;
 			}
 			else {
-				*val = (uchar)((log_65535 - approx_log2(src_valt)) * factor);
+				*val = (uint16_t)((log_65535 - approx_log2(src_valt)) * factor);
 			}
 		}
 	}
@@ -556,25 +554,79 @@ Mat mat_loginvert2word(const Mat& src, const int bytedepth_scalefactor = g_byted
 	Mat dst;
 	switch (src.type()) {
 	case CV_8UC1:
-		dst = mat_loginvert2byte((unsigned char*)src.data, src.size(), src.step.p[0], bytedepth_scalefactor);
+		dst = mat_loginvert2word((unsigned char*)src.data, src.size(), src.step.p[0], bytedepth_scalefactor);
 		break;
 	case CV_8SC1:
-		dst = mat_loginvert2byte((signed char*)src.data, src.size(), src.step.p[0], bytedepth_scalefactor);
+		dst = mat_loginvert2word((signed char*)src.data, src.size(), src.step.p[0], bytedepth_scalefactor);
 		break;
 	case CV_16UC1:
-		dst = mat_loginvert2byte((unsigned short*)src.data, src.size(), src.step.p[0], 1);
+		dst = mat_loginvert2word((unsigned short*)src.data, src.size(), src.step.p[0], 1);
 		break;
 	case CV_16SC1:
-		dst = mat_loginvert2byte((signed short*)src.data, src.size(), src.step.p[0], 1);
+		dst = mat_loginvert2word((signed short*)src.data, src.size(), src.step.p[0], 1);
 		break;
 	case CV_32SC1:
-		dst = mat_loginvert2byte((int*)src.data, src.size(), src.step.p[0], 1);
+		dst = mat_loginvert2word((int*)src.data, src.size(), src.step.p[0], 1);
 		break;
 	case CV_32FC1:
-		dst = mat_loginvert2byte((float*)src.data, src.size(), src.step.p[0], 1);
+		dst = mat_loginvert2word((float*)src.data, src.size(), src.step.p[0], 1);
 		break;
 	case CV_64FC1:
-		dst = mat_loginvert2byte((long long*)src.data, src.size(), src.step.p[0], 1);
+		dst = mat_loginvert2word((long long*)src.data, src.size(), src.step.p[0], 1);
+		break;
+	}
+	return dst;
+}
+
+template<typename T>
+inline Mat mat_invert2word(const T* src_val, const cv::Size& src_size, const size_t row_step, const int bytedepth_scalefactor, const uint16_t maxvalue) { // returns CV_16UC1 matrix of log inverted values. 
+	const double scalefactor = bytedepth_scalefactor;
+	Mat dst(src_size, CV_16UC1);
+	uint16_t* val = (uint16_t*)dst.data;
+	char* buf = (char*)src_val;
+	for (int k = 0; k < src_size.height; ++k, buf += row_step) {
+		src_val = (T*)buf;
+		for (int j = 0; j < src_size.width; ++j, ++val, ++src_val) {
+			double src_valt = double(*src_val) * scalefactor;
+			if (src_valt <= scalefactor) {
+				*val = 65535;
+			}
+			else {
+				src_valt = 65535.0 - std::min(src_valt, 65535.0); 
+				if (src_valt > maxvalue) {
+					src_valt = (approx_log2(maxvalue - src_valt) + 0.49999) + maxvalue;
+				}
+
+				*val = (uint16_t)src_valt;
+			}
+		}
+	}
+	return dst;
+}
+
+Mat mat_invert2word(const Mat& src, const int bytedepth_scalefactor = g_bytedepth_scalefactor, const uint16_t maxvalue = 65535) { // returns CV_16UC1 matrix
+	Mat dst;
+	switch (src.type()) {
+	case CV_8UC1:
+		dst = mat_invert2word((unsigned char*)src.data, src.size(), src.step.p[0], bytedepth_scalefactor, maxvalue);
+		break;
+	case CV_8SC1:
+		dst = mat_invert2word((signed char*)src.data, src.size(), src.step.p[0], bytedepth_scalefactor, maxvalue);
+		break;
+	case CV_16UC1:
+		dst = mat_invert2word((unsigned short*)src.data, src.size(), src.step.p[0], 1, maxvalue);
+		break;
+	case CV_16SC1:
+		dst = mat_invert2word((signed short*)src.data, src.size(), src.step.p[0], 1, maxvalue);
+		break;
+	case CV_32SC1:
+		dst = mat_invert2word((int*)src.data, src.size(), src.step.p[0], 1, maxvalue);
+		break;
+	case CV_32FC1:
+		dst = mat_invert2word((float*)src.data, src.size(), src.step.p[0], 1, maxvalue);
+		break;
+	case CV_64FC1:
+		dst = mat_invert2word((long long*)src.data, src.size(), src.step.p[0], 1, maxvalue);
 		break;
 	}
 	return dst;
@@ -2098,8 +2150,9 @@ void filterContour(std::vector<Point_<T>>& contour, std::vector<Point2d>& shocks
 			K = Zet * X;
 			//ostr << "X(0,0):" << X(0, 0) << " X(1,0):" << X(1, 0) << " X(0,1):" << X(0, 1) << " X(1,1):" << X(1, 1) << std::endl;
 			//ostr << "K(0,0):" << K(0, 0) << " K(1,0):" << K(1, 0) << " K(0,1):" << K(0, 1) << " K(1,1):" << K(1, 1) << std::endl;
-			K(0, 1) = 0;
-			K(1, 0) = 0;
+			//K(0, 1) = 0;
+			//K(1, 0) = 0;
+
 			//if (K(0, 1) > 1) {
 			//	K(0, 1) = 1;
 			//}
@@ -2539,7 +2592,7 @@ void linearizeContour(std::vector<cv::Point>& contour, double stepSize, const si
 	}
 }
 
-void linearizeContour(std::vector<long>& x, std::vector<long>& y, size_t stepSize, const size_t maxSegmentSize) {
+void linearizeContour(std::vector<long>& x, std::vector<long>& y, double stepSize, const size_t maxSegmentSize) {
 	std::vector<Point> contour(x.size()); 
 	size_t N = x.size(); 
 	for (size_t j = 0; j < N; ++j) {
@@ -3811,9 +3864,10 @@ void IntensifyImage(Mat& cv_image) {
 	Mat aux = cv_image.clone();
 	//GaussianBlur(cv_image, aux, Size(5, 5), 0.9, 0.9);
 	//AnisotropicDiffusion(aux, 21);
-	//medianBlur(aux, cv_image, 3);
-	GaussianBlur(cv_image, aux, Size(5, 5), 0.9, 0.9);
-	AnisotropicDiffusion(aux, 14);
+	medianBlur(aux, cv_image, 3);
+	//GaussianBlur(cv_image, aux, Size(5, 5), 0.9, 0.9);
+	//AnisotropicDiffusion(aux, 14);
+	AnisotropicDiffusion(aux, 10);
 
 	aux.convertTo(cv_image, CV_16UC1);
 }
@@ -3904,6 +3958,10 @@ size_t ConductOverlapElimination(const std::vector<std::vector<cv::Point>>& cont
 				ok = MASSize("out", "out", -size_increment);
 			}
 		}
+		else 			
+		if (logProblematic) {
+			MASLogLayer(cl.c_str());
+		}
 	}
 
 	MASEvaluate1(MAS_ActivateLayer, cl.c_str()/*"out"*/);
@@ -3984,7 +4042,7 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 	int64 image_localtime = 0;
 
 
-	Mat cv_image[2];
+	Mat cv_image[4];
 	std::vector<ABox> boxes[2];
 	std::vector<ClusteredPoint> cv_points[2];
 
@@ -4023,6 +4081,9 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 				continue;
 			}
 
+			cv_image[2] = cv_image[0].clone();
+			cv_image[3] = cv_image[1].clone();
+
 			__int64 time_start = OSDayTimeInMilliseconds();
 
 			auto prepImages = [&cv_image](double chWeights[3]) {
@@ -4030,15 +4091,54 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 				SquareImage(cv_image[1], chWeights);
 			};
 
-			auto prepImages_Likeness = [&cv_image](double chIdeal[3]) {
-				StandardizeImage_Likeness(cv_image[0], chIdeal);
-				SquareImage_Likeness(cv_image[1], chIdeal);
+			auto readyImages = [&cv_image, &cv_edges]() {
+				cv_image[0] = mat_invert2word(cv_image[0]);
+				normalize(cv_image[0].clone(), cv_image[0], 0, (size_t)256 * g_bytedepth_scalefactor, NORM_MINMAX, CV_16UC1, Mat());
+
+				cv_image[1] = mat_loginvert2byte(cv_image[1]);
+				normalize(cv_image[1].clone(), cv_image[1], 0, (size_t)256 * g_bytedepth_scalefactor, NORM_MINMAX, CV_16UC1, Mat());
+
+				medianBlur(cv_image[0].clone(), cv_image[0], 3);
+				medianBlur(cv_image[1].clone(), cv_image[1], 3);
+
+				Mat aux0 = cv_image[0].clone();
+				AnisotropicDiffusion(cv_image[0], 10);
+				aux0.convertTo(cv_image[0], CV_16UC1);
+
+				Mat aux1 = cv_image[1].clone();
+				AnisotropicDiffusion(cv_image[1], 10);
+				aux1.convertTo(cv_image[1], CV_16UC1);
+
+				cv_edges[0] = cv_image[0].clone();
+				cv_edges[1] = cv_image[1].clone();
 			};
 
-			auto readyImages = [&cv_image, &cv_edges]() {
-				IntensifyImage(cv_image[0]);
-				cv_image[1] = mat_loginvert2word(cv_image[1]);
-				IntensifyImage(cv_image[1]);
+			auto prepImages_Likeness = [&cv_image](double chIdeal[3], double chWeights[3]) {
+				Mat aux2 = cv_image[2].clone();
+				StandardizeImage_Likeness(aux2, chIdeal);
+				cv_image[0] = aux2.clone();
+
+				Mat aux3 = cv_image[3].clone();
+				SquareImage(aux3, chWeights);
+				cv_image[1] = aux3.clone();
+			};
+
+			auto readyImages_Likeness = [&cv_image, &cv_edges]() {
+				normalize(cv_image[0].clone(), cv_image[0], 0, (size_t)256 * g_bytedepth_scalefactor, NORM_MINMAX, CV_16UC1, Mat());
+
+				cv_image[1] = mat_loginvert2byte(cv_image[1]);
+				normalize(cv_image[1].clone(), cv_image[1], 0, (size_t)256 * g_bytedepth_scalefactor, NORM_MINMAX, CV_16UC1, Mat());
+
+				medianBlur(cv_image[0].clone(), cv_image[0], 3);
+				medianBlur(cv_image[1].clone(), cv_image[1], 3);
+
+				Mat aux0 = cv_image[0];
+				AnisotropicDiffusion(aux0, 10);
+				aux0.convertTo(cv_image[0], CV_16UC1);
+
+				Mat aux1 = cv_image[1];
+				AnisotropicDiffusion(aux1, 10);
+				aux1.convertTo(cv_image[1], CV_16UC1);
 
 				cv_edges[0] = cv_image[0].clone();
 				cv_edges[1] = cv_image[1].clone();
@@ -4049,8 +4149,8 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 
 			double chWeights[3] = { 1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0 };
-
 			prepImages(chWeights);
+
 			readyImages();
 
 
@@ -4063,10 +4163,14 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 			auto submitGraphics = [&](Mat& originalImage, bool data_is_valid = false) {
 				ctl->_gate.lock();
-				matCV_16UC1_memcpy(ctl->_cv_image[0], cv_image[0]);
-				matCV_16UC1_memcpy(ctl->_cv_image[1], cv_image[1]);
-				matCV_16UC1_memcpy(ctl->_cv_edges[0], cv_edges[0]);
-				matCV_16UC1_memcpy(ctl->_cv_edges[1], cv_edges[1]);
+				//matCV_16UC1_memcpy(ctl->_cv_image[0], cv_image[0]);
+				//matCV_16UC1_memcpy(ctl->_cv_image[1], cv_image[1]);
+				//matCV_16UC1_memcpy(ctl->_cv_edges[0], cv_edges[0]);
+				//matCV_16UC1_memcpy(ctl->_cv_edges[1], cv_edges[1]);
+				ctl->_cv_image[0] = cv_image[0].clone();
+				ctl->_cv_image[1] = cv_image[1].clone();
+				ctl->_cv_edges[0] = cv_edges[0].clone();
+				ctl->_cv_edges[1] = cv_edges[1].clone();
 				ctl->_pixel_threshold = 91;
 				ctl->_data_isvalid = false;
 				ctl->_image_isvalid = true;
@@ -4120,9 +4224,9 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 						}
 					}
 
-					size_t count = ConductOverlapEliminationEx(contours, final_contours, false, -1);
-					if (count == 0 && contours.size() != 0) {
-						ConductOverlapEliminationEx(contours, final_contours, false, 0);
+					size_t count = ConductOverlapEliminationEx(contours, final_contours, false, 0);
+					if (count == 0) {
+						final_contours = contours;
 					}
 
 					finalContoursImage = unchangedImage.clone();
@@ -4175,26 +4279,19 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 					pt.y = roi.y + roi.height / 2;
 
 
-					//double chWeights[3];
-					//BuildWeightsByChannel(unchangedImage, pt, chWeights);
-
-					//double chWeights[3] = {0.002, 0.308, 0.689};
-					//double chIdeal[3] = {0.002, 0.308, 0.689};
-					//BuildWeightsByChannel_Likeness(unchangedImage, pt, chIdeal);
-
-					//for (auto& sub_boxes : boxes) {
-					//	for (auto& box : sub_boxes) {
-					//		box = ABox(); 
-					//	}
-					//}
-
-					//cv_image[0] = unchangedImage.clone();
-					//cv_image[1] = unchangedImage.clone();
+					int windowNumber = g_LoG_seedPoint.params.windowNumber - 1;
 
 
-					//prepImages_Likeness(chIdeal);
-					//readyImages();
-					//submitGraphics(unchangedImage);
+
+					double chIdeal[3];
+					BuildIdealChannels_Likeness(unchangedImage, pt, chIdeal);
+					BuildWeights_ByChannel(unchangedImage, pt, chWeights);
+
+					prepImages_Likeness(chIdeal, chWeights);
+					readyImages_Likeness();
+
+					submitGraphics(unchangedImage);
+
 
 
 					cv_edges[0].convertTo(cv_edges[4], CV_8UC1);
@@ -4234,7 +4331,7 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 						}
 					}
 
-					std::vector<ABox>& boxes_selected = boxes[g_LoG_imageWindowNumber - 1];
+					std::vector<ABox>& boxes_selected = boxes[windowNumber];
 
 
 					if (boxes_selected.size() == 0) {
@@ -4249,9 +4346,9 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 
 					int pass_number = 0;
-					int size_increment = 1; 
+					int size_increment = 2; 
 					int iteration_number = 0; 
-					int max_passes = 5; 
+					int max_passes = 3; 
 
 					finalContoursImage = unchangedImage.clone();
 					while (0<1) {
@@ -4304,7 +4401,7 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 						contours.swap(local_contours);
 						contours_count = count;
 
-						ClusteredPoint& point = cv_points[1][0];
+						ClusteredPoint& point = cv_points[windowNumber][0];
 						Mat& crop_colored = point._crop;
 						if (crop_colored.rows == 0) {
 							continue;
