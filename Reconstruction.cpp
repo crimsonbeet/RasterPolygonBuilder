@@ -2101,7 +2101,6 @@ void filterContour(std::vector<Point_<T>>& contour, std::vector<Point2d>& shocks
 
 	Mat_<double> pastMeasurements((int)NFilter2, 2);
 
-	//Mat_<double> futureMovements((int)NFilter4, 2);
 	Mat_<double> futureMovements((int)NFilter2, 2);
 
 	for (int k = 0, m = NFilter2; k < N + NFilter2; ++k, ++m) {
@@ -2112,14 +2111,14 @@ void filterContour(std::vector<Point_<T>>& contour, std::vector<Point2d>& shocks
 		futureMovements(m % NFilter2, 0) = futurePoint.x;
 		futureMovements(m % NFilter2, 1) = futurePoint.y;
 
-		//Point2d futurePoint(contour[(k + NFilter + NFilter4) % N]);
-		//futureMovements(m % NFilter4, 0) = futurePoint.x;
-		//futureMovements(m % NFilter4, 1) = futurePoint.y;
-
 		Point2d measurement(0, 0);
+		//l_fir_h_gain = 0;
 		for (int j = 0, i = k + NFilter - 1; j < NFilter; ++j, --i) {
 			measurement += Point2d(contour[i % N]) * l_fir_h[j];
+			//measurement += Point2d(contour[i % N]);
+			//++l_fir_h_gain;
 		}
+
 		measurement.x /= l_fir_h_gain;
 		measurement.y /= l_fir_h_gain;
 
@@ -2491,7 +2490,8 @@ void printPoint(const std::string& prefix, Point p) {
 	printf("%s", ostr.str().c_str()); 
 }
 
-void fitLine2Segment(std::vector<Point2f> &segment, std::vector<Point>& aux) {
+template<typename T>
+void fitLine2Segment(std::vector<Point2d> &segment, std::vector<Point_<T>>& aux) {
 	Vec4f aLine;
 	fitLine(segment, aLine, DistanceTypes::DIST_L2, 0, 0.001, 0.001);
 	Point2d norm(-aLine[1], aLine[0]); // normal (unit length now, but is going to be offset).
@@ -2509,11 +2509,15 @@ void fitLine2Segment(std::vector<Point2f> &segment, std::vector<Point>& aux) {
 	Point2d first = colVec * colVec.ddot(segment[0]) + norm;
 	Point2d second = colVec * colVec.ddot(segment[segment.size() - 1]) + norm;
 
+	//aux.push_back(first);
+	//aux.push_back(second);
+
 	aux.push_back(round2dPoint(first));
 	aux.push_back(round2dPoint(second));
 }
 
-void linearizeContour(std::vector<cv::Point>& contour, double stepSize, const size_t maxSegmentSize) { 
+template<typename T>
+void linearizeContour(std::vector<Point_<T>>&contour, double stepSize, const size_t maxSegmentSize) {
 	// find first point that has its both neighbours farther than stepSize
 	if (contour.size() < 3) {
 		contour.resize(0); 
@@ -2543,12 +2547,12 @@ void linearizeContour(std::vector<cv::Point>& contour, double stepSize, const si
 
 	k = k % N; 
 
-	std::vector<Point> aux; 
+	std::vector<Point_<T>> aux;
 	aux.push_back(aPoint);
 
 	aPoint = aNext;
 	size_t m;
-	std::vector<Point2f> segment;
+	std::vector<Point2d> segment;
 	for (m = k + 1; (m % N) != k; ++m) {
 		aNext = contour[m % N];
 		double d = pow(aPoint.x - aNext.x, 2) + pow(aPoint.y - aNext.y, 2);
@@ -2593,7 +2597,7 @@ void linearizeContour(std::vector<cv::Point>& contour, double stepSize, const si
 }
 
 void linearizeContour(std::vector<long>& x, std::vector<long>& y, double stepSize, const size_t maxSegmentSize) {
-	std::vector<Point> contour(x.size()); 
+	std::vector<Point2d> contour(x.size()); 
 	size_t N = x.size(); 
 	for (size_t j = 0; j < N; ++j) {
 		contour[j].x = x[j]; 
@@ -3887,8 +3891,8 @@ std::string BuildMASLayerName(size_t cntrNumber, std::string *out_name = nullptr
 }
 
 
-size_t ConductOverlapElimination(const std::vector<std::vector<cv::Point>>& contours, 
-	std::vector<std::vector<cv::Point>>& final_contours,
+size_t ConductOverlapElimination(const std::vector<std::vector<cv::Point2d>>& contours, 
+	std::vector<std::vector<cv::Point2d>>& final_contours,
 	bool conduct_size = false, int size_increment = -1, 
 	bool logProblematic = false) {
 
@@ -3980,7 +3984,7 @@ size_t ConductOverlapElimination(const std::vector<std::vector<cv::Point>>& cont
 				final_contours.resize(nPolygons + 1);
 			}
 
-			std::vector<Point>& contour = final_contours[count++];
+			std::vector<Point2d>& contour = final_contours[count++];
 			contour.resize(nPoints);
 
 			long j = 0;
@@ -3994,13 +3998,13 @@ size_t ConductOverlapElimination(const std::vector<std::vector<cv::Point>>& cont
 	return ok? count: 0; 
 }
 
-size_t ConductOverlapEliminationEx(const std::vector<std::vector<cv::Point>>& contours, std::vector<std::vector<cv::Point>>& final_contours,
+size_t ConductOverlapEliminationEx(const std::vector<std::vector<cv::Point2d>>& contours, std::vector<std::vector<cv::Point2d>>& final_contours,
 	bool conduct_size = false, int size_increment = -1) {
 
 	size_t count = ConductOverlapElimination(contours, final_contours, conduct_size, size_increment, true);
 	if (count == 0) {
 		size_t j = 0; 
-		std::vector<std::vector<cv::Point>> aux(contours.size());
+		std::vector<std::vector<cv::Point2d>> aux(contours.size());
 		for (auto& contour : contours) {
 			if (contour.size()) {
 				aux[j].resize(contour.size());
@@ -4028,6 +4032,12 @@ size_t ConductOverlapEliminationEx(const std::vector<std::vector<cv::Point>>& co
 	return count; 
 }
 
+template<typename T1, typename T2>
+void CopyVector(std::vector<T1>& dst, std::vector<T2>& src) {
+	dst.clear();
+	std::transform(src.cbegin(), src.cend(), std::back_inserter(dst), [](T2 p) { return T1(p); });
+}
+
 return_t __stdcall EvaluateContours(LPVOID lp) {
 	SPointsReconstructionCtl *ctl = (SPointsReconstructionCtl*)lp;
 
@@ -4051,7 +4061,7 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 
 
-	std::vector<std::vector<cv::Point>> final_contours(1);
+	std::vector<std::vector<cv::Point2d>> final_contours(1);
 
 
 	bool image_isok = false;
@@ -4195,7 +4205,7 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 
 
-			std::vector<std::vector<cv::Point>> contours(1);
+			std::vector<std::vector<cv::Point2d>> contours(1);
 			size_t contours_count = 0;
 
 
@@ -4283,12 +4293,12 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 
 
-					double chIdeal[3];
-					BuildIdealChannels_Likeness(unchangedImage, pt, chIdeal);
-					BuildWeights_ByChannel(unchangedImage, pt, chWeights);
+					//double chIdeal[3];
+					//BuildIdealChannels_Likeness(unchangedImage, pt, chIdeal);
+					//BuildWeights_ByChannel(unchangedImage, pt, chWeights);
 
-					prepImages_Likeness(chIdeal, chWeights);
-					readyImages_Likeness();
+					//prepImages_Likeness(chIdeal, chWeights);
+					//readyImages_Likeness();
 
 					submitGraphics(unchangedImage);
 
@@ -4338,8 +4348,10 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 						continue;
 
 					}
+
+
 					contours.resize(1);
-					contours[0] = boxes_selected[0].contour;
+					CopyVector(contours[0], boxes_selected[0].contour);
 
 
 					printf("\n\n");
@@ -4348,7 +4360,7 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 					int pass_number = 0;
 					int size_increment = 2; 
 					int iteration_number = 0; 
-					int max_passes = 3; 
+					int max_passes = 1; 
 
 					finalContoursImage = unchangedImage.clone();
 					while (0<1) {
@@ -4376,7 +4388,7 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 							}
 						}
 
-						std::vector<std::vector<cv::Point>> local_contours;
+						std::vector<std::vector<cv::Point2d>> local_contours;
 
 						std::ostringstream ostr;
 						ostr << "---" << "size_increment=" << size_increment << ' ' << "pass_number=" << pass_number << ' ' << "max_passes=" << max_passes << std::endl;
@@ -4392,7 +4404,7 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 						if (count == 0) {
 							contours.resize(1);
-							contours[0] = boxes_selected[0].contour;
+							CopyVector(contours[0], boxes_selected[0].contour);
 							pass_number == max_passes;
 							iteration_number = 3; 
 							continue;
@@ -4408,12 +4420,12 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 						}
 
 						contours.resize(count + 1);
-						contours[count] = boxes_selected[0].contour_notsmoothed;
+						CopyVector(contours[count], boxes_selected[0].contour_notsmoothed);
 
 						point._cropOriginal.copyTo(crop_colored);
 
 						for (int n = count; n >= 0; --n) {
-							std::vector<Point>& contour = contours[n];
+							std::vector<Point2d>& contour = contours[n];
 
 							double fx = point._crop_mat_scalefactor;
 							Point2f& off = point._crop_mat_offset;
