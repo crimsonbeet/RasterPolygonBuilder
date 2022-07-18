@@ -1819,12 +1819,12 @@ void subPixels(Mat& crop, std::vector<Point2f>& corners, int ws) {
 }
 
 
-// FIR15 low-pass least-squares Fpass 0.1, Fstop 0.5, Fs 6.25
+// FIR15 low-pass least-squares Fpass Fpass 0.4, Fstop 2.0, Fs 25 (0.1, Fstop 0.5, Fs 6.25)
 static double fir_h1[15] = { 0.021650121520005953, 0.035527801315147732, 0.051061255474874737, 0.06688253424484937, 0.081431003402810065, 0.093166162384329704, 0.1007883612361113, 0.10343054711643812, 0.1007883612361113, 0.093166162384329704, 0.081431003402810065, 0.06688253424484937, 0.051061255474874737, 0.035527801315147732, 0.021650121520005953 };
 static double fir_h_gain1 = 1.004445026;
 static double fir_h_lowpass1 = 1;
 
-// FIR15 low-pass equiripple Fpass 1.0, Fstop 3.0, Fs 25 (Fpass 0.25, Fstop 0.75, Fs 6.25)
+// FIR15 low-pass equiripple Fpass Fpass 1.0, Fstop 3.0, Fs 25 (0.25, Fstop 0.75, Fs 6.25)
 static double fir_h2[15] = { -0.032640248918755936, 0.010310761506497982, 0.030918235414101738, 0.061797451018658113, 0.097450419366571825, 0.13069501065073361, 0.15427159413808236, 0.16277411805378134, 0.15427159413808236, 0.13069501065073361, 0.097450419366571825, 0.061797451018658113, 0.030918235414101738, 0.010310761506497982, -0.032640248918755936 };
 static double fir_h_gain2 = 1.068380564;
 static double fir_h_lowpass2 = 1;
@@ -2060,11 +2060,10 @@ void lowpassFilterContour(const std::vector<Point_<T>>& aux/*in*/, std::vector<P
 
 template<typename T>
 void filterContour(std::vector<Point_<T>>& contour, std::vector<Point2d>& shocks) {
-	double* l_fir_h = fir_h2;
-	double l_fir_h_gain = fir_h_gain2;
-	const int NFilter = ARRAY_NUM_ELEMENTS(fir_h2);
+	double* l_fir_h = fir_h5;
+	double l_fir_h_gain = fir_h_gain5;
+	const int NFilter = ARRAY_NUM_ELEMENTS(fir_h5);
 	const int NFilter2 = NFilter/2;
-	const int NFilter4 = NFilter/4;
 
 
 	const int L = (int)contour.size();
@@ -2149,21 +2148,8 @@ void filterContour(std::vector<Point_<T>>& contour, std::vector<Point2d>& shocks
 			K = Zet * X;
 			//ostr << "X(0,0):" << X(0, 0) << " X(1,0):" << X(1, 0) << " X(0,1):" << X(0, 1) << " X(1,1):" << X(1, 1) << std::endl;
 			//ostr << "K(0,0):" << K(0, 0) << " K(1,0):" << K(1, 0) << " K(0,1):" << K(0, 1) << " K(1,1):" << K(1, 1) << std::endl;
-			//K(0, 1) = 0;
-			//K(1, 0) = 0;
-
-			//if (K(0, 1) > 1) {
-			//	K(0, 1) = 1;
-			//}
-			//if (K(1, 0) > 1) {
-			//	K(1, 0) = 1;
-			//}
-			//if (K(0, 0) > 1) {
-			//	K(0, 0) = 1;
-			//}
-			//if (K(1, 1) > 1) {
-			//	K(1, 1) = 1;
-			//}
+			K(0, 1) = 0;
+			K(1, 0) = 0;
 
 			//ostr << "K(0,0):" << K(0, 0) << " K(1,1):" << K(1, 1) << std::endl;
 
@@ -3891,9 +3877,12 @@ std::string BuildMASLayerName(size_t cntrNumber, std::string *out_name = nullptr
 }
 
 
-size_t ConductOverlapElimination(const std::vector<std::vector<cv::Point2d>>& contours, 
+size_t ConductOverlapElimination(
+	const std::vector<std::vector<cv::Point2d>>& contours, 
 	std::vector<std::vector<cv::Point2d>>& final_contours,
-	bool conduct_size = false, int size_increment = -1, 
+	long& scale_factor, //in/out, specifies what scale factor to use
+	bool conduct_size = false, 
+	int size_increment = -1, 
 	bool logProblematic = false) {
 
 	if (contours.size() == 0) {
@@ -3913,14 +3902,16 @@ size_t ConductOverlapElimination(const std::vector<std::vector<cv::Point2d>>& co
 		std::string out_name;
 		std::string layer_name = BuildMASLayerName(++cntrNmbr, &out_name);
 
-		MASLayerCreateDBStorage(layer_name.c_str());
+		MASLayerCreateDBStorage(layer_name.c_str(), scale_factor);
+
+		const double s_mult = 1 << scale_factor;
 
 		_sAlong x;
 		_sAlong y;
 		size_t j = 0;
 		for (auto p : contour) {
-			x[j] = p.x;
-			y[j] = p.y;
+			x[j] = p.x * s_mult;
+			y[j] = p.y * s_mult;
 			++j;
 		}
 		if (j > 0) {
@@ -3977,7 +3968,8 @@ size_t ConductOverlapElimination(const std::vector<std::vector<cv::Point2d>>& co
 	for (size_t n = nFirst; count < nPolygons && n < ((size_t)nPolygons << 2); ++n) {
 		_sAlong x;
 		_sAlong y;
-		long nPoints = MASLayerGetRTPolygon(cl.c_str()/*"out"*/, n, x, y);
+		long s_factor = 0;
+		long nPoints = MASLayerGetRTPolygon(cl.c_str()/*"out"*/, n, x, y, s_factor);
 		if (nPoints > 4) {
 			if (count == 0) {
 				final_contours.resize(0);
@@ -3987,10 +3979,16 @@ size_t ConductOverlapElimination(const std::vector<std::vector<cv::Point2d>>& co
 			std::vector<Point2d>& contour = final_contours[count++];
 			contour.resize(nPoints);
 
+			const double s_mult = 1.0 / (1 << s_factor);
+
 			long j = 0;
 			while (j < nPoints) {
-				contour[j] = Point(x[j], y[j]);
+				contour[j] = Point2d(x[j] * s_mult, y[j] * s_mult);
 				++j;
+			}
+
+			if (s_factor > scale_factor) {
+				scale_factor = s_factor;
 			}
 		}
 	}
@@ -3998,10 +3996,11 @@ size_t ConductOverlapElimination(const std::vector<std::vector<cv::Point2d>>& co
 	return ok? count: 0; 
 }
 
-size_t ConductOverlapEliminationEx(const std::vector<std::vector<cv::Point2d>>& contours, std::vector<std::vector<cv::Point2d>>& final_contours,
+size_t ConductOverlapEliminationEx(const std::vector<std::vector<cv::Point2d>>& contours, std::vector<std::vector<cv::Point2d>>& final_contours, 
+	long& scale_factor, // in/out. specifies what power of 2 to use to get coordinates in integers
 	bool conduct_size = false, int size_increment = -1) {
 
-	size_t count = ConductOverlapElimination(contours, final_contours, conduct_size, size_increment, true);
+	size_t count = ConductOverlapElimination(contours, final_contours, scale_factor, conduct_size, size_increment, true);
 	if (count == 0) {
 		size_t j = 0; 
 		std::vector<std::vector<cv::Point2d>> aux(contours.size());
@@ -4023,12 +4022,13 @@ size_t ConductOverlapEliminationEx(const std::vector<std::vector<cv::Point2d>>& 
 			}
 		}
 		if (size_increment) {
-			count = ConductOverlapElimination(aux, final_contours, conduct_size, size_increment);
+			count = ConductOverlapElimination(aux, final_contours, scale_factor, conduct_size, size_increment);
 		}
 		else {
 			count = j;
 		}
 	}
+
 	return count; 
 }
 
@@ -4208,6 +4208,7 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 			std::vector<std::vector<cv::Point2d>> contours(1);
 			size_t contours_count = 0;
 
+			long max_scale_factor = 0;
 
 			while (!g_bTerminated && !ctl->_terminated) {
 				HANDLE handles[] = { g_event_SeedPointIsAvailable, g_event_ContourIsConfirmed };
@@ -4234,7 +4235,7 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 						}
 					}
 
-					size_t count = ConductOverlapEliminationEx(contours, final_contours, false, 0);
+					size_t count = ConductOverlapEliminationEx(contours, final_contours, max_scale_factor, false, 0);
 					if (count == 0) {
 						final_contours = contours;
 					}
@@ -4358,9 +4359,9 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 
 					int pass_number = 0;
-					int size_increment = 2; 
+					int size_increment = 1; 
 					int iteration_number = 0; 
-					int max_passes = 1; 
+					int max_passes = 2; 
 
 					finalContoursImage = unchangedImage.clone();
 					while (0<1) {
@@ -4400,7 +4401,7 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 						//	linearizeContour(contours[c], 2.25, 7);
 						//}
 
-						size_t count = ConductOverlapEliminationEx(contours, local_contours, true, size_increment);
+						size_t count = ConductOverlapEliminationEx(contours, local_contours, max_scale_factor, true, size_increment);
 
 						if (count == 0) {
 							contours.resize(1);
