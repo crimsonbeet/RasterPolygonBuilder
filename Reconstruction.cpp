@@ -2060,9 +2060,9 @@ void lowpassFilterContour(const std::vector<Point_<T>>& aux/*in*/, std::vector<P
 
 template<typename T>
 void filterContour(std::vector<Point_<T>>& contour, std::vector<Point2d>& shocks) {
-	double* l_fir_h = fir_h5;
-	double l_fir_h_gain = fir_h_gain5;
-	const int NFilter = ARRAY_NUM_ELEMENTS(fir_h5);
+	double* l_fir_h = fir_h6;
+	double l_fir_h_gain = fir_h_gain6;
+	const int NFilter = ARRAY_NUM_ELEMENTS(fir_h6);
 	const int NFilter2 = NFilter/2;
 
 
@@ -2133,21 +2133,37 @@ void filterContour(std::vector<Point_<T>>& contour, std::vector<Point2d>& shocks
 
 			cv::calcCovarMatrix(futureMovements, Q, maux = Mat(), CovarFlags::COVAR_NORMAL | CovarFlags::COVAR_ROWS);
 			//ostr << "Q(0,0):" << Q(0, 0) << " Q(1,0):" << Q(1, 0) << " Q(0,1):" << Q(0, 1) << " Q(1,1):" << Q(1, 1) << std::endl;
-			Q(0, 1) = 0;
-			Q(1, 0) = 0;
+			//Q(0, 1) = 0;
+			//Q(1, 0) = 0;
 
 			Zet += Q;
 			//ostr << "Zet(0,0):" << Zet(0, 0) << " Zet(1,0):" << Zet(1, 0) << " Zet(0,1):" << Zet(0, 1) << " Zet(1,1):" << Zet(1, 1) << std::endl;
 
 			cv::calcCovarMatrix(pastMeasurements, R, maux = Mat(), CovarFlags::COVAR_NORMAL | CovarFlags::COVAR_ROWS);
 			//ostr << "R(0,0):" << R(0, 0) << " R(1,0):" << R(1, 0) << " R(0,1):" << R(0, 1) << " R(1,1):" << R(1, 1) << std::endl;
-			R(0, 1) = 0;
-			R(1, 0) = 0;
+			//R(0, 1) = 0;
+			//R(1, 0) = 0;
 
 			cv::invert(Zet + R, X, DECOMP_SVD);
 			K = Zet * X;
 			//ostr << "X(0,0):" << X(0, 0) << " X(1,0):" << X(1, 0) << " X(0,1):" << X(0, 1) << " X(1,1):" << X(1, 1) << std::endl;
 			//ostr << "K(0,0):" << K(0, 0) << " K(1,0):" << K(1, 0) << " K(0,1):" << K(0, 1) << " K(1,1):" << K(1, 1) << std::endl;
+			double max_kval = 1;
+			for (int i = 0; i < 2; ++i) {
+				for (int j = 0; j < 2; ++j) {
+					auto kval = std::abs(K(i, j));
+					if (kval > max_kval) {
+						max_kval = kval;
+					}
+				}
+			}
+			if (max_kval > 1) {
+				for (int i = 0; i < 2; ++i) {
+					for (int j = 0; j < 2; ++j) {
+						K(i, j) /= max_kval;
+					}
+				}
+			}
 			K(0, 1) = 0;
 			K(1, 0) = 0;
 
@@ -3880,6 +3896,7 @@ std::string BuildMASLayerName(size_t cntrNumber, std::string *out_name = nullptr
 size_t ConductOverlapElimination(
 	const std::vector<std::vector<cv::Point2d>>& contours, 
 	std::vector<std::vector<cv::Point2d>>& final_contours,
+	bool preserve_scale_factor, // causes to bypass back-scaling and return the used scale_factor
 	long& scale_factor, //in/out, specifies what scale factor to use
 	bool conduct_size = false, 
 	int size_increment = -1, 
@@ -3904,7 +3921,7 @@ size_t ConductOverlapElimination(
 
 		MASLayerCreateDBStorage(layer_name.c_str(), scale_factor);
 
-		const double s_mult = 1 << scale_factor;
+		const double s_mult = (int)(1 << scale_factor);
 
 		_sAlong x;
 		_sAlong y;
@@ -3921,14 +3938,14 @@ size_t ConductOverlapElimination(
 		bool rc;
 
 		if (cntrNmbr == 1) {
-			rc = MASEvaluate1(MAS_OverlapElim, layer_name.c_str(), out_name.c_str()/*"out"*/);
+			rc = MASEvaluate1(MAS_OverlapElim, layer_name.c_str(), out_name.c_str()/*"out"*/, preserve_scale_factor);
 			cl = out_name.c_str();
 		}
 		else {
 			rc = MASEvaluate1(MAS_OverlapElim, layer_name.c_str());
 			if (rc) {
 				const char* layers[] = { cl.c_str()/*"out"*/, layer_name.c_str() };
-				MASEvaluate2(MAS_Or, layers, 2, out_name.c_str()/*"out"*/);
+				MASEvaluate2(MAS_Or, layers, 2, out_name.c_str()/*"out"*/, preserve_scale_factor);
 				cl = out_name.c_str();
 			}
 		}
@@ -3946,11 +3963,11 @@ size_t ConductOverlapElimination(
 
 	bool ok = true; 
 	if (size_increment != 0) {
-		ok = MASSize(cl.c_str()/*"out"*/, "out", size_increment);
+		ok = MASSize(cl.c_str()/*"out"*/, "out", size_increment, preserve_scale_factor);
 		if (ok) {
 			cl = "out";
 			if (!conduct_size) {
-				ok = MASSize("out", "out", -size_increment);
+				ok = MASSize("out", "out", -size_increment, preserve_scale_factor);
 			}
 		}
 		else 			
@@ -3979,7 +3996,7 @@ size_t ConductOverlapElimination(
 			std::vector<Point2d>& contour = final_contours[count++];
 			contour.resize(nPoints);
 
-			const double s_mult = 1.0 / (1 << s_factor);
+			const double s_mult = 1.0 / (double)(1 << s_factor);
 
 			long j = 0;
 			while (j < nPoints) {
@@ -3997,10 +4014,12 @@ size_t ConductOverlapElimination(
 }
 
 size_t ConductOverlapEliminationEx(const std::vector<std::vector<cv::Point2d>>& contours, std::vector<std::vector<cv::Point2d>>& final_contours, 
+	bool preserve_scale_factor, // causes to bypass back-scaling and return the used scale_factor
 	long& scale_factor, // in/out. specifies what power of 2 to use to get coordinates in integers
-	bool conduct_size = false, int size_increment = -1) {
+	bool conduct_size = false, 
+	int size_increment = -1) {
 
-	size_t count = ConductOverlapElimination(contours, final_contours, scale_factor, conduct_size, size_increment, true);
+	size_t count = ConductOverlapElimination(contours, final_contours, preserve_scale_factor, scale_factor, conduct_size, size_increment, true);
 	if (count == 0) {
 		size_t j = 0; 
 		std::vector<std::vector<cv::Point2d>> aux(contours.size());
@@ -4022,7 +4041,7 @@ size_t ConductOverlapEliminationEx(const std::vector<std::vector<cv::Point2d>>& 
 			}
 		}
 		if (size_increment) {
-			count = ConductOverlapElimination(aux, final_contours, scale_factor, conduct_size, size_increment);
+			count = ConductOverlapElimination(aux, final_contours, preserve_scale_factor, scale_factor, conduct_size, size_increment);
 		}
 		else {
 			count = j;
@@ -4235,7 +4254,7 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 						}
 					}
 
-					size_t count = ConductOverlapEliminationEx(contours, final_contours, max_scale_factor, false, 0);
+					size_t count = ConductOverlapEliminationEx(contours, final_contours, false, max_scale_factor, false, 0);
 					if (count == 0) {
 						final_contours = contours;
 					}
@@ -4401,7 +4420,7 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 						//	linearizeContour(contours[c], 2.25, 7);
 						//}
 
-						size_t count = ConductOverlapEliminationEx(contours, local_contours, max_scale_factor, true, size_increment);
+						size_t count = ConductOverlapEliminationEx(contours, local_contours, false, max_scale_factor, true, size_increment);
 
 						if (count == 0) {
 							contours.resize(1);
