@@ -2102,6 +2102,8 @@ void filterContour(std::vector<Point_<T>>& contour, std::vector<Point2d>& shocks
 
 	Mat_<double> futureMovements((int)NFilter2, 2);
 
+	double max_kval = 1;
+
 	for (int k = 0, m = NFilter2; k < N + NFilter2; ++k, ++m) {
 		Point2d point(contour[m % N]);
 		Point2d shock; 
@@ -2148,7 +2150,6 @@ void filterContour(std::vector<Point_<T>>& contour, std::vector<Point2d>& shocks
 			K = Zet * X;
 			//ostr << "X(0,0):" << X(0, 0) << " X(1,0):" << X(1, 0) << " X(0,1):" << X(0, 1) << " X(1,1):" << X(1, 1) << std::endl;
 			//ostr << "K(0,0):" << K(0, 0) << " K(1,0):" << K(1, 0) << " K(0,1):" << K(0, 1) << " K(1,1):" << K(1, 1) << std::endl;
-			double max_kval = 1;
 			for (int i = 0; i < 2; ++i) {
 				for (int j = 0; j < 2; ++j) {
 					auto kval = std::abs(K(i, j));
@@ -2163,6 +2164,12 @@ void filterContour(std::vector<Point_<T>>& contour, std::vector<Point2d>& shocks
 						K(i, j) /= max_kval;
 					}
 				}
+
+				//max_kval -= 0.1;
+				//if (max_kval < 1) {
+				//	max_kval = 1;
+				//}
+				max_kval = 1;
 			}
 			K(0, 1) = 0;
 			K(1, 0) = 0;
@@ -3921,7 +3928,7 @@ size_t ConductOverlapElimination(
 
 		MASLayerCreateDBStorage(layer_name.c_str(), scale_factor);
 
-		const double s_mult = (int)(1 << scale_factor);
+		const double s_mult = (long)(1L << scale_factor);
 
 		_sAlong x;
 		_sAlong y;
@@ -3996,7 +4003,7 @@ size_t ConductOverlapElimination(
 			std::vector<Point2d>& contour = final_contours[count++];
 			contour.resize(nPoints);
 
-			const double s_mult = 1.0 / (double)(1 << s_factor);
+			const double s_mult = 1.0 / (double)(1L << s_factor);
 
 			long j = 0;
 			while (j < nPoints) {
@@ -4380,7 +4387,7 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 					int pass_number = 0;
 					int size_increment = 1; 
 					int iteration_number = 0; 
-					int max_passes = 2; 
+					int max_passes = 3; 
 
 					finalContoursImage = unchangedImage.clone();
 					while (0<1) {
