@@ -2021,42 +2021,42 @@ static double fir_h_lowpass7 = 1;
 
 
 
-template<typename T>
-void lowpassFilterContour(const std::vector<Point_<T>>& aux/*in*/, std::vector<Point_<T>>& contour) {
-	double* l_fir_h = fir_h7;
-	double l_fir_h_gain = fir_h_gain7;
-	const int NFilter = ARRAY_NUM_ELEMENTS(fir_h7);
-	const int NFilter2 = NFilter / 2;
-
-	if (contour.size() != aux.size()) {
-		contour.resize(aux.size()); 
-	}
-
-	const int L = (int)contour.size();
-	const int N = (contour[0] == contour[L - 1]) ? (L - 1) : L;
-
-	for (int k = 0, m = NFilter2; k < N; ++k, ++m) {
-		Point2d point(0, 0);
-		for (int j = 0, i = k + NFilter - 1; j < NFilter; ++j, --i) {
-			point += Point2d(aux[i % N]) * l_fir_h[j];
-		}
-		point.x /= l_fir_h_gain;
-		point.y /= l_fir_h_gain;
-
-		if (T(1 + 0.1) == T(1)) {
-			contour[m % N].x = (T)(point.x + 0.49999);
-			contour[m % N].y = (T)(point.y + 0.49999);
-		}
-		else {
-			contour[m % N].x = (T)(point.x);
-			contour[m % N].y = (T)(point.y);
-		}
-	}
-
-	if (L > N) {
-		contour[N] = contour[0];
-	}
-}
+//template<typename T>
+//void lowpassFilterContour(const std::vector<Point_<T>>& aux/*in*/, std::vector<Point_<T>>& contour) {
+//	double* l_fir_h = fir_h7;
+//	double l_fir_h_gain = fir_h_gain7;
+//	const int NFilter = ARRAY_NUM_ELEMENTS(fir_h7);
+//	const int NFilter2 = NFilter / 2;
+//
+//	if (contour.size() != aux.size()) {
+//		contour.resize(aux.size()); 
+//	}
+//
+//	const int L = (int)contour.size();
+//	const int N = (contour[0] == contour[L - 1]) ? (L - 1) : L;
+//
+//	for (int k = 0, m = NFilter2; k < N; ++k, ++m) {
+//		Point2d point(0, 0);
+//		for (int j = 0, i = k + NFilter - 1; j < NFilter; ++j, --i) {
+//			point += Point2d(aux[i % N]) * l_fir_h[j];
+//		}
+//		point.x /= l_fir_h_gain;
+//		point.y /= l_fir_h_gain;
+//
+//		if (T(1 + 0.1) == T(1)) {
+//			contour[m % N].x = (T)(point.x + 0.49999);
+//			contour[m % N].y = (T)(point.y + 0.49999);
+//		}
+//		else {
+//			contour[m % N].x = (T)(point.x);
+//			contour[m % N].y = (T)(point.y);
+//		}
+//	}
+//
+//	if (L > N) {
+//		contour[N] = contour[0];
+//	}
+//}
 
 template<typename T>
 void filterContour(std::vector<Point_<T>>& contour, std::vector<Point2d>& shocks) {
@@ -2218,114 +2218,113 @@ void filterContour(std::vector<Point_<T>>& contour, std::vector<Point2d>& shocks
 		aux_shocks[N] = aux_shocks[0];
 	}
 
-	//lowpassFilterContour(aux, contour);
 	contour.swap(aux); 
 	shocks.swap(aux_shocks); 
 }
 
-template<typename T>
-void filterContour2(std::vector<Point_<T>>& contour) {
-	double* l_fir_h = fir_h5;
-	double l_fir_h_gain = fir_h_gain5;
-	const int NFilter = ARRAY_NUM_ELEMENTS(fir_h5);
-	const int NFilter2 = NFilter / 2;
-
-
-	const int L = (int)contour.size();
-	const int N = (contour[0] == contour[L - 1]) ? (L - 1) : L;
-
-	std::vector<Point_<T>> aux(L);
-
-	Mat_<double> Zet(2, 2);  // movement variance
-	Zet(0, 0) = 0;
-	Zet(1, 1) = 0;
-	Zet(0, 1) = 0;
-	Zet(1, 0) = 0;
-
-	for (int k = 0, m = NFilter2; k < N; ++k, ++m) {
-		// movement: apply FIR filter. 
-		// calculated point is in the center of filter's transfer function. 
-		// NFilter/2 future points, and NFilter/2 past points. 
-
-		Mat_<double> futurePoints((int)NFilter2, 2);
-
-		Point2d point(0, 0);
-		for (int j = 0, i = k + NFilter - 1; j < NFilter; ++j, --i) {
-			point += Point2d(contour[i % N]) * l_fir_h[j];
-			if (j < NFilter2) {
-				futurePoints(j, 0) = contour[i % N].x;
-				futurePoints(j, 1) = contour[i % N].y;
-			}
-		}
-		point.x /= l_fir_h_gain;
-		point.y /= l_fir_h_gain;
-
-		Point2d shock = Point2d(contour[m % N]) - point;
-
-		Zet(0, 0) += pow(shock.x, 2);// / NFilter2;
-		Zet(1, 1) += pow(shock.y, 2);// / NFilter2;
-
-		std::ostringstream ostr;
-		ostr << "Zet(0,0):" << Zet(0, 0) << " Zet(1,0):" << Zet(1, 0) << " Zet(0,1):" << Zet(0, 1) << " Zet(1,1):" << Zet(1, 1) << std::endl;
-
-		// measurement: calculate variance of NFilter/2 future points -> R
-		if (m >= (NFilter - 1)) {
-			Mat_<double> maux;
-			Mat_<double> R;
-			calcCovarMatrix(futurePoints, R, maux = Mat(), CV_COVAR_NORMAL | CV_COVAR_ROWS);
-			ostr << "R(0,0):" << R(0, 0) << " R(1,0):" << R(1, 0) << " R(0,1):" << R(0, 1) << " R(1,1):" << R(1, 1) << std::endl;
-
-			Mat_<double> X(2, 2);
-			invert(Zet + R, X);
-			ostr << "X(0,0):" << X(0, 0) << " X(1,0):" << X(1, 0) << " X(0,1):" << X(0, 1) << " X(1,1):" << X(1, 1) << std::endl;
-
-			Mat_<double> K(2, 2);
-			K = Zet * X;
-			ostr << "K(0,0):" << K(0, 0) << " K(1,0):" << K(1, 0) << " K(0,1):" << K(0, 1) << " K(1,1):" << K(1, 1) << std::endl;
-			K(0, 1) = 0;
-			K(1, 0) = 0;
-
-			Mat_<double> Z(2, 1);
-			Z(0, 0) = contour[m % N].x - point.x;
-			Z(1, 0) = contour[m % N].y - point.y;
-			ostr << "Z(0,0):" << Z(0, 0) << " Z(1,0):" << Z(1, 0) << std::endl;
-
-			Z = K * Z;
-			ostr << "Z(0,0):" << Z(0, 0) << " Z(1,0):" << Z(1, 0) << std::endl;
-
-			point.x -= Z(0, 0);
-			point.y -= Z(1, 0);
-
-			Mat_<double> I(2, 2);
-			I(0, 0) = 1;
-			I(1, 1) = 1;
-			ostr << "I(0,0):" << I(0, 0) << " I(1,0):" << I(1, 0) << " I(0,1):" << I(0, 1) << " I(1,1):" << I(1, 1) << std::endl;
-
-			Zet = (I - K) * Zet;
-			ostr << "Zet(0,0):" << Zet(0, 0) << " Zet(1,0):" << Zet(1, 0) << " Zet(0,1):" << Zet(0, 1) << " Zet(1,1):" << Zet(1, 1) << std::endl;
-			ostr << std::endl;
-		}
-
-		printf("%s", ostr.str().c_str());
-
-
-		if (T(1 + 0.1) == T(1)) {
-			aux[m % N].x = (T)(point.x + 0.49999);
-			aux[m % N].y = (T)(point.y + 0.49999);
-		}
-		else {
-			aux[m % N].x = (T)(point.x);
-			aux[m % N].y = (T)(point.y);
-		}
-
-	}
-
-	if (L > N) {
-		aux[N] = aux[0];
-	}
-
-	contour.swap(aux);
-}
+//template<typename T>
+//void filterContour2(std::vector<Point_<T>>& contour) {
+//	double* l_fir_h = fir_h5;
+//	double l_fir_h_gain = fir_h_gain5;
+//	const int NFilter = ARRAY_NUM_ELEMENTS(fir_h5);
+//	const int NFilter2 = NFilter / 2;
+//
+//
+//	const int L = (int)contour.size();
+//	const int N = (contour[0] == contour[L - 1]) ? (L - 1) : L;
+//
+//	std::vector<Point_<T>> aux(L);
+//
+//	Mat_<double> Zet(2, 2);  // movement variance
+//	Zet(0, 0) = 0;
+//	Zet(1, 1) = 0;
+//	Zet(0, 1) = 0;
+//	Zet(1, 0) = 0;
+//
+//	for (int k = 0, m = NFilter2; k < N; ++k, ++m) {
+//		// movement: apply FIR filter. 
+//		// calculated point is in the center of filter's transfer function. 
+//		// NFilter/2 future points, and NFilter/2 past points. 
+//
+//		Mat_<double> futurePoints((int)NFilter2, 2);
+//
+//		Point2d point(0, 0);
+//		for (int j = 0, i = k + NFilter - 1; j < NFilter; ++j, --i) {
+//			point += Point2d(contour[i % N]) * l_fir_h[j];
+//			if (j < NFilter2) {
+//				futurePoints(j, 0) = contour[i % N].x;
+//				futurePoints(j, 1) = contour[i % N].y;
+//			}
+//		}
+//		point.x /= l_fir_h_gain;
+//		point.y /= l_fir_h_gain;
+//
+//		Point2d shock = Point2d(contour[m % N]) - point;
+//
+//		Zet(0, 0) += pow(shock.x, 2);// / NFilter2;
+//		Zet(1, 1) += pow(shock.y, 2);// / NFilter2;
+//
+//		std::ostringstream ostr;
+//		ostr << "Zet(0,0):" << Zet(0, 0) << " Zet(1,0):" << Zet(1, 0) << " Zet(0,1):" << Zet(0, 1) << " Zet(1,1):" << Zet(1, 1) << std::endl;
+//
+//		// measurement: calculate variance of NFilter/2 future points -> R
+//		if (m >= (NFilter - 1)) {
+//			Mat_<double> maux;
+//			Mat_<double> R;
+//			calcCovarMatrix(futurePoints, R, maux = Mat(), CV_COVAR_NORMAL | CV_COVAR_ROWS);
+//			ostr << "R(0,0):" << R(0, 0) << " R(1,0):" << R(1, 0) << " R(0,1):" << R(0, 1) << " R(1,1):" << R(1, 1) << std::endl;
+//
+//			Mat_<double> X(2, 2);
+//			invert(Zet + R, X);
+//			ostr << "X(0,0):" << X(0, 0) << " X(1,0):" << X(1, 0) << " X(0,1):" << X(0, 1) << " X(1,1):" << X(1, 1) << std::endl;
+//
+//			Mat_<double> K(2, 2);
+//			K = Zet * X;
+//			ostr << "K(0,0):" << K(0, 0) << " K(1,0):" << K(1, 0) << " K(0,1):" << K(0, 1) << " K(1,1):" << K(1, 1) << std::endl;
+//			K(0, 1) = 0;
+//			K(1, 0) = 0;
+//
+//			Mat_<double> Z(2, 1);
+//			Z(0, 0) = contour[m % N].x - point.x;
+//			Z(1, 0) = contour[m % N].y - point.y;
+//			ostr << "Z(0,0):" << Z(0, 0) << " Z(1,0):" << Z(1, 0) << std::endl;
+//
+//			Z = K * Z;
+//			ostr << "Z(0,0):" << Z(0, 0) << " Z(1,0):" << Z(1, 0) << std::endl;
+//
+//			point.x -= Z(0, 0);
+//			point.y -= Z(1, 0);
+//
+//			Mat_<double> I(2, 2);
+//			I(0, 0) = 1;
+//			I(1, 1) = 1;
+//			ostr << "I(0,0):" << I(0, 0) << " I(1,0):" << I(1, 0) << " I(0,1):" << I(0, 1) << " I(1,1):" << I(1, 1) << std::endl;
+//
+//			Zet = (I - K) * Zet;
+//			ostr << "Zet(0,0):" << Zet(0, 0) << " Zet(1,0):" << Zet(1, 0) << " Zet(0,1):" << Zet(0, 1) << " Zet(1,1):" << Zet(1, 1) << std::endl;
+//			ostr << std::endl;
+//		}
+//
+//		printf("%s", ostr.str().c_str());
+//
+//
+//		if (T(1 + 0.1) == T(1)) {
+//			aux[m % N].x = (T)(point.x + 0.49999);
+//			aux[m % N].y = (T)(point.y + 0.49999);
+//		}
+//		else {
+//			aux[m % N].x = (T)(point.x);
+//			aux[m % N].y = (T)(point.y);
+//		}
+//
+//	}
+//
+//	if (L > N) {
+//		aux[N] = aux[0];
+//	}
+//
+//	contour.swap(aux);
+//}
 
 template<typename T>
 void smoothContour(std::vector<Point_<T>>& contour) {
@@ -2353,46 +2352,46 @@ void smoothContour(std::vector<Point_<T>>& contour) {
 	}
 }
 
-template<typename T>
-void smoothContour2(std::vector<Point_<T>>& contour) {
-	const int L = (int)contour.size(); 
-	const int N = (contour[0] == contour[L - 1])? (L - 1): L;
-	for(int j = 0, k = N - 1, k1 = N - 2, k2 = N - 3, m = 1, m1 = 2, m2 = 3; j < N; ++j, ++k, ++k1, ++k2, ++m, ++m1, ++m2) {
-		k = k % N; 
-		m = m % N; 
-		k1 = k1 % N;
-		m1 = m1 % N;
-		k2 = k2 % N;
-		m2 = m2 % N;
-
-		Point2d point(contour[j]); 
-		if (L > 11) {
-			point += Point2d(contour[k] + contour[m] + contour[k1] + contour[m1] + contour[k2] + contour[m2]);
-			point *= 1.0 / 7.0;
-		}
-		else
-		if (L > 9) {
-			point += Point2d(contour[k] + contour[m] + contour[k1] + contour[m1]);
-			point *= 1.0 / 5.0;
-		}
-		else {
-			point += Point2d(contour[k] + contour[m]);
-			point *= 1.0 / 3.0;
-		}
-
-		if(T(1 + 0.1) == T(1)) {
-			contour[j].x = (T)(point.x + 0.49999);
-			contour[j].y = (T)(point.y + 0.49999);
-		}
-		else {
-			contour[j].x = (T)(point.x);
-			contour[j].y = (T)(point.y);
-		}
-	}
-	if(L > N) {
-		contour[N] = contour[0]; 
-	}
-}
+//template<typename T>
+//void smoothContour2(std::vector<Point_<T>>& contour) {
+//	const int L = (int)contour.size(); 
+//	const int N = (contour[0] == contour[L - 1])? (L - 1): L;
+//	for(int j = 0, k = N - 1, k1 = N - 2, k2 = N - 3, m = 1, m1 = 2, m2 = 3; j < N; ++j, ++k, ++k1, ++k2, ++m, ++m1, ++m2) {
+//		k = k % N; 
+//		m = m % N; 
+//		k1 = k1 % N;
+//		m1 = m1 % N;
+//		k2 = k2 % N;
+//		m2 = m2 % N;
+//
+//		Point2d point(contour[j]); 
+//		if (L > 11) {
+//			point += Point2d(contour[k] + contour[m] + contour[k1] + contour[m1] + contour[k2] + contour[m2]);
+//			point *= 1.0 / 7.0;
+//		}
+//		else
+//		if (L > 9) {
+//			point += Point2d(contour[k] + contour[m] + contour[k1] + contour[m1]);
+//			point *= 1.0 / 5.0;
+//		}
+//		else {
+//			point += Point2d(contour[k] + contour[m]);
+//			point *= 1.0 / 3.0;
+//		}
+//
+//		if(T(1 + 0.1) == T(1)) {
+//			contour[j].x = (T)(point.x + 0.49999);
+//			contour[j].y = (T)(point.y + 0.49999);
+//		}
+//		else {
+//			contour[j].x = (T)(point.x);
+//			contour[j].y = (T)(point.y);
+//		}
+//	}
+//	if(L > N) {
+//		contour[N] = contour[0]; 
+//	}
+//}
 
 template<typename T>
 void projectContour(std::vector<Point_<T>>& contour) {
@@ -3907,7 +3906,7 @@ size_t ConductOverlapElimination(
 	long& scale_factor, //in/out, specifies what scale factor to use
 	bool conduct_size = false, 
 	int size_increment = -1, 
-	bool logProblematic = false) {
+	bool log_graph = false) {
 
 	if (contours.size() == 0) {
 		return 0; 
@@ -3928,7 +3927,7 @@ size_t ConductOverlapElimination(
 
 		MASLayerCreateDBStorage(layer_name.c_str(), scale_factor);
 
-		const double s_mult = (long)(1L << scale_factor);
+		const double s_mult = ((size_t)1) << scale_factor;
 
 		_sAlong x;
 		_sAlong y;
@@ -3945,21 +3944,15 @@ size_t ConductOverlapElimination(
 		bool rc;
 
 		if (cntrNmbr == 1) {
-			rc = MASEvaluate1(MAS_OverlapElim, layer_name.c_str(), out_name.c_str()/*"out"*/, preserve_scale_factor);
+			rc = MASEvaluate1(MAS_OverlapElim, layer_name.c_str(), out_name.c_str()/*"out"*/, log_graph, preserve_scale_factor);
 			cl = out_name.c_str();
 		}
 		else {
-			rc = MASEvaluate1(MAS_OverlapElim, layer_name.c_str());
+			rc = MASEvaluate1(MAS_OverlapElim, layer_name.c_str(), out_name.c_str()/*"out"*/, log_graph, preserve_scale_factor);
 			if (rc) {
-				const char* layers[] = { cl.c_str()/*"out"*/, layer_name.c_str() };
-				MASEvaluate2(MAS_Or, layers, 2, out_name.c_str()/*"out"*/, preserve_scale_factor);
+				const char* layers[] = { cl.c_str(), out_name.c_str() };
+				MASEvaluate2(MAS_Or, layers, 2, out_name.c_str()/*"out"*/, log_graph, preserve_scale_factor);
 				cl = out_name.c_str();
-			}
-		}
-
-		if (!rc) {
-			if (logProblematic) {
-				MASLogLayer(layer_name.c_str());
 			}
 		}
 	}
@@ -3970,16 +3963,12 @@ size_t ConductOverlapElimination(
 
 	bool ok = true; 
 	if (size_increment != 0) {
-		ok = MASSize(cl.c_str()/*"out"*/, "out", size_increment, preserve_scale_factor);
+		ok = MASSize(cl.c_str()/*"out"*/, "out", size_increment, log_graph, preserve_scale_factor);
 		if (ok) {
 			cl = "out";
 			if (!conduct_size) {
-				ok = MASSize("out", "out", -size_increment, preserve_scale_factor);
+				ok = MASSize("out", "out", -size_increment, log_graph, preserve_scale_factor);
 			}
-		}
-		else 			
-		if (logProblematic) {
-			MASLogLayer(cl.c_str());
 		}
 	}
 
@@ -4003,7 +3992,7 @@ size_t ConductOverlapElimination(
 			std::vector<Point2d>& contour = final_contours[count++];
 			contour.resize(nPoints);
 
-			const double s_mult = 1.0 / (double)(1L << s_factor);
+			const double s_mult = 1.0 / (double)(((size_t)1) << s_factor);
 
 			long j = 0;
 			while (j < nPoints) {
@@ -4024,9 +4013,10 @@ size_t ConductOverlapEliminationEx(const std::vector<std::vector<cv::Point2d>>& 
 	bool preserve_scale_factor, // causes to bypass back-scaling and return the used scale_factor
 	long& scale_factor, // in/out. specifies what power of 2 to use to get coordinates in integers
 	bool conduct_size = false, 
-	int size_increment = -1) {
+	int size_increment = -1,
+	bool log_graph = false) {
 
-	size_t count = ConductOverlapElimination(contours, final_contours, preserve_scale_factor, scale_factor, conduct_size, size_increment, true);
+	size_t count = ConductOverlapElimination(contours, final_contours, preserve_scale_factor, scale_factor, conduct_size, size_increment, log_graph);
 	if (count == 0) {
 		size_t j = 0; 
 		std::vector<std::vector<cv::Point2d>> aux(contours.size());
@@ -4261,7 +4251,7 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 						}
 					}
 
-					size_t count = ConductOverlapEliminationEx(contours, final_contours, false, max_scale_factor, false, 0);
+					size_t count = ConductOverlapEliminationEx(contours, final_contours, max_scale_factor != 0, max_scale_factor, false, 0);
 					if (count == 0) {
 						final_contours = contours;
 					}
@@ -4389,6 +4379,8 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 					int iteration_number = 0; 
 					int max_passes = 3; 
 
+					max_scale_factor = 0;
+
 					finalContoursImage = unchangedImage.clone();
 					while (0<1) {
 						submitGraphics(finalContoursImage, true);
@@ -4423,11 +4415,13 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 						//Sleep(500);
 
-						//for (int c = 0; c < contours.size(); ++c) {
-						//	linearizeContour(contours[c], 2.25, 7);
-						//}
+						if (size_increment > 1) {
+							for (int c = 0; c < contours.size(); ++c) {
+								linearizeContour(contours[c], size_increment, 7);
+							}
+						}
 
-						size_t count = ConductOverlapEliminationEx(contours, local_contours, false, max_scale_factor, true, size_increment);
+						size_t count = ConductOverlapEliminationEx(contours, local_contours, false, max_scale_factor, true, size_increment, false);
 
 						if (count == 0) {
 							contours.resize(1);

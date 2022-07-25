@@ -1,7 +1,9 @@
 
 library(zoom)
 
-file_name <- "2022Apr7_223735_723_LoadFragment.csv"
+setwd("D:\\Projects\\RasterPolygonBuilder\\VSStatistics")
+
+file_name <- "2022Jul24_133417_197_Shapes.csv"
 
 max_col <- max(count.fields(file_name, sep = ','))
 col_names = paste0("V",seq_len(max_col))
