@@ -3,7 +3,7 @@ library(zoom)
 
 setwd("D:\\Projects\\RasterPolygonBuilder\\VSStatistics")
 
-file_name <- "2022Jul24_133417_197_Shapes.csv"
+file_name <- "2022Jul24_133417_402_out.csv"
 
 max_col <- max(count.fields(file_name, sep = ','))
 col_names = paste0("V",seq_len(max_col))
@@ -14,7 +14,7 @@ x <- size_segments[, seq(1, max_col, by=2)]
 y <- size_segments[, seq(2, max_col, by=2)]
 
 plot(0,0, xlim = range(x, na.rm=T), ylim = range(y, na.rm=T), type = "n")
-for(j in 1:nrow(size_segments)) { 
+for(j in 1:1) { 
 	do_expand <- FALSE
 	if(is.na(x[j,length(x[j,])])) {
 		x[j,length(x[j,])] = x[j, 1]
@@ -43,7 +43,7 @@ for(j in 1:nrow(size_segments)) {
 #lines(x1,y1, col="red")
 
 
-file_name <- "2022Apr7_223735_721_LoadFragment.csv"
+file_name <- "2022Jul24_133417_203_LoadmasterPhaseX.csv"
 
 max_col <- max(count.fields(file_name, sep = ','))
 col_names = paste0("V",seq_len(max_col))
@@ -75,7 +75,7 @@ for(j in 1:nrow(size_segments)) {
 }
 
 
-file_name <- "2022Apr8_05921_546_out.csv"
+file_name <- "2022Jul24_133417_219_out.csv"
 
 max_col <- max(count.fields(file_name, sep = ','))
 col_names = paste0("V",seq_len(max_col))
