@@ -4,6 +4,12 @@ library(zoom)
 setwd("D:\\Projects\\RasterPolygonBuilder\\VSStatistics")
 
 file_name <- "2022Jul24_133417_402_out.csv"
+file_name <- "2022Jul25_210130_485_LbBead_UnloadFailed.csv"
+file_name <- "2022Jul25_231839_249_LbBead_UnloadFailed.csv"
+file_name <- "2022Jul25_232609_770_LbBead_UnloadFailed.csv"
+file_name <- "2022Jul25_233310_353_LbBead_UnloadFailed.csv"
+file_name <- "2022Jul26_00314_313_LbBead_UnloadFailed.csv"
+file_name <- "2022Jul26_90609_960_LbBead_UnloadFailed.csv"
 
 max_col <- max(count.fields(file_name, sep = ','))
 col_names = paste0("V",seq_len(max_col))
