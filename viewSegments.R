@@ -10,6 +10,9 @@ file_name <- "2022Jul25_232609_770_LbBead_UnloadFailed.csv"
 file_name <- "2022Jul25_233310_353_LbBead_UnloadFailed.csv"
 file_name <- "2022Jul26_00314_313_LbBead_UnloadFailed.csv"
 file_name <- "2022Jul26_90609_960_LbBead_UnloadFailed.csv"
+file_name <- "2022Jul29_212552_057_out.csv"
+file_name <- "2022Jul29_214104_298_LoadFragment.csv"
+
 
 max_col <- max(count.fields(file_name, sep = ','))
 col_names = paste0("V",seq_len(max_col))
@@ -20,7 +23,7 @@ x <- size_segments[, seq(1, max_col, by=2)]
 y <- size_segments[, seq(2, max_col, by=2)]
 
 plot(0,0, xlim = range(x, na.rm=T), ylim = range(y, na.rm=T), type = "n")
-for(j in 1:1) { 
+for(j in 1:nrow(size_segments)) { 
 	do_expand <- FALSE
 	if(is.na(x[j,length(x[j,])])) {
 		x[j,length(x[j,])] = x[j, 1]
@@ -49,7 +52,7 @@ for(j in 1:1) {
 #lines(x1,y1, col="red")
 
 
-file_name <- "2022Jul24_133417_203_LoadmasterPhaseX.csv"
+file_name <- "2022Jul29_214121_714_LoadFragment.csv"
 
 max_col <- max(count.fields(file_name, sep = ','))
 col_names = paste0("V",seq_len(max_col))
@@ -81,7 +84,7 @@ for(j in 1:nrow(size_segments)) {
 }
 
 
-file_name <- "2022Jul24_133417_219_out.csv"
+file_name <- "2022Jul29_220557_858_contour_2out.csv"
 
 max_col <- max(count.fields(file_name, sep = ','))
 col_names = paste0("V",seq_len(max_col))

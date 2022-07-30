@@ -348,6 +348,7 @@ void OnMouseCallback(int event, int x, int y, int flags, void* userdata) {
 	*/
 
 	g_LoG_seedPoint.params = *params;
+	g_LoG_seedPoint.eventValue = event;
 	g_LoG_seedPoint.x = x;
 	g_LoG_seedPoint.y = y;
 

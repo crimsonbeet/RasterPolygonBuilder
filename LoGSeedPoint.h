@@ -15,6 +15,7 @@ struct MouseCallbackParameters {
 
 struct LoGSeedPoint {
 	MouseCallbackParameters params;
+	int eventValue = 0;
 	int x;
 	int y;
 };

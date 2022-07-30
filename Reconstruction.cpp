@@ -4421,7 +4421,7 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 							}
 						}
 
-						size_t count = ConductOverlapEliminationEx(contours, local_contours, false, max_scale_factor, true, size_increment, false);
+						size_t count = ConductOverlapEliminationEx(contours, local_contours, false, max_scale_factor, true, size_increment, g_LoG_seedPoint.eventValue == 3/*central button*/);
 
 						if (count == 0) {
 							contours.resize(1);
