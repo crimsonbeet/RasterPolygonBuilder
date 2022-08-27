@@ -53,29 +53,27 @@ void SquareImage_Likeness(Mat& image, uchar chIdeal[3]);
 
 
 ATLSMatrix<double> X_XXI_X;
+ATLSMatrix<double> NEG_X_XXI_X;
 
-void Prefetch_PolyspaceProjection(int sampleSize = 33) {
+void Prefetch_PolyspaceProjection(ATLSMatrix<double>& x_xxi_x, int sampleSize = 33, int sign = 1) {
 	ATLSMatrix<double> X;
-	X.SetDimensions(sampleSize, 3);
+	X.SetDimensions(sampleSize, 5);
 
-	double t = (2 * M_PI) / sampleSize;
+	double t = (M_PI / 2) / sampleSize;
 
 	for (int n = 0; n < sampleSize; ++n) {
 		X(n, 0) = 1;
-		//X(n, 1) = n - sampleSize / 2;
-		//X(n, 2) = sampleSize / 2 - n;
-		//X(n, 2) = pow(n, 1.5);
-		X(n, 1) = pow(sampleSize - n, 2.0);
-		X(n, 2) = pow(n, 2.0);
-		//X(n, 2) = sin(t * n) * sampleSize / 2;
-		//X(n, 2) = cos(t * n) * sampleSize / 2;
+		X(n, 1) = pow(sampleSize - n, pow(2.0, sign));
+		X(n, 2) = pow(n, pow(2.0, sign));
+		X(n, 3) = sin(t * n) *sampleSize / 2;
+		X(n, 4) = cos(t * n) *sampleSize / 2;
 	}
 
 	ATLSMatrix<double> aux; 
 
-	X_XXI_X.MTxMMultiply(X);
-	X_XXI_X.Inverse();
-	X_XXI_X.AxBTMultiply(aux.Multiply(X, X_XXI_X), X);
+	x_xxi_x.MTxMMultiply(X);
+	x_xxi_x.Inverse();
+	x_xxi_x.AxBTMultiply(aux.Multiply(X, x_xxi_x), X);
 }
 
 
@@ -2222,110 +2220,6 @@ void filterContour(std::vector<Point_<T>>& contour, std::vector<Point2d>& shocks
 	shocks.swap(aux_shocks); 
 }
 
-//template<typename T>
-//void filterContour2(std::vector<Point_<T>>& contour) {
-//	double* l_fir_h = fir_h5;
-//	double l_fir_h_gain = fir_h_gain5;
-//	const int NFilter = ARRAY_NUM_ELEMENTS(fir_h5);
-//	const int NFilter2 = NFilter / 2;
-//
-//
-//	const int L = (int)contour.size();
-//	const int N = (contour[0] == contour[L - 1]) ? (L - 1) : L;
-//
-//	std::vector<Point_<T>> aux(L);
-//
-//	Mat_<double> Zet(2, 2);  // movement variance
-//	Zet(0, 0) = 0;
-//	Zet(1, 1) = 0;
-//	Zet(0, 1) = 0;
-//	Zet(1, 0) = 0;
-//
-//	for (int k = 0, m = NFilter2; k < N; ++k, ++m) {
-//		// movement: apply FIR filter. 
-//		// calculated point is in the center of filter's transfer function. 
-//		// NFilter/2 future points, and NFilter/2 past points. 
-//
-//		Mat_<double> futurePoints((int)NFilter2, 2);
-//
-//		Point2d point(0, 0);
-//		for (int j = 0, i = k + NFilter - 1; j < NFilter; ++j, --i) {
-//			point += Point2d(contour[i % N]) * l_fir_h[j];
-//			if (j < NFilter2) {
-//				futurePoints(j, 0) = contour[i % N].x;
-//				futurePoints(j, 1) = contour[i % N].y;
-//			}
-//		}
-//		point.x /= l_fir_h_gain;
-//		point.y /= l_fir_h_gain;
-//
-//		Point2d shock = Point2d(contour[m % N]) - point;
-//
-//		Zet(0, 0) += pow(shock.x, 2);// / NFilter2;
-//		Zet(1, 1) += pow(shock.y, 2);// / NFilter2;
-//
-//		std::ostringstream ostr;
-//		ostr << "Zet(0,0):" << Zet(0, 0) << " Zet(1,0):" << Zet(1, 0) << " Zet(0,1):" << Zet(0, 1) << " Zet(1,1):" << Zet(1, 1) << std::endl;
-//
-//		// measurement: calculate variance of NFilter/2 future points -> R
-//		if (m >= (NFilter - 1)) {
-//			Mat_<double> maux;
-//			Mat_<double> R;
-//			calcCovarMatrix(futurePoints, R, maux = Mat(), CV_COVAR_NORMAL | CV_COVAR_ROWS);
-//			ostr << "R(0,0):" << R(0, 0) << " R(1,0):" << R(1, 0) << " R(0,1):" << R(0, 1) << " R(1,1):" << R(1, 1) << std::endl;
-//
-//			Mat_<double> X(2, 2);
-//			invert(Zet + R, X);
-//			ostr << "X(0,0):" << X(0, 0) << " X(1,0):" << X(1, 0) << " X(0,1):" << X(0, 1) << " X(1,1):" << X(1, 1) << std::endl;
-//
-//			Mat_<double> K(2, 2);
-//			K = Zet * X;
-//			ostr << "K(0,0):" << K(0, 0) << " K(1,0):" << K(1, 0) << " K(0,1):" << K(0, 1) << " K(1,1):" << K(1, 1) << std::endl;
-//			K(0, 1) = 0;
-//			K(1, 0) = 0;
-//
-//			Mat_<double> Z(2, 1);
-//			Z(0, 0) = contour[m % N].x - point.x;
-//			Z(1, 0) = contour[m % N].y - point.y;
-//			ostr << "Z(0,0):" << Z(0, 0) << " Z(1,0):" << Z(1, 0) << std::endl;
-//
-//			Z = K * Z;
-//			ostr << "Z(0,0):" << Z(0, 0) << " Z(1,0):" << Z(1, 0) << std::endl;
-//
-//			point.x -= Z(0, 0);
-//			point.y -= Z(1, 0);
-//
-//			Mat_<double> I(2, 2);
-//			I(0, 0) = 1;
-//			I(1, 1) = 1;
-//			ostr << "I(0,0):" << I(0, 0) << " I(1,0):" << I(1, 0) << " I(0,1):" << I(0, 1) << " I(1,1):" << I(1, 1) << std::endl;
-//
-//			Zet = (I - K) * Zet;
-//			ostr << "Zet(0,0):" << Zet(0, 0) << " Zet(1,0):" << Zet(1, 0) << " Zet(0,1):" << Zet(0, 1) << " Zet(1,1):" << Zet(1, 1) << std::endl;
-//			ostr << std::endl;
-//		}
-//
-//		printf("%s", ostr.str().c_str());
-//
-//
-//		if (T(1 + 0.1) == T(1)) {
-//			aux[m % N].x = (T)(point.x + 0.49999);
-//			aux[m % N].y = (T)(point.y + 0.49999);
-//		}
-//		else {
-//			aux[m % N].x = (T)(point.x);
-//			aux[m % N].y = (T)(point.y);
-//		}
-//
-//	}
-//
-//	if (L > N) {
-//		aux[N] = aux[0];
-//	}
-//
-//	contour.swap(aux);
-//}
-
 template<typename T>
 void smoothContour(std::vector<Point_<T>>& contour) {
 	for (int j = 1; j < contour.size(); ++j) {
@@ -2352,47 +2246,6 @@ void smoothContour(std::vector<Point_<T>>& contour) {
 	}
 }
 
-//template<typename T>
-//void smoothContour2(std::vector<Point_<T>>& contour) {
-//	const int L = (int)contour.size(); 
-//	const int N = (contour[0] == contour[L - 1])? (L - 1): L;
-//	for(int j = 0, k = N - 1, k1 = N - 2, k2 = N - 3, m = 1, m1 = 2, m2 = 3; j < N; ++j, ++k, ++k1, ++k2, ++m, ++m1, ++m2) {
-//		k = k % N; 
-//		m = m % N; 
-//		k1 = k1 % N;
-//		m1 = m1 % N;
-//		k2 = k2 % N;
-//		m2 = m2 % N;
-//
-//		Point2d point(contour[j]); 
-//		if (L > 11) {
-//			point += Point2d(contour[k] + contour[m] + contour[k1] + contour[m1] + contour[k2] + contour[m2]);
-//			point *= 1.0 / 7.0;
-//		}
-//		else
-//		if (L > 9) {
-//			point += Point2d(contour[k] + contour[m] + contour[k1] + contour[m1]);
-//			point *= 1.0 / 5.0;
-//		}
-//		else {
-//			point += Point2d(contour[k] + contour[m]);
-//			point *= 1.0 / 3.0;
-//		}
-//
-//		if(T(1 + 0.1) == T(1)) {
-//			contour[j].x = (T)(point.x + 0.49999);
-//			contour[j].y = (T)(point.y + 0.49999);
-//		}
-//		else {
-//			contour[j].x = (T)(point.x);
-//			contour[j].y = (T)(point.y);
-//		}
-//	}
-//	if(L > N) {
-//		contour[N] = contour[0]; 
-//	}
-//}
-
 template<typename T>
 void projectContour(std::vector<Point_<T>>& contour) {
 	smoothContour(contour);
@@ -2402,8 +2255,12 @@ void projectContour(std::vector<Point_<T>>& contour) {
 	}
 }
 
+
+
+
+
 template<typename T>
-void projectContour2(std::vector<Point_<T>>& contour) {
+void polyspaceProjection(std::vector<Point_<T>>& contour, std::vector<Point2d>& shocks) {
 	const size_t L = (int)contour.size();
 	const size_t N = (contour[0] == contour[L - 1]) ? (L - 1) : L;
 
@@ -2411,38 +2268,89 @@ void projectContour2(std::vector<Point_<T>>& contour) {
 	constexpr size_t M2 = M / 2;
 
 	if (X_XXI_X._a_dimension != M || X_XXI_X._b_dimension != M) {
-		Prefetch_PolyspaceProjection(M);
+		Prefetch_PolyspaceProjection(X_XXI_X, M, 1);
+		Prefetch_PolyspaceProjection(NEG_X_XXI_X, M, -1);
 	}
 
-	std::vector<Point_<T>> aux(contour.size());
+	std::vector<Point_<T>> aux(L);
+	std::vector<Point2d> aux_shocks(L);
 
 	for (size_t j = M2, k = M, c = 0; c < N; ++j, ++k, ++c) {
-		Point_<T>& point = aux[j % N];
-		point.x = point.y = 0;
+		Point2d shock[2];
 
+		Point2d point;
+
+		size_t jN = j % N;
+
+		Point2d pointOriginal = contour[jN];
+
+		point.x = point.y = 0;
 		for (size_t n = j - M2, c = 0; c < M; ++n, ++c) {
 			point.x += X_XXI_X(M2, c) * contour[n % N].x;
 			point.y += X_XXI_X(M2, c) * contour[n % N].y;
 		}
 
-		//for (size_t n = 0; n < M; ++n) {
-		//	Point2d& proj = prefetchProj[n];
-		//	point.x += proj.x;
-		//	point.y += proj.y;
-		//}
+		shock[0] = point - pointOriginal;
 
-		//size_t n = k % M; 
-		//size_t m = k % N;
-		//prefetchProj[n].x = X_XXI_X(M2, M-1) * contour[m].x;
-		//prefetchProj[n].y = X_XXI_X(M2, M-1) * contour[m].y;
+		point.x = point.y = 0;
+		for (size_t n = j - M2, c = 0; c < M; ++n, ++c) {
+			point.x += NEG_X_XXI_X(M2, c) * contour[n % N].x;
+			point.y += NEG_X_XXI_X(M2, c) * contour[n % N].y;
+		}
+
+		shock[1] = point - pointOriginal;
+
+		if (cv::norm(shock[0]) < cv::norm(shock[1])) {
+			point = shock[0] + pointOriginal;
+		}
+
+		if (T(1 + 0.1) == T(1)) {
+			aux[jN].x = (T)(point.x + 0.49999);
+			aux[jN].y = (T)(point.y + 0.49999);
+		}
+		else {
+			aux[jN].x = (T)(point.x);
+			aux[jN].y = (T)(point.y);
+		}
+
+		aux_shocks[jN] = Point2d(aux[jN]) - pointOriginal;
+	}
+
+	if (L > N) {
+		aux[N] = aux[0];
+		aux_shocks[N] = aux_shocks[0];
 	}
 
 	contour.swap(aux);
+	shocks.swap(aux_shocks);
+}
 
-	if (L > N) {
-		contour[N] = contour[0];
+
+template<typename T>
+void projectContour2(std::vector<Point_<T>>& contour) {
+
+	std::vector<Point2d> shocks[2];
+
+	std::vector<Point_<T>> contour_reversed(contour.crbegin(), contour.crend());
+
+	polyspaceProjection(contour, shocks[0]);
+	polyspaceProjection(contour_reversed, shocks[1]);
+
+	const size_t L = contour.size();
+	for (int j = 0; j < L; ++j) {
+		int k = L - j - 1;
+		if (cv::norm(shocks[0][j]) > cv::norm(shocks[1][k])) {
+			contour[j] = contour_reversed[k];
+		}
+	}
+
+	for (size_t c = contour.size(), nc = c - 1; c > nc && nc > 0; nc = contour.size()) {
+		c = nc;
+		linearizeContour(contour, 1, 7);
 	}
 }
+
+
 
 
 struct AContainingBox {
@@ -2671,7 +2579,7 @@ bool fitRectangleToPoints(const std::vector<Point>& contour, std::vector<Point>&
 	// 2. find line's equation for each group by building normal to principal direction. 
 
 	Point2d N2[4]; //normals
-	double D2[4]; //offsets
+	double D2[4]{}; //offsets
 
 	for(int n = 0; n < 4; ++n) {
 		std::vector<Point2f>& points = groups[n];
@@ -4375,9 +4283,9 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 
 					int pass_number = 0;
-					int size_increment = 1; 
+					int size_increment = 3; 
 					int iteration_number = 0; 
-					int max_passes = 3; 
+					int max_passes = 1; 
 
 					max_scale_factor = 0;
 
@@ -4415,11 +4323,11 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 						//Sleep(500);
 
-						if (size_increment > 1) {
-							for (int c = 0; c < contours.size(); ++c) {
-								linearizeContour(contours[c], size_increment, 7);
-							}
-						}
+						//if (size_increment > 1) {
+						//	for (int c = 0; c < contours.size(); ++c) {
+						//		linearizeContour(contours[c], size_increment, 7);
+						//	}
+						//}
 
 						size_t count = ConductOverlapEliminationEx(contours, local_contours, false, max_scale_factor, true, size_increment, g_LoG_seedPoint.eventValue == 3/*central button*/);
 
