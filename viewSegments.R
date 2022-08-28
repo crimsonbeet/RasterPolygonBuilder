@@ -55,10 +55,18 @@ file_name <- "2022Jul29_214104_298_LoadFragment.csv"
 plotPolygons("2022Aug26_185105_397_ClassifyBits0.csv", T, "blue")
 plotPolygons("2022Aug26_185105_398_ClassifyBits1.csv", F, "red")
 plotPolygons("2022Aug26_185105_399_ClassifyBits2.csv", F, "brown")
-plotPolygons("2022Aug26_185105_399_ClassifyBits4.csv", F, "purple")
+plotPolygons("2022Aug26_185105_399_ClassifyBits4.csv", T, "purple")
 plotPolygons("2022Aug26_185105_400_ClassifyBits8.csv", F, "magenta")
 plotPolygons("2022Aug26_185105_398_ClassifyBits18.csv", F, "aquamarine")
 plotPolygons("2022Aug26_185105_399_ClassifyBits24.csv", F, "black")
+
+plotPolygons("2022Aug26_214440_010_ClassifyBits18.csv", T, "blue")
+plotPolygons("2022Aug26_214440_010_ClassifyBits18.csv", F, "red")
+plotPolygons("2022Aug26_210631_110_ClassifyBits2.csv", F, "brown")
+plotPolygons("2022Aug26_185105_399_ClassifyBits4.csv", T, "purple")
+plotPolygons("2022Aug26_185105_400_ClassifyBits8.csv", F, "magenta")
+plotPolygons("2022Aug26_210631_109_ClassifyBits18.csv", F, "aquamarine")
+plotPolygons("2022Aug26_210631_110_ClassifyBits248.csv", F, "black")
 
 
 
