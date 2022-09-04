@@ -15,6 +15,56 @@ extern bool g_bTerminated;
 extern bool g_bRestart; 
 
 
+void RGB_TO_HSV(Vec<uchar, 3> rgb, double hsv[3]) {
+	BYTE chMax = rgb[0];
+	BYTE chMin = chMax;
+	std::for_each(&rgb[1], &rgb[2] + 1, [&chMax, &chMin](BYTE& ch) {
+		if (ch > chMax) {
+			chMax = ch;
+		}
+		if (ch < chMin) {
+			chMin = ch;
+		}
+	});
+
+	const double chMaxMin = (chMax - chMin);
+
+	double s = chMaxMin / (chMax == 0 ? 1 : chMax);
+
+	double rc = (chMax - rgb[0]) / chMaxMin;
+	double gc = (chMax - rgb[1]) / chMaxMin;
+	double bc = (chMax - rgb[2]) / chMaxMin;
+
+	double h;
+
+	if (rgb[0] == chMax) {
+		h = bc - gc; // color between yellow and magenta (red in the middle)
+	}
+	else
+	if (rgb[1] == chMax) {
+		h = 2 + rc - bc; // color between cyan and yellow (green in the middle)
+	}
+	else {
+		h = 4 + gc - rc; // color between magenta and cyan (blue in the middle)
+	}
+
+	h *= 60;
+	if (h < 0) {
+		h += 360;
+	}
+
+	hsv[0] = h;
+	hsv[1] = s;
+	hsv[2] = chMax;
+}
+
+double GetAngleDifferenceInGrads(double x, double y) {
+	double a1 = x - y;
+	double a2 = a1 > 0 ? a1 - 360 : 360 + a1;
+
+	return std::abs(a2) > std::abs(a1) ? a1 : a2;
+}
+
 
 void ConvertColoredImage2Mono(Mat& image, double chWeights[3], std::function<double(double)> convert) {
 	cv::Mat aux(image.size(), CV_16UC1);
@@ -31,6 +81,7 @@ void ConvertColoredImage2Mono(Mat& image, double chWeights[3], std::function<dou
 	}
 	image = aux.clone();
 }
+
 void StandardizeImage(Mat& image, double chWeights[3]) {
 	if (image.type() == CV_8UC3) {
 		ConvertColoredImage2Mono(image, chWeights, [](double ch) {
@@ -151,6 +202,71 @@ void BuildIdealChannels_Likeness(Mat& image, Point& pt, double chIdeal[3]) {
 	}
 }
 
+bool ConvertColoredImage2Mono_HSV_Likeness(Mat& image, double rgbIdeal[3], std::function<double(double)> convert) {
+	typedef Vec<uchar, 3> Vec3c;
+	cv::Mat aux(image.size(), CV_16UC1);
+	double hsvIdeal[3];
+	double hsvOriginal[3];
+	
+	Vec3c pixIdeal;
+	pixIdeal[0] = (uchar)(rgbIdeal[0] + 0.5);
+	pixIdeal[1] = (uchar)(rgbIdeal[1] + 0.5);
+	pixIdeal[2] = (uchar)(rgbIdeal[2] + 0.5);
+	
+	RGB_TO_HSV(pixIdeal, hsvIdeal);
+
+	double y_componentIdeal = rgbIdeal[0] * 0.3 + rgbIdeal[1] * 0.59 + rgbIdeal[2] * 0.11;
+
+	if (y_componentIdeal < 40) {
+		return false;
+	}
+	//if ((hsvIdeal[1] * hsvIdeal[2]) < 40) {
+	//	return false;
+	//}
+	for (int r = 0; r < aux.rows; ++r) {
+		for (int c = 0; c < aux.cols; ++c) {
+			Vec3c& pixOriginal = image.at<Vec3c>(r, c);
+			RGB_TO_HSV(pixOriginal, hsvOriginal);
+
+			double diff = std::abs(GetAngleDifferenceInGrads(hsvIdeal[0], hsvOriginal[0]));
+			if (diff > 90) {
+				diff = 90;
+			}
+
+			//double hueLikeness = 1 - std::abs(std::tan(3.14159265358979323846 * diff / 180));
+			//double likeness;
+			//if (hueLikeness < 0) {
+			//	likeness = 0;
+			//}
+			//else {
+			//	likeness = hueLikeness;
+
+			//	likeness *= std::min(hsvIdeal[1], hsvOriginal[1]) / std::max(hsvIdeal[1], hsvOriginal[1]);
+			//	likeness *= std::max(hsvIdeal[2], hsvOriginal[2]);
+			//}
+
+			//double hueLikeness = std::pow(1 - diff / 90, 3);
+			double hueLikeness = 1 - std::abs(std::tan(CV_PI * diff / 180));
+			double likeness;
+			if (hueLikeness < 0) {
+				likeness = 0;
+			}
+			else {
+				likeness = hueLikeness;
+
+				double y_componentOriginal = pixOriginal[0] * 0.3 + pixOriginal[1] * 0.59 + pixOriginal[2] * 0.11;
+
+				likeness *= std::min(y_componentIdeal, y_componentOriginal) / std::max(y_componentIdeal, y_componentOriginal);
+			}
+
+			aux.at<ushort>(r, c) = convert(likeness) + 0.5;
+		}
+	}
+	image = aux.clone();
+
+	return true;
+}
+
 void ConvertColoredImage2Mono_Likeness(Mat& image, double chIdeal[3], std::function<double(uchar)> convert) {
 	assert(image.type() == CV_8UC3);
 	cv::Mat aux(image.size(), CV_16UC1);
@@ -203,8 +319,22 @@ void ConvertColoredImage2Mono_FScore(Mat& image, uchar chIdeal[3], std::function
 }
 
 
+bool StandardizeImage_HSV_Likeness(Mat& image, double chIdeal[3]) {
+	if (image.type() == CV_8UC3) {
+		return ConvertColoredImage2Mono_HSV_Likeness(image, chIdeal, [](double ch) {
+			return std::min(ch * 256, 256.0 * 256.0);
+		});
+	}
+	if (image.type() != CV_16UC1) {
+		if (image.type() != CV_8UC1) {
+			image.clone().convertTo(image, CV_8UC1);
+		}
+		image.clone().convertTo(image, CV_16UC1);
+		image *= (size_t)256;
+	}
 
-
+	return true;
+}
 void StandardizeImage_Likeness(Mat& image, double chIdeal[3]) {
 	if (image.type() == CV_8UC3) {
 		ConvertColoredImage2Mono_Likeness(image, chIdeal, [](double ch) {

@@ -44,6 +44,7 @@ void BuildWeights_ByChannel(Mat& image, Point& pt, double weights_out[3]);
 
 
 void StandardizeImage_Likeness(Mat& image, double chIdeal[3]);
+bool StandardizeImage_HSV_Likeness(Mat& image, double chIdeal[3]);
 void SquareImage_Likeness(Mat& image, double chIdeal[3]);
 void BuildIdealChannels_Likeness(Mat& image, Point& pt, double chIdeal[3]);
 
@@ -1090,10 +1091,10 @@ void BlobLoG(std::vector<ABoxedblob>& blobs,
 	/*
 	 a bright background can make LoG fail, so a value > 21 * g_bytedepth_scalefactor makes it work in that situation.
 	*/
-	const double min_LoG_value = (7.0 / kncols) * (121.0 / 255.0) * image.at<unsigned short>((int)aSeed.y, (int)aSeed.x);
-	const double max_LoG_value = (23.0 / kncols) * (121.0 / 255.0) * image.at<unsigned short>((int)aSeed.y, (int)aSeed.x);
-	//const double min_LoG_value = (9.0 / kncols) * (121.0 / 255.0) * image.at<unsigned short>((int)aSeed.y, (int)aSeed.x);
-	//const double max_LoG_value = (21.0 / kncols) * (121.0 / 255.0) * image.at<unsigned short>((int)aSeed.y, (int)aSeed.x);
+	//const double min_LoG_value = (7.0 / kncols) * (121.0 / 255.0) * image.at<unsigned short>((int)aSeed.y, (int)aSeed.x);
+	//const double max_LoG_value = (23.0 / kncols) * (121.0 / 255.0) * image.at<unsigned short>((int)aSeed.y, (int)aSeed.x);
+	const double min_LoG_value = (9.0 / kncols) * (121.0 / 255.0) * image.at<unsigned short>((int)aSeed.y, (int)aSeed.x);
+	const double max_LoG_value = (21.0 / kncols) * (121.0 / 255.0) * image.at<unsigned short>((int)aSeed.y, (int)aSeed.x);
 
 	int min_max_rows[2] = {200, 200/*g_max_boxsize_pixels, g_max_boxsize_pixels*/};
 
@@ -4011,6 +4012,8 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 		if (image_isok) {
 
+			__int64 time_start = OSDayTimeInMilliseconds();
+
 			if (cv_image[0].cols == 0 || cv_image[1].cols == 0) {
 				continue;
 			}
@@ -4018,43 +4021,50 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 			cv_image[2] = cv_image[0].clone();
 			cv_image[3] = cv_image[1].clone();
 
-			__int64 time_start = OSDayTimeInMilliseconds();
+			double chWeights[3] = { 1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0 };
 
-			auto prepImages = [&cv_image](double chWeights[3]) {
+			auto prepImages = [&cv_image, &chWeights]() {
 				StandardizeImage(cv_image[0], chWeights);
 				SquareImage(cv_image[1], chWeights);
 			};
 
-			auto readyImages = [&cv_image, &cv_edges]() {
-				cv_image[0] = mat_invert2word(cv_image[0]);
-				normalize(cv_image[0].clone(), cv_image[0], 0, (size_t)256 * g_bytedepth_scalefactor, NORM_MINMAX, CV_16UC1, Mat());
+			auto readyImages = [&cv_image, &cv_edges](int window) {
+				normalize(cv_image[window].clone(), cv_image[window], 0, (size_t)256 * g_bytedepth_scalefactor, NORM_MINMAX, CV_16UC1, Mat());
 
-				cv_image[1] = mat_loginvert2byte(cv_image[1]);
-				normalize(cv_image[1].clone(), cv_image[1], 0, (size_t)256 * g_bytedepth_scalefactor, NORM_MINMAX, CV_16UC1, Mat());
+				medianBlur(cv_image[window].clone(), cv_image[window], 3);
 
-				medianBlur(cv_image[0].clone(), cv_image[0], 3);
-				medianBlur(cv_image[1].clone(), cv_image[1], 3);
+				Mat aux = cv_image[window];
+				AnisotropicDiffusion(aux, 7);
+				aux.convertTo(cv_image[window], CV_16UC1);
 
-				Mat aux0 = cv_image[0].clone();
-				AnisotropicDiffusion(cv_image[0], 10);
-				aux0.convertTo(cv_image[0], CV_16UC1);
-
-				Mat aux1 = cv_image[1].clone();
-				AnisotropicDiffusion(cv_image[1], 10);
-				aux1.convertTo(cv_image[1], CV_16UC1);
-
-				cv_edges[0] = cv_image[0].clone();
-				cv_edges[1] = cv_image[1].clone();
+				cv_edges[window] = cv_image[window].clone();
 			};
 
-			auto prepImages_Likeness = [&cv_image](double chIdeal[3], double chWeights[3]) {
+			auto prepImages_Likeness = [&cv_image, &chWeights](double chIdeal[3]) {
 				Mat aux2 = cv_image[2].clone();
-				StandardizeImage_Likeness(aux2, chIdeal);
-				cv_image[0] = aux2.clone();
 
-				Mat aux3 = cv_image[3].clone();
-				SquareImage(aux3, chWeights);
-				cv_image[1] = aux3.clone();
+				StandardizeImage_Likeness(aux2, chIdeal);
+				cv_image[0] = mat_invert2word(aux2);
+
+				cv_image[1] = cv_image[3].clone();
+				SquareImage(cv_image[1], chWeights);
+			};
+
+			auto prepImages_HSV_Likeness = [&cv_image, &chWeights](double chIdeal[3], int window) {
+				Mat aux = cv_image[2 + window].clone();
+				if (StandardizeImage_HSV_Likeness(aux, chIdeal)) {
+					cv_image[window] = mat_loginvert2word(aux);
+				}
+				else {
+					Mat aux = cv_image[2 + window].clone();
+					if (window == 0) {
+						StandardizeImage(aux, chWeights);
+					}
+					else {
+						SquareImage(aux, chWeights);
+					}
+					cv_image[window] = aux.clone();
+				}
 			};
 
 			auto readyImages_Likeness = [&cv_image, &cv_edges]() {
@@ -4082,10 +4092,13 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 
 
-			double chWeights[3] = { 1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0 };
-			prepImages(chWeights);
+			prepImages();
 
-			readyImages();
+			cv_image[0] = mat_invert2word(cv_image[0]);
+			readyImages(0);
+
+			cv_image[1] = mat_loginvert2byte(cv_image[1]);
+			readyImages(1);
 
 
 
@@ -4216,14 +4229,20 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 					int windowNumber = g_LoG_seedPoint.params.windowNumber - 1;
 
+					if (g_LoG_seedPoint.eventValue == 2/*right button*/) {
+						//BuildWeights_ByChannel(unchangedImage, pt, chWeights);
 
+						double chIdeal[3];
+						BuildIdealChannels_Likeness(unchangedImage, pt, chIdeal);
 
-					//double chIdeal[3];
-					//BuildIdealChannels_Likeness(unchangedImage, pt, chIdeal);
-					//BuildWeights_ByChannel(unchangedImage, pt, chWeights);
+						//prepImages_Likeness(chIdeal, chWeights);
+						//readyImages_Likeness();
 
-					//prepImages_Likeness(chIdeal, chWeights);
-					//readyImages_Likeness();
+						prepImages_HSV_Likeness(chIdeal, windowNumber);
+
+						cv_image[windowNumber] = mat_invert2word(cv_image[windowNumber]);
+						readyImages(windowNumber);
+					}
 
 					submitGraphics(unchangedImage);
 
@@ -4283,9 +4302,9 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 
 					int pass_number = 0;
-					int size_increment = 3; 
+					int size_increment = 1; 
 					int iteration_number = 0; 
-					int max_passes = 1; 
+					int max_passes = 3; 
 
 					max_scale_factor = 0;
 
