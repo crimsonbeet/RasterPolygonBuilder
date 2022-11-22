@@ -478,8 +478,8 @@ Mat mat_convert2byte(const Mat& src, const int bytedepth_scalefactor/* = g_byted
 template<typename T>
 inline Mat mat_loginvert2byte(const T *src_val, const cv::Size& src_size, const size_t row_step, const int bytedepth_scalefactor) { // returns CV_8UC1 matrix of log inverted values. 
 	const double scalefactor = 1.0 / bytedepth_scalefactor;
-	const double factor = 255.0 / approx_log2(256);
-	const const double log_255 = approx_log2(255);
+	const double factor = 256.0 / approx_log2(256);
+	const const double log_256 = approx_log2(256);
 	Mat dst(src_size, CV_8UC1);
 	uchar *val = (uchar*)dst.data;
 	char *buf = (char*)src_val;
@@ -491,7 +491,7 @@ inline Mat mat_loginvert2byte(const T *src_val, const cv::Size& src_size, const 
 				*val = 255;
 			}
 			else {
-				*val = (uchar)((log_255 - approx_log2(src_valt)) * factor);
+				*val = (uchar)((log_256 - approx_log2(src_valt)) * factor);
 			}
 		}
 	}
@@ -529,8 +529,8 @@ Mat mat_loginvert2byte(const Mat& src, const int bytedepth_scalefactor/* = g_byt
 template<typename T>
 inline Mat mat_loginvert2word(const T *src_val, const cv::Size& src_size, const size_t row_step, const int bytedepth_scalefactor) { // returns CV_16UC1 matrix of log inverted values. 
 	const double scalefactor = bytedepth_scalefactor;
-	const double factor = 65535.0 / approx_log2(65536);
-	const const double log_65535 = approx_log2(65535);
+	const double factor = 65536.0 / approx_log2(65536);
+	const const double log_65536 = approx_log2(65536);
 	Mat dst(src_size, CV_16UC1);
 	uint16_t *val = (uint16_t*)dst.data;
 	char *buf = (char*)src_val;
@@ -542,7 +542,7 @@ inline Mat mat_loginvert2word(const T *src_val, const cv::Size& src_size, const 
 				*val = 65535;
 			}
 			else {
-				*val = (uint16_t)((log_65535 - approx_log2(src_valt)) * factor);
+				*val = (uint16_t)((log_65536 - approx_log2(src_valt)) * factor);
 			}
 		}
 	}
@@ -4021,7 +4021,8 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 			cv_image[2] = cv_image[0].clone();
 			cv_image[3] = cv_image[1].clone();
 
-			double chWeights[3] = { 1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0 };
+			//double chWeights[3] = { 1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0 };
+			double chWeights[3] = { 0.3, 0.59, 0.11 };
 
 			auto prepImages = [&cv_image, &chWeights]() {
 				StandardizeImage(cv_image[0], chWeights);
@@ -4034,7 +4035,7 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 				medianBlur(cv_image[window].clone(), cv_image[window], 3);
 
 				Mat aux = cv_image[window];
-				AnisotropicDiffusion(aux, 7);
+				AnisotropicDiffusion(aux, 14);
 				aux.convertTo(cv_image[window], CV_16UC1);
 
 				cv_edges[window] = cv_image[window].clone();
@@ -4042,35 +4043,40 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 			auto prepImages_Likeness = [&cv_image, &chWeights](double chIdeal[3]) {
 				Mat aux2 = cv_image[2].clone();
-
 				StandardizeImage_Likeness(aux2, chIdeal);
 				cv_image[0] = mat_invert2word(aux2);
 
-				cv_image[1] = cv_image[3].clone();
-				SquareImage(cv_image[1], chWeights);
+				Mat aux3 = cv_image[3].clone();
+				SquareImage(aux3, chWeights);
+				cv_image[1] = mat_loginvert2byte(aux3);
 			};
 
 			auto prepImages_HSV_Likeness = [&cv_image, &chWeights](double chIdeal[3], int window) {
 				Mat aux = cv_image[2 + window].clone();
+				//Mat aux;
+				//normalize(cv_image[2 + window].clone(), aux, 16, 235, NORM_MINMAX, CV_8UC3, Mat());
+				//normalize(cv_image[2 + window].clone(), aux, 0, 256, NORM_MINMAX, CV_8UC3, Mat());
 				if (StandardizeImage_HSV_Likeness(aux, chIdeal)) {
+					//cv_image[window] = aux.clone();
 					cv_image[window] = mat_loginvert2word(aux);
+					cv_image[window] = mat_invert2word(cv_image[window]);
 				}
 				else {
 					Mat aux = cv_image[2 + window].clone();
 					if (window == 0) {
 						StandardizeImage(aux, chWeights);
+						cv_image[window] = mat_invert2word(aux);
 					}
 					else {
 						SquareImage(aux, chWeights);
+						cv_image[window] = mat_loginvert2byte(aux);
 					}
-					cv_image[window] = aux.clone();
 				}
 			};
 
 			auto readyImages_Likeness = [&cv_image, &cv_edges]() {
 				normalize(cv_image[0].clone(), cv_image[0], 0, (size_t)256 * g_bytedepth_scalefactor, NORM_MINMAX, CV_16UC1, Mat());
 
-				cv_image[1] = mat_loginvert2byte(cv_image[1]);
 				normalize(cv_image[1].clone(), cv_image[1], 0, (size_t)256 * g_bytedepth_scalefactor, NORM_MINMAX, CV_16UC1, Mat());
 
 				medianBlur(cv_image[0].clone(), cv_image[0], 3);
@@ -4239,8 +4245,6 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 						//readyImages_Likeness();
 
 						prepImages_HSV_Likeness(chIdeal, windowNumber);
-
-						cv_image[windowNumber] = mat_invert2word(cv_image[windowNumber]);
 						readyImages(windowNumber);
 					}
 

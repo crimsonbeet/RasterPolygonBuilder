@@ -215,7 +215,10 @@ bool ConvertColoredImage2Mono_HSV_Likeness(Mat& image, double rgbIdeal[3], std::
 	
 	RGB_TO_HSV(pixIdeal, hsvIdeal);
 
-	double y_componentIdeal = rgbIdeal[0] * 0.3 + rgbIdeal[1] * 0.59 + rgbIdeal[2] * 0.11;
+	const double saturationIdeal = hsvIdeal[1];
+
+	const double y_componentIdeal = rgbIdeal[0] * 0.299 + rgbIdeal[1] * 0.587 + rgbIdeal[2] * 0.114;
+	//const double y_componentIdeal = rgbIdeal[0] * 0.257 + rgbIdeal[1] * 0.504 + rgbIdeal[2] * 0.098 + 16;
 
 	if (y_componentIdeal < 40) {
 		return false;
@@ -245,20 +248,30 @@ bool ConvertColoredImage2Mono_HSV_Likeness(Mat& image, double rgbIdeal[3], std::
 			//	likeness *= std::max(hsvIdeal[2], hsvOriginal[2]);
 			//}
 
+			//const double tanThreshold = 1;
 			//double hueLikeness = std::pow(1 - diff / 90, 3);
-			double hueLikeness = 1 - std::abs(std::tan(CV_PI * diff / 180));
+
+			const double tanThreshold = 0.5;
+			double hueLikeness = tanThreshold - std::abs(std::tan(CV_PI * diff / 180));
+
 			double likeness;
 			if (hueLikeness < 0) {
 				likeness = 0;
 			}
 			else {
-				likeness = hueLikeness;
+				double saturationOriginal = hsvOriginal[1];
+				const double y_componentOriginal = pixOriginal[0] * 0.299 + pixOriginal[1] * 0.587 + pixOriginal[2] * 0.114;
+				//const double y_componentOriginal = pixOriginal[0] * 0.257 + pixOriginal[1] * 0.504 + pixOriginal[2] * 0.098 + 16;
 
-				double y_componentOriginal = pixOriginal[0] * 0.3 + pixOriginal[1] * 0.59 + pixOriginal[2] * 0.11;
+
+				likeness = hueLikeness / tanThreshold;
+
+				//likeness *= std::min(saturationIdeal, saturationOriginal) / std::max(saturationIdeal, saturationOriginal);
 
 				likeness *= std::min(y_componentIdeal, y_componentOriginal) / std::max(y_componentIdeal, y_componentOriginal);
 			}
 
+			//aux.at<ushort>(r, c) = convert(hsvOriginal[2] * likeness) + 0.5;
 			aux.at<ushort>(r, c) = convert(likeness) + 0.5;
 		}
 	}
