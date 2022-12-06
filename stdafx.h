@@ -1107,6 +1107,62 @@ bool DisplayReconstructionData(SPointsReconstructionCtl& reconstruction_ctl, SIm
 
 
 
+
+struct SVideoFrame {
+	int camera_index;
+
+	Mat cv_image;
+	uint64 timestamp;
+
+	SVideoFrame() {
+		camera_index = -1;
+		timestamp = 0;
+	}
+
+	SVideoFrame& operator=(const SVideoFrame& other) {
+		matCV_16UC1_memcpy(cv_image, other.cv_image);
+		camera_index = other.camera_index;
+		timestamp = other.timestamp;
+
+		return *this;
+	}
+};
+
+
+
+struct SStereoFrame {
+	wsi_gate gate;
+	SVideoFrame frames[2];
+
+	uint64 local_timestamp;
+	bool isActive;
+	SStereoFrame() {
+		local_timestamp = 0;
+		isActive = false;
+	}
+
+	SStereoFrame& operator=(const SStereoFrame& other) {
+		local_timestamp = other.local_timestamp;
+		isActive = other.isActive;
+		for (size_t j = 0; j < ARRAY_NUM_ELEMENTS(other.frames); ++j) {
+			frames[j] = other.frames[j];
+		}
+		return *this;
+	}
+};
+
+
+extern SStereoFrame g_lastwritten_sframe;
+
+
+
+
+
+
+
+
+
+
 template<typename T>
 VOID XmlSerialize_Generic(std::string& xml, T& data) {
 	IWsiSerializerBase& serializer = GetRootSerializer(&data);

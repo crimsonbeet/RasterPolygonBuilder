@@ -1,6 +1,6 @@
 
-#ifndef RtlsTether_wsiclassesH
-#define RtlsTether_wsiclassesH
+#ifndef XClasses_wsiclassesH
+#define XClasses_wsiclassesH
 
 #include "stdafx.h"
 
@@ -12,7 +12,7 @@
 #undef autocreateserialization_not_necessaryH
 #endif
 
-#define WSI_NAMESPACE XRtlsTether
+#define WSI_NAMESPACE XClasses
 
 
 
@@ -67,4 +67,4 @@ VSPrincipalDirection_FitLine* VSFitLine(VSPrincipalDirection_FitLine *obj);
 
 
 
-#endif //RtlsTether_wsiclassesH
+#endif //XClasses_wsiclassesH

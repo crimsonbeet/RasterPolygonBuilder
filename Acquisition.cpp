@@ -3,6 +3,8 @@
 #pragma comment(lib, "Winmm.lib")
 
 #include "XClasses.h"
+#include "XAndroidCamera.h"
+
 #include "XConfiguration.h"
 
 
@@ -504,6 +506,180 @@ uint64 EvaluateTimestampDifference(uint64 *timestamp, size_t nsize) {
 	}
 	return timestamp_max - timestamp_min;
 }
+
+
+
+
+void CopyStereoFrame(Mat& left, Mat& right, SStereoFrame* pframe, int64* time_received) {
+	// the following code copies the images from frames to the output matrices.
+	// the matrices get initalized if they do not match the dimensions. this should happen just one time. 
+	// the idea is to initialize the matrices once, and then re-use them after that. 
+	Mat* dst[2] = { &left, &right };
+	int idx[2] = { pframe->frames[0].camera_index == 0 ? 0 : 1, pframe->frames[0].camera_index == 0 ? 1 : 0 };
+	int j = 0;
+	for (auto dst : dst) {
+		matCV_16UC1_memcpy(*dst, pframe->frames[idx[j++]].cv_image);
+	}
+	if (time_received != NULL) {
+		*time_received = pframe->local_timestamp;
+	}
+}
+
+
+
+
+
+double g_frameRate[4]; // reported frame rate by the cameras. 
+double g_resultingFrameRate;
+
+
+wsi_gate g_rotatingbuf_gate;
+std::vector<SStereoFrame> g_rotating_buf;
+const size_t g_rotating_buf_size = 10;
+int g_nextwrite_inbuf;
+int g_nextread_inbuf;
+
+
+SStereoFrame g_lastwritten_sframe;
+
+
+extern HANDLE g_event_SFrameIsAvailable;
+
+
+SStereoFrame& NextWriteFrame() {
+	g_rotatingbuf_gate.lock();
+	if (g_rotating_buf.size() == 0) {
+		g_rotating_buf.resize(g_rotating_buf_size);
+	}
+	SStereoFrame& sframe = g_rotating_buf[g_nextwrite_inbuf++];
+	if (g_nextwrite_inbuf >= (int)g_rotating_buf.size()) {
+		g_nextwrite_inbuf = 0;
+	}
+	if (g_nextread_inbuf == g_nextwrite_inbuf) {
+		if (++g_nextread_inbuf >= (int)g_rotating_buf.size()) {
+			g_nextread_inbuf = 0;
+		}
+	}
+	sframe.gate.lock();
+	g_rotatingbuf_gate.unlock();
+
+	return sframe;
+}
+
+SStereoFrame* NextReadFrame() {
+	SStereoFrame* pframe = 0;
+
+	g_rotatingbuf_gate.lock();
+	if (g_rotating_buf.size() > 0 && g_nextread_inbuf != g_nextwrite_inbuf) {
+		pframe = &g_rotating_buf[g_nextread_inbuf++];
+		pframe->gate.lock();
+		if (g_nextread_inbuf >= (int)g_rotating_buf.size()) {
+			g_nextread_inbuf = 0;
+		}
+	}
+	g_rotatingbuf_gate.unlock();
+
+	return pframe;
+}
+
+
+
+
+/*
+Read the frame's buffer to the end and pick
+a frame that has images captured at smallest time-difference.
+The N controlls a minimum amount of frames to consider.
+*/
+bool GetImages(Mat& left, Mat& right, int64* time_received, const int N/*min_frames_2_consider*/, __int64 expiration) {
+	__int64 start_time = OSDayTimeInMilliseconds();
+
+	int count = 0;
+
+	int64 minimal_time_difference = std::numeric_limits<int64>::max();
+	SStereoFrame* pframe = NULL;
+	while (!g_bTerminated) {
+		if ((pframe = NextReadFrame()) == NULL) {
+			if (count >= N) {
+				break;
+			}
+			if (expiration) {
+				if ((OSDayTimeInMilliseconds() - start_time) > expiration) {
+					break;
+				}
+			}
+			if (g_event_SFrameIsAvailable != INVALID_HANDLE_VALUE && g_resultingFrameRate > 0) {
+				WaitForSingleObjectEx(g_event_SFrameIsAvailable, (1000 / (int)g_resultingFrameRate) + 1, TRUE);
+			}
+			else {
+				OSWait();
+			}
+			continue;
+		}
+		if (pframe->isActive) {
+			++count;
+		}
+
+		int64 time_difference = max(pframe->frames[0].timestamp, pframe->frames[1].timestamp) - min(pframe->frames[0].timestamp, pframe->frames[1].timestamp);
+		if (pframe->isActive && time_difference < minimal_time_difference) {
+			minimal_time_difference = time_difference;
+			CopyStereoFrame(left, right, pframe, time_received);
+			pframe->isActive = false;
+		}
+		pframe->gate.unlock();
+	}
+
+	bool ok = count > 0 && !left.empty() && !right.empty();
+	return ok;
+}
+
+
+bool GetLastImages(Mat& left, Mat& right, int64* time_received, __int64 expiration) {
+	__int64 start_time = OSDayTimeInMilliseconds();
+
+	int count = 0;
+
+	SStereoFrame* pframe = NULL;
+	while (!g_bTerminated) {
+		if (g_lastwritten_sframe.isActive) {
+			g_lastwritten_sframe.gate.lock();
+			if (g_lastwritten_sframe.isActive) {
+				CopyStereoFrame(left, right, &g_lastwritten_sframe, time_received);
+				g_lastwritten_sframe.isActive = false;
+				++count;
+			}
+			g_lastwritten_sframe.gate.unlock();
+		}
+		if (count > 0) {
+			break;
+		}
+		if (expiration) {
+			if ((OSDayTimeInMilliseconds() - start_time) > expiration) {
+				break;
+			}
+		}
+		if (g_event_SFrameIsAvailable != INVALID_HANDLE_VALUE && g_resultingFrameRate > 0) {
+			WaitForSingleObjectEx(g_event_SFrameIsAvailable, (1000 / (int)g_resultingFrameRate) + 1, TRUE);
+		}
+		else {
+			OSWait();
+		}
+	}
+
+	bool ok = count > 0 && !left.empty() && !right.empty();
+	return ok;
+}
+
+
+
+
+AndroidCameraRaw10Image* ProcvessRaw10Image(AndroidCameraRaw10Image* obj) {
+	uint8_t *ptr = obj->_buffers[0]._buffer.data();
+
+	return obj;
+}
+
+
+
 
 return_t __stdcall AcquireImages(LPVOID lp) {
 	std::cout << "Acquisition has started" << std::endl; 

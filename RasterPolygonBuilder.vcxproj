@@ -214,6 +214,7 @@
     <ClInclude Include="LoGSeedPoint.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="stdafx.h" />
+    <ClInclude Include="XAndroidCamera.h" />
     <ClInclude Include="XClasses.h" />
     <ClInclude Include="XConfiguration.h" />
   </ItemGroup>
