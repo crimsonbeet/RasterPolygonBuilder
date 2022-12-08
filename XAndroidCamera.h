@@ -145,6 +145,7 @@ END_WSI_SERIALIZATION_OBJECT()
 AUTOCREATE_WSI_SERIALIZATION_OBJECT(AndroidBayerFilterImage)
 
 AndroidBayerFilterImage* Process_BayerFilterImage(AndroidBayerFilterImage* obj);
+void Process_CameraImage(AndroidBayerFilterImage* obj);
 
 
 

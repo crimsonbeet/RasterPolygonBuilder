@@ -225,6 +225,7 @@
     <Image Include="Pumpkin.ico" />
   </ItemGroup>
   <ItemGroup>
+    <Text Include="Connection.txt" />
     <Text Include="FrameEdit.txt" />
     <Text Include="FrameMain.txt" />
     <Text Include="FrameReconstructedImage.txt" />

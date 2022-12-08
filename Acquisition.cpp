@@ -678,6 +678,11 @@ AndroidCameraRaw10Image* ProcvessRaw10Image(AndroidCameraRaw10Image* obj) {
 	return obj;
 }
 
+void Process_CameraImage(AndroidBayerFilterImage* obj) {
+
+}
+
+
 
 
 

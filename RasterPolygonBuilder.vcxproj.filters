@@ -83,6 +83,7 @@
     <Text Include="FrameStaticTexts.txt" />
     <Text Include="VSConfiguration.txt" />
     <Text Include="VSWorkConfiguration.txt" />
+    <Text Include="Connection.txt" />
   </ItemGroup>
   <ItemGroup>
     <None Include="cpp.hint" />

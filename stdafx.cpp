@@ -9,6 +9,8 @@
 
 #include "XConfiguration.h"
 #include "XClasses.h"
+#include "XAndroidCamera.h"
+
 #include "FrameWnd.h" 
 
 #include "OleDate.h" 

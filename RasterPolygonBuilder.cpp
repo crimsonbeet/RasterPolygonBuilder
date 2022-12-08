@@ -5,6 +5,8 @@
 
 #include "XConfiguration.h"
 #include "XClasses.h"
+#include "XAndroidCamera.h"
+
 
 #include "FrameMain.h"
 
@@ -34,6 +36,7 @@ const char ESC_KEY = 27;
 
 const char* g_path_vsconfiguration = ".\\VSWorkConfiguration.txt";
 const char* g_path_defaultvsconfiguration = "VSConfiguration.txt";
+const char* g_path_connectconfiguration = ".\\connection.txt";
 const char* g_path_calib_images_dir = ".\\nwpu_images\\";
 
 const char* g_path_calibrate_file = ".\\stereo_calibrate.xml";
@@ -785,6 +788,31 @@ void show_image(Mat& image, const std::string& window_name) {
 
 
 
+
+int g_ds7remoting_success;
+
+XRemotingSettings g_remoting_settings;
+std::unordered_map<std::string, XChangeableAddress> g_producer_settings;
+
+
+int Handle_XIPCObjectException(XIPCObjectException& excpt) {
+	int not_done = 1;
+
+	return not_done;
+}
+int Handle_LogEvent(const std::string& msg) {
+	return 0;
+}
+
+
+XFunctionType<XIPCObjectException, int> g_xipcexception_handler(Handle_XIPCObjectException);
+
+std::vector<api_handle> g_api_handles;
+
+
+
+
+
 int main() {
 	srand((unsigned)time(NULL));
 	std::mt19937 rand_gen(070764);
@@ -804,6 +832,36 @@ int main() {
 	if (VS_ReadConfiguration(g_configuration)) {
 		AcceptNewGlobalConfiguration(configuration/*out - local config*/, image_acquisition_ctl, &reconstruction_ctl);
 	}
+
+	std::string connectConfig = ReadTextFile(g_path_connectconfiguration);
+	if (connectConfig.size()) {
+		PIPCObjInterface ds7remoting = IPCObjectGetInterface();
+		if (ds7remoting) {
+			g_ds7remoting_success = ds7remoting->Initialize(connectConfig.c_str());
+
+			ds7remoting->GetSettings(g_remoting_settings);
+
+			if (g_remoting_settings._changeable_addresses.size()) {
+				for (auto& e : g_remoting_settings._changeable_addresses) {
+					g_producer_settings.insert(std::make_pair(e._name, e));
+				}
+			}
+		}
+	}
+	if (g_ds7remoting_success) {
+		PIPCObjInterface ds7remoting = IPCObjectGetInterface();
+		if (ds7remoting) {
+			ds7remoting->SetTraceLevel(1 | 2 | 4 | 8);
+
+			g_api_handles.push_back(SetCallback(Process_CameraImage));
+
+			ds7remoting->AddExceptionDelegate(&g_xipcexception_handler);
+			ds7remoting->JoinNetwork();
+
+			IPCSetLogDelegate(Handle_LogEvent);
+		}
+	}
+
 
 
 	HINSTANCE hInstance = GetModuleHandle(NULL);
