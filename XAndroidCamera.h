@@ -22,13 +22,11 @@
 
 
 struct AndroidBytesContainer {
-	std::vector<uint8_t> _buffer; // in
-	std::string _streamified;
+	std::vector<uint8_t> _buffer; // out
 };
 
 BEGIN_WSI_SERIALIZATION_OBJECT(AndroidBytesContainer)
 CONTAINS_FLAT_MEMBER(_buffer, B)
-CONTAINS_FLAT_MEMBER(_streamified, SB)
 END_WSI_SERIALIZATION_OBJECT()
 
 
@@ -53,26 +51,6 @@ CONTAINS_FLAT_MEMBER(_cameraId, Camera)
 CONTAINS_FLAT_MEMBER(_filterArrangment, F)
 END_WSI_SERIALIZATION_OBJECT()
 
-
-
-
-
-
-
-
-struct AndroidCameraRawImage : AndroidCameraImageMetadata {
-	AndroidBytesContainer _buffers[2]; // in
-};
-
-
-BEGIN_WSI_INHERITED_SERIALIZATION_OBJECT(AndroidCameraImageMetadata, AndroidCameraRawImage)
-CONTAINS_OBJECT_MEMBER(_buffers, C)
-END_WSI_SERIALIZATION_OBJECT()
-
-
-AUTOCREATE_WSI_SERIALIZATION_OBJECT(AndroidCameraRawImage)
-
-AndroidCameraRawImage* Process_RawImage(AndroidCameraRawImage* obj);
 
 
 
@@ -150,6 +128,32 @@ void Process_CameraImage(AndroidBayerFilterImage* obj);
 
 
 
+
+
+
+
+
+
+
+struct AndroidCameraJpegImage : AndroidCameraImageMetadata {
+    JpegImageContainer _cont;
+
+    void put_image(const uint8_t* image, const size_t N) {
+        _cont._ptr = image;
+        _cont._size = N;
+    }
+};
+
+
+BEGIN_WSI_INHERITED_SERIALIZATION_OBJECT(AndroidCameraImageMetadata, AndroidCameraJpegImage)
+    CONTAINS_FLAT_MEMBER(_cont, C)
+END_WSI_SERIALIZATION_OBJECT()
+
+
+AUTOCREATE_WSI_SERIALIZATION_OBJECT(AndroidCameraJpegImage)
+
+AndroidCameraJpegImage* Process_JpegImage(AndroidCameraJpegImage* obj);
+void Process_CameraJpegImage(AndroidCameraJpegImage* obj);
 
 
 

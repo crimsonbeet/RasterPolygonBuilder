@@ -141,7 +141,7 @@
       </SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>false</ConformanceMode>
-      <AdditionalIncludeDirectories>$(SolutionDir)..\XDS7\Include;$(SolutionDir)..\XDS7\KWindows;C:\opencv455\include;$(SolutionDir)..\Polymorpher\Mascot_2016\Mascot</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)..\XDS7\Include;$(SolutionDir)..\XDS7\KWindows;$(PYLON_DEV_DIR)\include;C:\opencv455\include;$(SolutionDir)..\Polymorpher\Mascot_2016\Mascot</AdditionalIncludeDirectories>
       <SupportJustMyCode>false</SupportJustMyCode>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <LanguageStandard>stdcpp20</LanguageStandard>
@@ -149,7 +149,7 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>$(SolutionDir)..\VisionSystem\opencv\build\lib\Debug;$(OutDir)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(SolutionDir)..\VisionSystem\opencv\build\lib\Debug;$(PYLON_DEV_DIR)\lib\x64;$(OutDir)</AdditionalLibraryDirectories>
     </Link>
     <CustomBuildStep>
       <Command>
@@ -168,7 +168,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>false</ConformanceMode>
-      <AdditionalIncludeDirectories>$(SolutionDir)..\XDS7\Include;$(SolutionDir)..\XDS7\KWindows;C:\opencv455\include;$(SolutionDir)..\Polymorpher\Mascot_2016\Mascot</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)..\XDS7\Include;$(SolutionDir)..\XDS7\KWindows;$(PYLON_DEV_DIR)\include;C:\opencv455\include;$(SolutionDir)..\Polymorpher\Mascot_2016\Mascot</AdditionalIncludeDirectories>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <Optimization>Disabled</Optimization>
       <LanguageStandard>stdcpp20</LanguageStandard>
@@ -191,6 +191,9 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Acquisition.cpp" />
+    <ClCompile Include="Calibration.cpp" />
+    <ClCompile Include="Cameras.cpp" />
+    <ClCompile Include="FrameCalibrationImages.cpp" />
     <ClCompile Include="FrameEdit.cpp" />
     <ClCompile Include="FrameMain.cpp" />
     <ClCompile Include="FrameReconstructedImage.cpp" />
@@ -208,6 +211,7 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="FrameCalibrationImages.h" />
     <ClInclude Include="FrameEdit.h" />
     <ClInclude Include="FrameMain.h" />
     <ClInclude Include="FrameReconstructedImage.h" />
@@ -226,6 +230,7 @@
   </ItemGroup>
   <ItemGroup>
     <Text Include="Connection.txt" />
+    <Text Include="FrameCalibrationImages.txt" />
     <Text Include="FrameEdit.txt" />
     <Text Include="FrameMain.txt" />
     <Text Include="FrameReconstructedImage.txt" />

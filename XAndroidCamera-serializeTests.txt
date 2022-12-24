@@ -1,0 +1,95 @@
+
+
+void ProcessRawImage(AndroidBayerFilterImage* obj) {
+    obj->_ok = obj->_image[0]._buffer.size() == obj->_image[1]._buffer.size();
+}
+
+
+
+//    const short smax = std::numeric_limits<short>::max();
+//    const short smin = std::numeric_limits<short>::min();
+////    //std::vector<short> test = {132,124,124,128,128,134,124,122,122,129,130,130,130,128,130,134,122,128,124,134,126,126,136,125,131,129,129,128,124,129,127,126,125,132,125,126,122,136,127,117,117,106};
+////    //std::vector<short> test = {91,93,92,97,92,93,97,90,95,97,95,91,90,95,90,92,92,95,90,90,88,90,89,87,91,95,94,96,96,95,99,95,97,96,98,96,96,95,95,95,91,93,100,103,105,75,73,183,200,183,191,185,179,190,207,203,199,195};
+//    std::vector<short> test = {117,124,111,109,321,304,314,301,311,293,316,316,298};
+////    //std::vector<short> test = {73,73,76,78,76,73,73,74,74,74,74,73,74,75,72,75,72,75,74,75,75,72,73,73,76,78,76,73,73,74,74,74,74,73,74,75,72,75,72,75,74,75};
+//    //std::vector<short> test = {531,515,468,311,247,237,173,101,73,73,76,smax,smin,78,76,smax,73,smin,73,smax,smin,smax,smin,smax,smin,74,74,74,74,73,74,100,smax,smin,75,72,75,72,75,74,75,75,72,73,73,76,78,76,73,73,74,74,74,74,73,74,75,72,75,72,75,74,75};
+////    std::vector<uint8_t> test_streamefied;
+//    std::string testStreamified;
+//    streamify(test.data(), test.size(), testStreamified);
+//    std::vector<short> test_buf;
+//    destreamify(testStreamified, test_buf, &test);
+
+
+
+
+
+//    int j = 0;
+//    std::string dataStreamified;
+////    streamifyNoAdaptation(data, inpLen, dataStreamified);
+//    streamify(data, inpLen, dataStreamified, 1);
+//
+//    AndroidBayerFilterImage obj;
+//
+//    size_t bufLen = inpLen / 2;
+//    std::vector<short> buffers[2];
+//    for(auto& buf: buffers) {
+//        buf.resize(bufLen);
+//    }
+//
+//    short* buffersData[2];
+//    for(auto& buf: buffers) {
+//        buffersData[j++] = buf.data();
+//    }
+//
+//    jshort* dataPos = data;
+//    jshort* dataEnd = data + inpLen;
+//    while (dataPos < dataEnd) {
+//        for (auto& buf : buffersData) {
+//            *buf++ = *dataPos++;
+//        }
+//    }
+//
+//
+//    j = 0;
+//    for(; j < 2; ++j) {
+//        dataStreamified.resize(0);
+//        streamify(buffers[j].data(), bufLen, dataStreamified, 1);
+//        destreamify(dataStreamified, obj._image[j]._buffer, &(buffers[j]));
+//    }
+
+
+
+
+
+
+
+
+//    ISTREAMWriter *pwriter = CWSIParser().create_writer();
+//
+//    std::string str;
+//    IWsiSerializerBase& serializer = GetRootSerializer(&obj);
+//    serializer(*pwriter, &obj, str);
+//    delete pwriter;
+//
+////    j = 0;
+////    for(; j < 2; ++j) {
+////        dataStreamified.resize(0);
+////        streamify(obj._image[j]._buffer.data(), obj._image[j]._buffer.size(), dataStreamified, 1);
+////        std::vector<int16_t> buffer;
+////        destreamify(dataStreamified.c_str(), dataStreamified.size(), buffer, &obj._image[j]._buffer);
+////    }
+//
+//
+//    IWSIMarshaller *pmarshaller = CreateIWSIMarshaller();
+//    IWsiSerializerBase *pserializer = GetRootSerializer((AndroidBayerFilterImage*)0).Create();
+//    IWsiConsumerBase *pcallback = CreateAPICallback(ProcessRawImage, pmarshaller, pserializer);
+////
+////    GetRootSerializer((SRtls2DLocation*)0).register_with(*pmarshaller);
+////
+//    CWSIParser parser;
+//    (*pmarshaller)(parser, str);
+//
+//    DestroyIWSIMarshaller(pmarshaller);
+
+
+

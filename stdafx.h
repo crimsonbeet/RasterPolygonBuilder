@@ -47,6 +47,18 @@
 
 using namespace cv;
 
+
+
+#include <pylon/PylonIncludes.h>
+#include <pylon/PylonGUI.h>
+//#include <pylon/gige/PylonGigEIncludes.h>
+//#include <pylon/gige/ActionTriggerConfiguration.h>
+#include <pylon/usb/PylonUsbIncludes.h>
+
+using namespace Pylon;
+
+
+
 #if defined(_DEBUG)
 #pragma comment(lib, "opencv_core455d.lib")
 #pragma comment(lib, "opencv_imgproc455d.lib")
@@ -149,6 +161,7 @@ extern const char ESC_KEY;
 extern const char *g_path_vsconfiguration;
 extern const char *g_path_defaultvsconfiguration;
 extern const char *g_path_calib_images_dir;
+extern const char* g_path_nwpu_images_dir;
 
 extern const char *g_path_calibrate_file;
 extern const char *g_path_calibrate_file_backup;
@@ -158,6 +171,7 @@ extern const char *g_path_features_file_backup;
 
 extern bool g_bTerminated;
 extern bool g_bUserTerminated;
+extern bool g_bCamerasAreOk;
 extern bool g_bCalibrationExists;
 extern bool g_bRestart;
 
@@ -533,6 +547,73 @@ template<typename T> struct ATLSMatrix : public ATLSMatrixvar<T> {
 
 
 
+
+
+extern Size g_boardSize;
+extern Size g_boardQuadSize;
+extern bool g_images_are_collected;
+
+class ClassBlobDetector : public SimpleBlobDetector {
+	bool _chess_board;
+	bool _invert_binary;
+	double _min_confidence;
+	int _min_threshold;
+
+	struct CV_EXPORTS Center
+	{
+		Point2d location;
+		double radius;
+		double confidence;
+	};
+
+	void findBlobs(const Mat& image, const Mat& binaryImage, std::vector<Center>& centers) const;
+	void detectImpl(const Mat& image, std::vector<KeyPoint>& keypoints, const Mat& mask = Mat()) const;
+
+	Ptr<SimpleBlobDetector> This = nullptr;
+
+public:
+	Params params;
+
+	virtual void detect(InputArray image, CV_OUT std::vector<KeyPoint>& keypoints, InputArray mask = noArray()) {
+		detectImpl(image.getMat(), keypoints);
+	}
+	ClassBlobDetector(double min_confidence = 0.3, size_t min_repeatability = 2, int min_threshold = 120, bool invert_binary = false, bool chess_board = false) {
+
+		_min_confidence = min_confidence;
+		_min_threshold = min_threshold;
+		_chess_board = chess_board;
+		_invert_binary = false; // use blobColor instead
+		
+		if (invert_binary) {
+			params.blobColor = 255;
+		}
+
+		params.minDistBetweenBlobs = 2;
+		params.minThreshold = _min_threshold;
+		params.maxThreshold = 250 * g_bytedepth_scalefactor;
+		params.minRepeatability = min_repeatability/*5*/; // 2015-09-15 Set repeatabilty to 3 because of difficulties with capturing images
+		params.minArea = 50;
+		params.maxArea = 50000;
+		params.filterByColor = false; 
+		//params.filterByArea = false; 
+		//params.filterByInertia = false;
+		//params.filterByCircularity = false; 
+		//params.filterByConvexity = false;
+		params.minInertiaRatio = 0.05;
+		params.minCircularity = 0.3f;
+		params.minConvexity = 0.3f;
+
+		This = create(params);
+	}
+};
+
+
+
+
+
+
+
+
 struct ABox {
 	int x[2];
 	int y[2];
@@ -690,7 +771,7 @@ struct ReconstructedPoint: public Matx41d {
 
 
 
-
+constexpr auto NUMBER_OF_CAMERAS = 1;
 
 /*
 A structure to pass (by pointer) to image acquisition thread,
@@ -701,35 +782,54 @@ struct SImageAcquisitionCtl {
 	int _status; // -1 - unknown, 0 - not running, 1 - running. 
 	bool _terminated; // a command to stop execution.
 
-	int _imagepoints_status; 
+	CBaslerUsbInstantCameraArray* _cameras = nullptr;
 
-	bool _use_frame_trigger;
+	int _imagepoints_status;
+
+	bool _use_trigger;
 	bool _trigger_source_software;
 
 	bool _images_from_files; 
 	bool _save_all_calibration_images; 
+	bool _two_step_calibration;
 	bool _pattern_is_chessBoard;
 	bool _pattern_is_gridOfSquares;
 	bool _pattern_is_whiteOnBlack; 
 
-	int _image_height; 
+	int _image_height;
+
+	std::string _camera_serialnumbers[NUMBER_OF_CAMERAS];
+
+	int _exposure_times[NUMBER_OF_CAMERAS];
 
 	int _12bit_format;
 
 	SImageAcquisitionCtl(): _status(0), _imagepoints_status(0), _terminated(0) {
-		_use_frame_trigger = true;
+		_cameras = &_basler_cameras;
+
+		_use_trigger = true;
 		_trigger_source_software = true; 
 
 		_images_from_files = false; 
 		_save_all_calibration_images = false;
-		_pattern_is_gridOfSquares = true; 
+		_two_step_calibration = true;
+		_pattern_is_gridOfSquares = true;
 		_pattern_is_whiteOnBlack = true; 
 		_pattern_is_chessBoard = false; 
 
 		_image_height = 483; 
 
 		_12bit_format = 0; 
+
+		_camera_serialnumbers[0] = "40269283"; // defines what cameras to use
+		//_camera_serialnumbers[1] = "24513580";
+
+		_exposure_times[0] = 0;
+		//_exposure_times[1] = 0;
 	}
+
+private:
+	CBaslerUsbInstantCameraArray _basler_cameras = CBaslerUsbInstantCameraArray(NUMBER_OF_CAMERAS); // defines number of cameras to use
 };
 
 
@@ -824,6 +924,7 @@ extern const size_t g_rotating_buf_size;
 
 void matCV_16UC1_memcpy(Mat& dst, const Mat& src);
 void matCV_8UC1_memcpy(Mat& dst, const Mat& src);
+void matCV_8UC3_memcpy(Mat& dst, const Mat& src);
 
 template<typename T1>
 void mat_minMax(Mat& m, T1 minMax[2]); 
@@ -1099,7 +1200,8 @@ void launch_reconstruction(SImageAcquisitionCtl& image_acquisition_ctl, SPointsR
 bool DisplayReconstructionData(SPointsReconstructionCtl& reconstruction_ctl, SImageAcquisitionCtl& image_acquisition_ctl, std::string imagewin_names[4], int& time_average);
 
 
-
+void InitializeCameras(SImageAcquisitionCtl& ctl);
+void OpenCameras(SImageAcquisitionCtl& ctl);
 
 
 
@@ -1120,7 +1222,12 @@ struct SVideoFrame {
 	}
 
 	SVideoFrame& operator=(const SVideoFrame& other) {
-		matCV_16UC1_memcpy(cv_image, other.cv_image);
+		if (!other.cv_image.empty()) {
+			matCV_8UC3_memcpy(cv_image, other.cv_image);
+		}
+		else {
+			cv_image = Mat();
+		}
 		camera_index = other.camera_index;
 		timestamp = other.timestamp;
 
@@ -1132,7 +1239,7 @@ struct SVideoFrame {
 
 struct SStereoFrame {
 	wsi_gate gate;
-	SVideoFrame frames[2];
+	SVideoFrame frames[NUMBER_OF_CAMERAS];
 
 	uint64 local_timestamp;
 	bool isActive;
@@ -1154,6 +1261,12 @@ struct SStereoFrame {
 
 extern SStereoFrame g_lastwritten_sframe;
 
+bool GetImages(Mat& left, Mat& right, int64_t* time_received = NULL, const int N = 0/*min_frames_2_consider*/, int64_t expiration = 3000);
+bool GetImagesEx(Mat& left, Mat& right, int64_t* time_spread, const int N/*min_frames_2_consider*/);
+/*
+Copies from g_lastwritten_sframe. Waits if neccessary.
+*/
+bool GetLastImages(Mat& left, Mat& right, int64_t* time_received = NULL, int64_t expiration = 3000);
 
 
 

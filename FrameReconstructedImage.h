@@ -5,6 +5,7 @@
 #include "XConfiguration.h" 
 
 #include "FrameEdit.h" 
+#include "FrameCalibrationImages.h"
 
 
 
@@ -41,6 +42,7 @@ public:
 	void ONDisconnect(); 
 
 	FrameEdit *_pframeedit; 
+	FrameCalibrationImages* _pframecalibration;
 
 	bool _ready; 
 }; 

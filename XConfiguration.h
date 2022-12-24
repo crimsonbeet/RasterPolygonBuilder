@@ -43,7 +43,8 @@ struct StereoConfiguration {
 
 	double _percent_maxintensity; // is used only in BlobDetector() that implements center of gravity (not used)
 
-	int _calib_auto_image_capture; 
+	int _calib_auto_image_capture;
+	int _two_step_calibration;
 	int _images_from_files; // is used for re-calibration from previously captured images in "Calibimages" folder. 
 	int _save_all_calibration_images;
 
@@ -68,7 +69,7 @@ struct StereoConfiguration {
 	int _pca_changeOfSign; // tracks the fact of change of sign of computed principal direction. 
 
 	Mat_<double> _principalDirection; // tracks principal direction; it is a work variable 
-	__int64 _principalDirection_expiration_time; // defines time limit of validity of _principalDirection; it is a work variable 
+	int64_t _principalDirection_expiration_time; // defines time limit of validity of _principalDirection; it is a work variable 
 	double _principalDirection_reprojerr;
 
 	int _use_center_of_gravity; 
@@ -76,6 +77,7 @@ struct StereoConfiguration {
 	int _supervised_LoG = 1; 
 
 	int _frames_from_files; // is used to input from files the frames for reconstruction; value of >1 means read the first image and then re-use it in N threads; -N means read from cameras with N threads. 
+	int _evaluate_contours = 0;
 
 	int _visual_diagnostics; 
 
@@ -111,7 +113,8 @@ struct StereoConfiguration {
 		_percent_maxintensity = 1.0 / 3.0; 
 
 		_calib_auto_image_capture = 1; 
-		_images_from_files = 0; 
+		_two_step_calibration = 1;
+		_images_from_files = 0;
 		_save_all_calibration_images = 0;
 
 		_max_boxsize_pixels = 25; 
@@ -198,7 +201,8 @@ private:
 		_percent_maxintensity = other._percent_maxintensity; 
 
 		_calib_auto_image_capture = other._calib_auto_image_capture;
-		_images_from_files = other._images_from_files; 
+		_two_step_calibration = other._two_step_calibration;
+		_images_from_files = other._images_from_files;
 		_save_all_calibration_images = other._save_all_calibration_images; 
 
 		_calib_min_confidence = other._calib_min_confidence; 
@@ -252,6 +256,7 @@ CONTAINS_FLAT_MEMBER(_image_height, ImageHeight)
 CONTAINS_FLAT_MEMBER(_12bit_format, Format12Bit)
 CONTAINS_FLAT_MEMBER(_percent_maxintensity, PercentMaxintensity) // is used only in BlobDetector() that implements center of gravity (not used)
 CONTAINS_FLAT_MEMBER(_calib_auto_image_capture, CalibAutoImageCapture)
+CONTAINS_FLAT_MEMBER(_two_step_calibration, TwoStepCalibration)
 CONTAINS_FLAT_MEMBER(_images_from_files, ImagesFromFiles)
 CONTAINS_FLAT_MEMBER(_save_all_calibration_images, SaveAll)
 CONTAINS_FLAT_MEMBER(_calib_min_confidence, CalibMinConfidence)
@@ -270,6 +275,7 @@ CONTAINS_FLAT_MEMBER(_use_ellipse_fit, UseEllipseFit)
 CONTAINS_FLAT_MEMBER(_use_center_of_gravity, UseCenterOfGravity)
 CONTAINS_FLAT_MEMBER(_supervised_LoG, SupervisedLoG)
 CONTAINS_FLAT_MEMBER(_frames_from_files, FramesFromFiles)
+CONTAINS_FLAT_MEMBER(_evaluate_contours, EvaluateContours)
 CONTAINS_FLAT_MEMBER(_visual_diagnostics, VisualDiagnostics)
 CONTAINS_FLAT_MEMBER(_continuous_capture, ContinuousCapture)
 CONTAINS_FLAT_MEMBER(_engine_features_requested, FeaturesRequested)
@@ -310,6 +316,11 @@ END_WSI_SERIALIZATION_OBJECT()
 
 void AcceptNewGlobalConfiguration(StereoConfiguration& configuration/*out - local config*/, SImageAcquisitionCtl& image_acquisition_ctl, SPointsReconstructionCtl *reconstruction_ctl = 0, vs_callback_launch_workerthreads *launch_workerthreads = 0);
 bool VS_SaveConfiguration(StereoConfiguration& configuration); 
+
+bool CalibrationFileExists();
+
+
+void CalibrateCameras(StereoConfiguration& configuration, SImageAcquisitionCtl& image_acquisition_ctl);
 
 
 #endif //StereoVision_wsiclassesH

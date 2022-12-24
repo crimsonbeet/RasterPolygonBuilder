@@ -190,6 +190,9 @@ void FrameMain::OnMessage(SOnMessageParams& params) {
 					if(_images_frame->_pframeedit) {
 						MoveWindow(_images_frame->_pframeedit->_hwnd, 0, 0, clrect.right, clrect.bottom, TRUE);
 					}
+					if (_images_frame->_pframecalibration) {
+						MoveWindow(_images_frame->_pframecalibration->_hwnd, 0, 0, clrect.right, clrect.bottom, TRUE);
+					}
 				}
 			} 
 		} 
@@ -242,7 +245,12 @@ void FrameMain::InsertHistory(KFrame *pframe) {
 } 
 
 BOOL FrameMain::StepBackHistory() {
+	BOOL hookCalibration = _g_frame_history->getCurrentFrame() == _g_edit_frame && !g_bCalibrationExists;
 	BOOL rc = _g_frame_history->StepBackHistory();
+	if (hookCalibration) {
+		_g_calibrationimages_frame->SetTopMost();
+		_g_main_frame->InsertHistory(_g_calibrationimages_frame);
+	}
 	return rc;
 } 
 

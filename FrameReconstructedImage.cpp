@@ -76,6 +76,9 @@ FrameReconstructedImage::FrameReconstructedImage(HINSTANCE hInstance, HWND hPare
 	_pframeedit = new FrameEdit(hInstance, hParent);
 	_g_edit_frame = _pframeedit; 
 
+	_pframecalibration = new FrameCalibrationImages(hInstance, hParent);
+	_g_calibrationimages_frame = _pframecalibration;
+
 	_delegates->_ondraw_delegates.Add(&FrameReconstructedImage::OnPaint, this);
 } 
 

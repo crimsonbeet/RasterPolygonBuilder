@@ -37,7 +37,8 @@ const char ESC_KEY = 27;
 const char* g_path_vsconfiguration = ".\\VSWorkConfiguration.txt";
 const char* g_path_defaultvsconfiguration = "VSConfiguration.txt";
 const char* g_path_connectconfiguration = ".\\connection.txt";
-const char* g_path_calib_images_dir = ".\\nwpu_images\\";
+const char* g_path_calib_images_dir = ".\\Calibimages-Development\\";
+const char* g_path_nwpu_images_dir = ".\\nwpu_images\\";
 
 const char* g_path_calibrate_file = ".\\stereo_calibrate.xml";
 const char* g_path_calibrate_file_backup = ".\\stereo_calibrate_backup.xml";
@@ -47,16 +48,13 @@ const char* g_path_features_file_backup = ".\\stereo_features_backup.xml";
 
 bool g_bTerminated;
 bool g_bUserTerminated;
+bool g_bCamerasAreOk;
 bool g_bCalibrationExists;
 bool g_bRestart;
 
 uint32_t g_actionDeviceKey;
 uint32_t g_actionGroupKey;
 
-
-size_t g_min_images;
-double g_aposteriory_minsdistance;
-double g_pattern_distance;
 
 
 
@@ -148,6 +146,7 @@ bool VS_ReadConfiguration(StereoConfiguration& configuration) {
 		}
 		if (configuration._version_number < 6) {
 			configuration._version_number = 6;
+			configuration._two_step_calibration = 1;
 			doSave = true;
 		}
 		if (configuration._version_number < 7) {
@@ -299,6 +298,7 @@ void AcceptNewGlobalConfiguration(StereoConfiguration& configuration/*out - loca
 
 	image_acquisition_ctl._trigger_source_software = configuration._trigger_source_hardware == 0;
 
+	image_acquisition_ctl._two_step_calibration = configuration._two_step_calibration != 0;
 	image_acquisition_ctl._images_from_files = configuration._images_from_files != 0;
 	image_acquisition_ctl._save_all_calibration_images = configuration._save_all_calibration_images != 0;
 
@@ -448,10 +448,18 @@ bool DisplayReconstructionData(SPointsReconstructionCtl& reconstruction_ctl, SIm
 		}
 
 		if (image_isok) {
-			matCV_16UC1_memcpy(cv_image[0], reconstruction_ctl._cv_image[0]);
-			matCV_16UC1_memcpy(cv_image[1], reconstruction_ctl._cv_image[1]);
-			matCV_16UC1_memcpy(cv_edges[0], reconstruction_ctl._cv_edges[0]);
-			matCV_16UC1_memcpy(cv_edges[1], reconstruction_ctl._cv_edges[1]);
+			if (reconstruction_ctl._cv_image[0].type() == CV_8UC3) {
+				matCV_8UC3_memcpy(cv_image[0], reconstruction_ctl._cv_image[0]);
+				matCV_8UC3_memcpy(cv_image[1], reconstruction_ctl._cv_image[1]);
+				matCV_8UC3_memcpy(cv_edges[0], reconstruction_ctl._cv_edges[0]);
+				matCV_8UC3_memcpy(cv_edges[1], reconstruction_ctl._cv_edges[1]);
+			}
+			else {
+				matCV_16UC1_memcpy(cv_image[0], reconstruction_ctl._cv_image[0]);
+				matCV_16UC1_memcpy(cv_image[1], reconstruction_ctl._cv_image[1]);
+				matCV_16UC1_memcpy(cv_edges[0], reconstruction_ctl._cv_edges[0]);
+				matCV_16UC1_memcpy(cv_edges[1], reconstruction_ctl._cv_edges[1]);
+			}
 
 			cv_unchangedImage[0] = reconstruction_ctl._unchangedImage[0].clone(); 
 
@@ -491,8 +499,10 @@ bool DisplayReconstructionData(SPointsReconstructionCtl& reconstruction_ctl, SIm
 				cv_edges[1] *= fs; // Mar.4 2015.
 			}
 
-			cvtColor(cv_edges[0], cv_image[0] = Mat(), CV_GRAY2RGB);
-			cvtColor(cv_edges[1], cv_image[1] = Mat(), CV_GRAY2RGB);
+			if (cv_edges[0].type() != CV_8UC3) {
+				cvtColor(cv_edges[0], cv_image[0] = Mat(), CV_GRAY2RGB);
+				cvtColor(cv_edges[1], cv_image[1] = Mat(), CV_GRAY2RGB);
+			}
 
 			for (int j = 0; j < 2; ++j) {
 				scaleImage(imagewin_names[j], fx[j], fy[j], cv_image[j]);
@@ -817,9 +827,10 @@ int main() {
 	srand((unsigned)time(NULL));
 	std::mt19937 rand_gen(070764);
 
+	PylonInitialize();
+
 	SImageAcquisitionCtl image_acquisition_ctl;
 	SPointsReconstructionCtl reconstruction_ctl;
-
 	StereoConfiguration configuration;
 
 	int number_of_threads = cv::getNumberOfCPUs() / 2;
@@ -894,12 +905,20 @@ int main() {
 		_g_images_frame->NEW_StereoConfiguration(g_configuration);
 	}
 
+	if (!g_configuration._evaluate_contours && !(g_bCalibrationExists = CalibrationFileExists())) {
+		if (g_bCamerasAreOk || image_acquisition_ctl._images_from_files) {
+			CalibrateCameras(configuration, image_acquisition_ctl);
+		}
+	}
 
 	int time_average = 0;
 
 	//VLDEnable();
 	//ReconstructPoints(&reconstruction_ctl);
 	//return 0;
+
+	InitializeCameras(image_acquisition_ctl);
+
 
 	if (!g_bTerminated) {
 		launch_reconstruction(image_acquisition_ctl, &reconstruction_ctl);
@@ -926,7 +945,7 @@ int main() {
 				continue;
 			}
 
-			WaitForSingleObject(g_event_SFrameIsAvailable, 20);
+			OSSleep(20);
 
 			bool stereodata_statistics_changed = DisplayReconstructionData(reconstruction_ctl, image_acquisition_ctl, imagewin_names, time_average);
 			if (stereodata_statistics_changed) {

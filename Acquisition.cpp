@@ -10,11 +10,11 @@
 
 const unsigned int g_bytedepth_scalefactor = 256;
 
-Size g_imageSize;
-
 
 extern bool g_bTerminated;
 extern bool g_bRestart; 
+
+extern HANDLE g_event_SFrameIsAvailable;
 
 
 void RGB_TO_HSV(Vec<uchar, 3> rgb, double hsv[3]) {
@@ -466,12 +466,31 @@ bool GetImagesFromFile(Mat& left_image, Mat& right_image, const std::string& cur
 		return false;
 	}
 
+	if (!g_bTerminated) {
+		g_lastwritten_sframe.gate.lock();
+		__int64 time_now = OSDayTimeInMilliseconds();
+		for (int j = 0; j < NUMBER_OF_CAMERAS; ++j) {
+			g_lastwritten_sframe.frames[j].timestamp = time_now;
+			g_lastwritten_sframe.frames[j].camera_index = j;
+		}
+		g_lastwritten_sframe.local_timestamp = time_now;
+		g_lastwritten_sframe.isActive = false;
+		Mat* images[2] = { &g_lastwritten_sframe.frames[0].cv_image, &g_lastwritten_sframe.frames[NUMBER_OF_CAMERAS - 1].cv_image };
+		matCV_16UC1_memcpy(*images[0], left_image);
+		matCV_16UC1_memcpy(*images[1], right_image);
+		g_lastwritten_sframe.gate.unlock();
+
+		if (g_event_SFrameIsAvailable != INVALID_HANDLE_VALUE) {
+			SetEvent(g_event_SFrameIsAvailable);
+		}
+	}
+
 	return true;
 }
 
 void matCV_8UC1_memcpy(Mat& dst, const Mat& src) {
 	if(src.type() != CV_8UC1) {
-		throw "matCV_8UC1_memcpy src is not CV_16UC1";
+		throw "matCV_8UC1_memcpy src is not CV_8UC1";
 	}
 	int width = src.cols;
 	int height = src.rows;
@@ -479,6 +498,19 @@ void matCV_8UC1_memcpy(Mat& dst, const Mat& src) {
 		dst = Mat(height, width, CV_8UC1);
 	}
 	memcpy(&dst.at<uchar>(0, 0), &src.at<uchar>(0, 0), height * width * sizeof(uchar));
+}
+
+void matCV_8UC3_memcpy(Mat& dst, const Mat& src) {
+	if (src.type() != CV_8UC3) {
+		throw "matCV_8UC3_memcpy src is not CV_8UC3";
+	}
+	int width = src.cols;
+	int height = src.rows;
+	if (dst.rows != height || dst.cols != width || dst.type() != CV_8UC3) {
+		dst = Mat(height, width, CV_8UC3);
+	}
+	typedef Vec<uchar, 3> Vec3c;
+	memcpy(&dst.at<Vec3c>(0, 0), &src.at<Vec3c>(0, 0), height * width * sizeof(Vec3c));
 }
 
 void matCV_16UC1_memcpy(Mat& dst, const Mat& src) {
@@ -493,19 +525,6 @@ void matCV_16UC1_memcpy(Mat& dst, const Mat& src) {
 	memcpy(&dst.at<ushort>(0, 0), &src.at<ushort>(0, 0), height * width * sizeof(ushort));
 }
 
-uint64 EvaluateTimestampDifference(uint64 *timestamp, size_t nsize) {
-	uint64 timestamp_min = std::numeric_limits<uint64>::max();
-	uint64 timestamp_max = std::numeric_limits<uint64>::min();
-	for(size_t j = 0; j < nsize; ++j) {
-		if(timestamp_min > timestamp[j]) {
-			timestamp_min = timestamp[j];
-		}
-		if(timestamp_max < timestamp[j]) {
-			timestamp_max = timestamp[j];
-		}
-	}
-	return timestamp_max - timestamp_min;
-}
 
 
 
@@ -515,10 +534,16 @@ void CopyStereoFrame(Mat& left, Mat& right, SStereoFrame* pframe, int64* time_re
 	// the matrices get initalized if they do not match the dimensions. this should happen just one time. 
 	// the idea is to initialize the matrices once, and then re-use them after that. 
 	Mat* dst[2] = { &left, &right };
-	int idx[2] = { pframe->frames[0].camera_index == 0 ? 0 : 1, pframe->frames[0].camera_index == 0 ? 1 : 0 };
+	int idx[2] = { pframe->frames[0].camera_index == 0 ? 0 : (NUMBER_OF_CAMERAS - 1), pframe->frames[0].camera_index == 0 ? (NUMBER_OF_CAMERAS - 1) : 0};
 	int j = 0;
 	for (auto dst : dst) {
-		matCV_16UC1_memcpy(*dst, pframe->frames[idx[j++]].cv_image);
+		Mat& image = pframe->frames[idx[j++]].cv_image;
+		if (image.type() == CV_8UC3) {
+			matCV_8UC3_memcpy(*dst, image);
+		}
+		else {
+			matCV_16UC1_memcpy(*dst, image);
+		}
 	}
 	if (time_received != NULL) {
 		*time_received = pframe->local_timestamp;
@@ -590,12 +615,29 @@ Read the frame's buffer to the end and pick
 a frame that has images captured at smallest time-difference.
 The N controlls a minimum amount of frames to consider.
 */
-bool GetImages(Mat& left, Mat& right, int64* time_received, const int N/*min_frames_2_consider*/, __int64 expiration) {
+int g_sync_button_pressed;
+return_t __stdcall ShowSynchronizationButton(LPVOID lp) {
+	ProcessWinMessages(10);
+	MessageBoxA(NULL, "Press when ready", "Synchronization", MB_OK | MB_TOPMOST);
+	g_sync_button_pressed = true;
+	return 0;
+}
+bool GetImagesEx(Mat& left, Mat& right, int64_t* time_spread, const int N/*min_frames_2_consider*/) {
+	g_sync_button_pressed = false;
+	QueueWorkItem(ShowSynchronizationButton);
+	while (!g_sync_button_pressed) {
+		GetImages(left, right, time_spread, N);
+		while (ProcessWinMessages());
+	}
+	return GetImages(left, right, time_spread, N);
+}
+
+bool GetImages(Mat& left, Mat& right, int64_t* time_received, const int N/*min_frames_2_consider*/, int64_t expiration) {
 	__int64 start_time = OSDayTimeInMilliseconds();
 
 	int count = 0;
 
-	int64 minimal_time_difference = std::numeric_limits<int64>::max();
+	int64_t minimal_time_difference = std::numeric_limits<int64_t>::max();
 	SStereoFrame* pframe = NULL;
 	while (!g_bTerminated) {
 		if ((pframe = NextReadFrame()) == NULL) {
@@ -619,7 +661,14 @@ bool GetImages(Mat& left, Mat& right, int64* time_received, const int N/*min_fra
 			++count;
 		}
 
-		int64 time_difference = max(pframe->frames[0].timestamp, pframe->frames[1].timestamp) - min(pframe->frames[0].timestamp, pframe->frames[1].timestamp);
+		int64_t time_difference = std::numeric_limits<int64_t>::max();
+		for (int j = NUMBER_OF_CAMERAS - 1; j > 0; --j) {
+			int64_t dif = max(pframe->frames[j - 1].timestamp, pframe->frames[j].timestamp) - min(pframe->frames[j - 1].timestamp, pframe->frames[j].timestamp);
+			if (dif < time_difference) {
+				time_difference = dif;
+			}
+		}
+		
 		if (pframe->isActive && time_difference < minimal_time_difference) {
 			minimal_time_difference = time_difference;
 			CopyStereoFrame(left, right, pframe, time_received);
@@ -633,8 +682,41 @@ bool GetImages(Mat& left, Mat& right, int64* time_received, const int N/*min_fra
 }
 
 
-bool GetLastImages(Mat& left, Mat& right, int64* time_received, __int64 expiration) {
-	__int64 start_time = OSDayTimeInMilliseconds();
+
+
+
+
+
+
+
+AndroidCameraRaw10Image* ProcvessRaw10Image(AndroidCameraRaw10Image* obj) {
+	uint8_t *ptr = obj->_buffers[0]._buffer.data();
+
+	return obj;
+}
+
+void Process_CameraImage(AndroidBayerFilterImage* obj) {
+
+}
+
+
+
+uint64_t EvaluateTimestampDifference(uint64_t* timestamp, size_t nsize) {
+	uint64_t timestamp_min = std::numeric_limits<uint64_t>::max();
+	uint64_t timestamp_max = std::numeric_limits<uint64_t>::min();
+	for (size_t j = 0; j < nsize; ++j) {
+		if (timestamp_min > timestamp[j]) {
+			timestamp_min = timestamp[j];
+		}
+		if (timestamp_max < timestamp[j]) {
+			timestamp_max = timestamp[j];
+		}
+	}
+	return timestamp_max - timestamp_min;
+}
+
+bool GetLastImages(Mat& left, Mat& right, int64_t* time_received, int64_t expiration) {
+	int64_t start_time = OSDayTimeInMilliseconds();
 
 	int count = 0;
 
@@ -670,19 +752,223 @@ bool GetLastImages(Mat& left, Mat& right, int64* time_received, __int64 expirati
 }
 
 
+bool SynchronizedGrabResults(CBaslerUsbInstantCameraArray& cameras, std::vector<CGrabResultPtr>& ptrGrabResults, bool use_trigger, bool trigger_source_software) {
+	bool exception_hashappened = false;
+
+	static bool do_execute_trigger = false;
+	static int64_t time_mark = 0;
+
+	if (do_execute_trigger) {
+		int time_interval = 0;
+		time_interval = (int)ceil(1000.0 / g_resultingFrameRate) + 1;
+		do {
+			int64_t time_delta = OSDayTimeInMilliseconds() - time_mark;
+			if (time_delta < time_interval) {
+				OSSleep((DWORD)(time_interval - time_delta));
+			}
+			else {
+				break;
+			}
+
+		} while (0 < 1);
+
+		time_mark = OSDayTimeInMilliseconds();
+
+		for (int j = 0; j < (int)cameras.GetSize(); ++j) {
+			if (cameras[j].TriggerSource.GetValue() == Basler_UsbCameraParams::TriggerSource_Software) {
+				try {
+					cameras[j].TriggerSoftware.Execute();
+				}
+				catch (GenICam::GenericException& e) {
+					std::cerr << "TriggerSoftware() An exception occurred: " << e.GetDescription() << std::endl;
+					exception_hashappened = true;
+				}
+			}
+		}
+
+		do_execute_trigger = false;
+	}
 
 
-AndroidCameraRaw10Image* ProcvessRaw10Image(AndroidCameraRaw10Image* obj) {
-	uint8_t *ptr = obj->_buffers[0]._buffer.data();
+	// Note: the power saving mode must be 
+	// maximum performance, otherwise the driver will report eventually that the device has been removed. 
+	bool image_isok = true;
+	int noresponse_count = 0;
+	for (int j = 0; j < (int)cameras.GetSize(); ++j) {
+		try {
+			cameras[j].RetrieveResult(trigger_source_software ? 0 : 34, ptrGrabResults[j], TimeoutHandling_Return);
+			if (ptrGrabResults[j] == NULL || !ptrGrabResults[j]->GrabSucceeded() || (int)ptrGrabResults[j]->GetCameraContext() != j) {
+				image_isok = false;
+				++noresponse_count;
+			}
+		}
+		catch (GenICam::GenericException& e) {
+			std::cerr << "RetrieveResult() An exception occurred: " << e.GetDescription() << std::endl;
+			image_isok = false;
+			exception_hashappened = true;
+		}
+	}
 
-	return obj;
+
+	static int partialtimeout_count = 0;
+	static int totaltimeout_count = 0;
+	static int notimeout_count = 0;
+	static uint64_t timestamp_dif_min = std::numeric_limits<uint64_t>::max();
+	switch (noresponse_count) {
+	case 0: ++notimeout_count; break;
+	case 1: ++partialtimeout_count; break;
+	case 2: ++totaltimeout_count; break;
+	}
+
+	if (noresponse_count == 0 && !trigger_source_software) {
+		uint64_t timestamp[10];
+		for (int j = 0; j < (int)cameras.GetSize(); ++j) {
+			timestamp[j] = ptrGrabResults[j]->GetTimeStamp();
+		}
+		uint64_t timestamp_dif = EvaluateTimestampDifference(timestamp, cameras.GetSize());
+		uint64_t timestamp_dif_log = timestamp_dif;
+		if (timestamp_dif_min < timestamp_dif && (timestamp_dif - timestamp_dif_min) > 3000000) {
+			noresponse_count = 1; // prevent software trigger
+			image_isok = false;
+			for (size_t j = 0; j < cameras.GetSize(); ++j) {
+				bool done = false;
+				while (!done) {
+					CGrabResultPtr ptr;
+					try {
+						cameras[j].RetrieveResult(0, ptr, TimeoutHandling_Return);
+					}
+					catch (GenICam::GenericException& e) {
+						std::cerr << "Timestamp. RetrieveResult(). An exception occurred: " << e.GetDescription() << std::endl;
+						exception_hashappened = true;
+					}
+					done = ptr == NULL || !ptr->GrabSucceeded();
+					if (!done) {
+						ptrGrabResults[j] = ptr;
+						try {
+							timestamp[j] = ptr->GetTimeStamp();
+						}
+						catch (GenICam::GenericException& e) {
+							std::cerr << "Timestamp. GetTimeStamp(). An exception occurred: " << e.GetDescription() << std::endl;
+							exception_hashappened = true;
+							done = true;
+							j = cameras.GetSize();
+						}
+					}
+					if (!done) {
+						timestamp_dif = EvaluateTimestampDifference(timestamp, cameras.GetSize());
+						if (timestamp_dif_min >= timestamp_dif || (timestamp_dif - timestamp_dif_min) <= 3000000) {
+							done = true;
+							noresponse_count = 0; // enable software trigger
+							image_isok = true;
+							j = cameras.GetSize();
+						}
+					}
+				}
+			}
+		}
+		timestamp_dif_min = timestamp_dif;
+	}
+
+	if (noresponse_count == 0 || noresponse_count == (int)cameras.GetSize()) {
+		if (use_trigger) {
+			do_execute_trigger = trigger_source_software;
+		}
+	}
+
+	if (exception_hashappened) {
+		g_bTerminated = true;
+		g_bRestart = true;
+	}
+
+	return image_isok;
 }
 
-void Process_CameraImage(AndroidBayerFilterImage* obj) {
+void ConvertSynchronizedResults(std::vector<CGrabResultPtr>& ptrGrabResults, SStereoFrame& sframe, std::string* cv_winNames = NULL) {
+	for (auto& ptrGrabResult : ptrGrabResults) {
+		int width = ptrGrabResult->GetWidth();
+		int height = ptrGrabResult->GetHeight();
 
+		CPylonImage pylon_bitmapImage; 
+
+		ushort* pylon_buffer = NULL; 
+
+		if (ptrGrabResult->GetPixelType() != PixelType_BGR8packed) { // PixelType_RGB16packed might be a better choice
+			CImageFormatConverter converter;
+			converter.OutputPixelFormat = PixelType_BGR8packed;
+			converter.Convert(pylon_bitmapImage, ptrGrabResult);
+
+			pylon_buffer = (ushort*)pylon_bitmapImage.GetBuffer(); 
+		}
+		else {
+			pylon_buffer = (ushort*)ptrGrabResult->GetBuffer(); 
+		}
+
+		int c = (int)ptrGrabResult->GetCameraContext();
+		if (c < 0) {
+			g_bTerminated = true;
+			break;
+		}
+
+		if (sframe.frames[c].cv_image.rows != height || sframe.frames[c].cv_image.cols != width) {
+			sframe.frames[c].cv_image = Mat(height, width, CV_8UC3); 
+		}
+
+		typedef Vec<uchar, 3> Vec3c;
+		memcpy(&sframe.frames[c].cv_image.at<Vec3c>(0, 0), pylon_buffer, height * width * 3);
+
+		sframe.frames[c].camera_index = c;
+		sframe.frames[c].timestamp = ptrGrabResult->GetTimeStamp();
+
+		if (cv_winNames) {
+			cv_winNames[c] = std::to_string((long long)c);
+		}
+	}
 }
 
 
+return_t __stdcall AcquireImagesEx(LPVOID lp) {
+	SImageAcquisitionCtl* ctl = (SImageAcquisitionCtl*)lp;
+
+	ctl->_status = 1;
+
+	__int64 time_previous = OSDayTimeInMilliseconds() - 100;
+	__int64 time_average = 100;
+
+	while (!g_bTerminated && !ctl->_terminated) {
+		std::vector<CGrabResultPtr> ptrGrabResults(ctl->_cameras->GetSize());
+		bool image_isok = SynchronizedGrabResults(*ctl->_cameras, ptrGrabResults, ctl->_use_trigger, ctl->_trigger_source_software);
+		if (image_isok) {
+			__int64 time_now = OSDayTimeInMilliseconds();
+			time_average = (time_average * 20 + (time_now - time_previous)) / 21;
+			time_previous = time_now;
+
+			SStereoFrame& sframe = NextWriteFrame();
+			try {
+				ConvertSynchronizedResults(ptrGrabResults, sframe);
+			}
+			catch (Exception& ex) {
+				std::cout << ex.msg << std::endl;
+				g_bTerminated = true;
+			}
+			sframe.local_timestamp = time_now;
+			sframe.isActive = true;
+			sframe.gate.unlock();
+
+			if (!g_bTerminated) {
+				g_lastwritten_sframe.gate.lock();
+				g_lastwritten_sframe = sframe;
+				g_lastwritten_sframe.gate.unlock();
+			}
+
+			if (g_event_SFrameIsAvailable != INVALID_HANDLE_VALUE) {
+				SetEvent(g_event_SFrameIsAvailable);
+			}
+		}
+	}
+
+	ctl->_status = 0;
+	return 0;
+}
 
 
 
@@ -690,6 +976,7 @@ return_t __stdcall AcquireImages(LPVOID lp) {
 	std::cout << "Acquisition has started" << std::endl; 
 	timeBeginPeriod(1);
 	try {
+		AcquireImagesEx(lp);
 	}
 	catch(Exception& ex) {
 		std::cout << ex.msg << std::endl;

@@ -79,37 +79,6 @@ void Prefetch_PolyspaceProjection(ATLSMatrix<double>& x_xxi_x, int sampleSize = 
 
 
 
-// approximate contour with accuracy proportional to the contour perimeter
-bool approximateContourWithQuadrilateral(const std::vector<Point>& contour, std::vector<Point>& approx, double minArea, double maxArea) {
-	double epsilon = 0.025;
-	approxPolyDP((contour), approx, arcLength((contour), false) * epsilon, false);
-	while (approx.size() > 4) {
-		epsilon += 0.01;
-		approxPolyDP((approx), approx, arcLength((approx), true) * epsilon, true);
-	}
-	bool rc = false;
-
-	// square-like contours should have 
-	// - 4 vertices after approximation
-	// - relatively large area (to filter out noisy contours)
-	// - and be convex.
-	// Note: absolute value of an area is used because
-	// area may be positive or negative - in accordance with the contour orientation
-	if (approx.size() == 4) {
-		double area = std::fabs(contourArea((approx)));
-		if (area > (minArea) && area < (maxArea)) {
-			if (isContourConvex((approx))) {
-				rc = true;
-			}
-		}
-	}
-	else {
-		rc = false;
-	}
-	return rc;
-}
-
-
 bool AngleFromCosineTheorem(double c, double a, double b, double& angle) { // angle in radians
 	bool ok = false;
 	if(a > 0 && b > 0 && c >= 0) {
@@ -3696,7 +3665,7 @@ bool GetFramesFromFilesWithSubdirectorySearch(Mat cv_image[2]/*out*/, bool& arff
 	}
 	if(s_file_number == -1) {
 		if(s_sub_dirs.size() == 0) {
-			Find_SubDirectories(g_path_calib_images_dir, s_sub_dirs);
+			Find_SubDirectories(g_path_nwpu_images_dir, s_sub_dirs);
 		}
 		if(s_sub_dirs.size()) {
 			size_t idx = s_sub_dirs.size() - 1;
@@ -3758,8 +3727,13 @@ return_t __stdcall EvaluateOtsuThreshold(LPVOID lp) {
 		ctl->_gate.lock();
 		image_isok = ctl->_cv_edges[0].rows > 0 && ctl->_cv_edges[1].rows > 0;
 		if(image_isok) {
-			matCV_16UC1_memcpy(cv_edges[0], ctl->_cv_edges[0]);
-			matCV_16UC1_memcpy(cv_edges[1], ctl->_cv_edges[1]);
+			if(ctl->_cv_edges[0].type() == CV_16UC1) {
+				matCV_16UC1_memcpy(cv_edges[0], ctl->_cv_edges[0]);
+				matCV_16UC1_memcpy(cv_edges[1], ctl->_cv_edges[1]);
+			}
+			else {
+				image_isok = false;
+			}
 		}
 		ctl->_gate.unlock();
 
@@ -4021,7 +3995,15 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 			cv_image[2] = cv_image[0].clone();
 			cv_image[3] = cv_image[1].clone();
 
-			//double chWeights[3] = { 1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0 };
+
+			if (g_configuration._frames_from_files > 0) {
+				unchangedImage = imread(std::string(g_path_nwpu_images_dir) + path_name + ".jpg", ImreadModes::IMREAD_ANYDEPTH | ImreadModes::IMREAD_ANYCOLOR);
+			}
+			else {
+				unchangedImage = cv_image[0].clone();
+			}
+
+
 			double chWeights[3] = { 0.3, 0.59, 0.11 };
 
 			auto prepImages = [&cv_image, &chWeights]() {
@@ -4053,11 +4035,7 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 			auto prepImages_HSV_Likeness = [&cv_image, &chWeights](double chIdeal[3], int window) {
 				Mat aux = cv_image[2 + window].clone();
-				//Mat aux;
-				//normalize(cv_image[2 + window].clone(), aux, 16, 235, NORM_MINMAX, CV_8UC3, Mat());
-				//normalize(cv_image[2 + window].clone(), aux, 0, 256, NORM_MINMAX, CV_8UC3, Mat());
 				if (StandardizeImage_HSV_Likeness(aux, chIdeal)) {
-					//cv_image[window] = aux.clone();
 					cv_image[window] = mat_loginvert2word(aux);
 					cv_image[window] = mat_invert2word(cv_image[window]);
 				}
@@ -4108,18 +4086,11 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 
 
-			unchangedImage = imread(std::string(g_path_calib_images_dir) + path_name + ".jpg", ImreadModes::IMREAD_ANYDEPTH | ImreadModes::IMREAD_ANYCOLOR);
-
-
 			g_imageSize = cv_image[0].size();
 
 
 			auto submitGraphics = [&](Mat& originalImage, bool data_is_valid = false) {
 				ctl->_gate.lock();
-				//matCV_16UC1_memcpy(ctl->_cv_image[0], cv_image[0]);
-				//matCV_16UC1_memcpy(ctl->_cv_image[1], cv_image[1]);
-				//matCV_16UC1_memcpy(ctl->_cv_edges[0], cv_edges[0]);
-				//matCV_16UC1_memcpy(ctl->_cv_edges[1], cv_edges[1]);
 				ctl->_cv_image[0] = cv_image[0].clone();
 				ctl->_cv_image[1] = cv_image[1].clone();
 				ctl->_cv_edges[0] = cv_edges[0].clone();
@@ -4139,8 +4110,6 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 					ctl->_data_isvalid = true;
 				}
 				ctl->_gate.unlock();
-
-				SetEvent(g_event_SFrameIsAvailable);
 			};
 
 
@@ -4411,12 +4380,112 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 	return 0;
 }
 
+return_t __stdcall RenderCameraImages(LPVOID lp) {
+	SPointsReconstructionCtl* ctl = (SPointsReconstructionCtl*)lp;
+
+
+
+	ctl->_gate.lock();
+	ctl->_status--;
+	ctl->_gate.unlock();
+
+
+
+	int64 image_localtime = 0;
+
+
+	Mat cv_image[4];
+	std::vector<ABox> boxes[2];
+	std::vector<ClusteredPoint> cv_points[2];
+
+	Mat unchangedImage;
+	Mat finalContoursImage;
+
+
+
+	std::vector<std::vector<cv::Point2d>> final_contours(1);
+
+
+	bool image_isok = false;
+	while (!g_bTerminated && !ctl->_terminated) {
+
+		Mat cv_edges[6];
+
+		bool arff_file_requested = false;
+
+		std::string file_name;
+		std::string path_name;
+
+		if (g_configuration._frames_from_files < 0) {
+			image_isok = GetLastImages(cv_image[0], cv_image[1], &image_localtime);
+		}
+
+		final_contours.resize(0);
+
+		if (image_isok) {
+
+			__int64 time_start = OSDayTimeInMilliseconds();
+
+			if (cv_image[0].cols == 0 || cv_image[1].cols == 0) {
+				continue;
+			}
+
+			cv_image[2] = cv_image[0].clone();
+			cv_image[3] = cv_image[1].clone();
+
+
+			cv_edges[0] = cv_image[0].clone();
+			cv_edges[1] = cv_image[1].clone();
+
+
+			unchangedImage = cv_image[0].clone();
+
+
+			g_imageSize = cv_image[0].size();
+
+
+			auto submitGraphics = [&](Mat& originalImage, bool data_is_valid = false) {
+				ctl->_gate.lock();
+				ctl->_cv_image[0] = cv_image[0].clone();
+				ctl->_cv_image[1] = cv_image[1].clone();
+				ctl->_cv_edges[0] = cv_edges[0].clone();
+				ctl->_cv_edges[1] = cv_edges[1].clone();
+				ctl->_data_isvalid = false;
+				ctl->_image_isvalid = true;
+				ctl->_last_image_timestamp = image_localtime;
+				ctl->_unchangedImage[0] = originalImage.clone();
+				ctl->_unchangedImage[1] = unchangedImage.clone();
+
+				if (data_is_valid) {
+					ctl->_boxes[0] = boxes[0];
+					ctl->_boxes[1] = boxes[1];
+					ctl->_cv_points[0] = cv_points[0];
+					ctl->_cv_points[1] = cv_points[1];
+					ctl->_data_isvalid = true;
+				}
+				ctl->_gate.unlock();
+			};
+
+
+			submitGraphics(unchangedImage);
+		}
+	}
+
+	ctl->_gate.lock();
+	ctl->_status--;
+	ctl->_gate.unlock();
+
+	return 0;
+}
 
 return_t __stdcall ReconstructPoints(LPVOID lp) {
 	timeBeginPeriod(1);
 	try {
-		if (g_configuration._supervised_LoG) {
+		if (g_configuration._evaluate_contours) {
 			EvaluateContours(lp); 
+		}
+		else{
+			RenderCameraImages(lp);
 		}
 	}
 	catch(Exception& ex) {
@@ -4433,6 +4502,9 @@ return_t __stdcall ReconstructPoints(LPVOID lp) {
 
 
 void launch_reconstruction(SImageAcquisitionCtl& image_acquisition_ctl, SPointsReconstructionCtl *reconstruction_ctl) {
+	if (g_bCamerasAreOk && !g_bTerminated) {
+		OpenCameras(image_acquisition_ctl);
+	}
 	if(!g_bTerminated) {
 		image_acquisition_ctl._status = -1;
 		image_acquisition_ctl._terminated = 0;

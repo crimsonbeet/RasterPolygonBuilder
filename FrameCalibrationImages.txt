@@ -1,0 +1,32 @@
+>< $ KFrame DataType=FrameCalibrationImages 
+
+>< $ Situation ClassName=FrameCalibrationImages Bottom=1000 Right=1000 >< BackColor Hex=D3D3D3 $ 
+
+
+>< $ Canvas DataType='openCV_Container' 
+>< $ Situation Left=1 Top=1 Bottom=300 Right=450 IsAbsolute=1 FontFace='Segoe UI' FontHeight=10 Name='IMAGECalibr1' >< BackColor Hex=D3D3D3 $ 
+$ 
+
+>< $ Canvas DataType='openCV_Container' 
+>< $ Situation Left=1 Top=300 Bottom=610 Right=450 IsAbsolute=1 FontFace='Segoe UI' FontHeight=10 Name='IMAGECalibr2' >< BackColor Hex=D3D3D3 $ 
+$ 
+
+>< $ Canvas DataType='openCV_Container' 
+>< $ Situation Left=1 Top=610 Bottom=920 Right=450 IsAbsolute=1 FontFace='Segoe UI' FontHeight=10 Name='IMAGECalibr3' >< BackColor Hex=D3D3D3 $ 
+$ 
+
+>< $ Canvas DataType='openCV_Container' 
+>< $ Situation Left=450 Top=1 Bottom=500 Right=1000 IsAbsolute=1 FontFace='Segoe UI' FontHeight=10 Name='Calibr1' >< BackColor Hex=D3D3D3 $ 
+$ 
+
+>< $ Canvas DataType='openCV_Container' 
+>< $ Situation Left=450 Top=500 Bottom=1000 Right=1000 IsAbsolute=1 FontFace='Segoe UI' FontHeight=10 Name='Calibr2' >< BackColor Hex=D3D3D3 $ 
+$ 
+
+
+>< $ LogWindow 
+>< $ Situation Left=1 Top=920 Bottom=1000 Right=450 FontFace='Tahoma' FontHeight=9 >< BackColor Hex=D3D3D3 $ 
+$ 
+
+
+$ 
