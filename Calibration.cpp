@@ -7,6 +7,7 @@
 #include "opencv2\highgui\highgui_c.h"
 
 
+
 using namespace Pylon;
 using namespace std;
 
@@ -52,7 +53,7 @@ bool g_images_are_collected;
 
 vector<vector<Point3f> > g_objectPoints;
 
-std::string cv_windows[2];
+std::string cv_windows[5];
 
 
 
@@ -135,19 +136,51 @@ bool CalibrationFileExists() {
 
 
 
-void ClassBlobDetector::findBlobs(const Mat& image, const Mat& binaryImage, std::vector<Center>& centers) const {
+void ClassBlobDetector::findBlobs(const Mat& image, Mat& binaryImage, std::vector<Center>& centers, std::vector<vector<Point>>& contours) const {
 	(void)image;
 	centers.clear();
+	contours.clear();
 
-	vector < vector<Point> > contours;
-	Mat tmpBinaryImage = binaryImage.clone();
-	findContours(tmpBinaryImage, contours, CV_RETR_LIST, CV_CHAIN_APPROX_NONE);
+	vector<double> dists;
 
-	for (size_t contourIdx = 0; contourIdx < contours.size(); contourIdx++)
-	{
+	g_max_boxsize_pixels = std::max(binaryImage.rows / 8, binaryImage.cols / 8);
+
+	ushort params_blobColor = (ushort)params.blobColor * g_bytedepth_scalefactor;
+
+	std::vector<ABox> boxes;
+	std::vector<ClusteredPoint> points;
+
+
+
+	int kmatN = binaryImage.cols / 50;
+	if (kmatN <= 5) {
+		kmatN = 5;
+	}
+	else {
+		kmatN = 7;
+	}
+	Mat_<double> kmat = LoG(1.25 * (kmatN / 7.0), kmatN);
+
+
+	
+	unsigned int threshold_intensity = 200 * g_bytedepth_scalefactor;
+
+	BlobCentersLoG(boxes, points, binaryImage, threshold_intensity, cv::Rect(), kmat);
+
+	double desired_min_inertia = sqrt(_min_confidence);
+	double ratio_threshold = desired_min_inertia * params.minCircularity;
+
+	for (size_t boxIdx = 0; boxIdx < boxes.size(); boxIdx++) {
+		auto& contour = boxes[boxIdx].contour;
+		if (contour.size() == 0) {
+			continue;
+		}
+
+		contours.push_back(contour);
+
 		Center center;
 		center.confidence = 1;
-		Moments moms = moments(Mat(contours[contourIdx]));
+		Moments moms = moments(Mat(contour));
 		if (params.filterByArea)
 		{
 			double area = moms.m00;
@@ -155,20 +188,13 @@ void ClassBlobDetector::findBlobs(const Mat& image, const Mat& binaryImage, std:
 				continue;
 		}
 
-		if (params.filterByCircularity)
-		{
-			double area = moms.m00;
-			double perimeter = arcLength(Mat(contours[contourIdx]), true);
-			double ratio = 4 * CV_PI * area / (perimeter * perimeter);
-			if (ratio < params.minCircularity || ratio >= params.maxCircularity)
-				continue;
-		}
 
+
+		double ratio = desired_min_inertia;
 		if (params.filterByInertia)
 		{
 			double denominator = sqrt(pow(2 * moms.mu11, 2) + pow(moms.mu20 - moms.mu02, 2));
 			const double eps = 1e-2;
-			double ratio;
 			if (denominator > eps)
 			{
 				double cosmin = (moms.mu20 - moms.mu02) / denominator;
@@ -188,46 +214,65 @@ void ClassBlobDetector::findBlobs(const Mat& image, const Mat& binaryImage, std:
 			if (ratio < params.minInertiaRatio || ratio >= params.maxInertiaRatio)
 				continue;
 
-			center.confidence = ratio * ratio * 2;
+			center.confidence = ratio * ratio;
 		}
+
+		if (params.filterByCircularity)
+		{
+			double area = moms.m00;
+			double perimeter = arcLength(Mat(contour), true);
+			ratio *= 4 * CV_PI * area / (perimeter * perimeter);
+		}
+		else {
+			ratio *= params.minCircularity;
+		}
+
+		if (ratio < ratio_threshold) {
+			continue;
+		}
+	
+
+
 
 		if (params.filterByConvexity)
 		{
-			vector < Point > hull;
-			cv::convexHull(Mat(contours[contourIdx]), hull);
-			double area = contourArea(Mat(contours[contourIdx]));
+			std::vector<cv::Point> hull;
+			cv::convexHull(Mat(contour), hull);
+
+			double area = contourArea(Mat(contour));
 			double hullArea = contourArea(Mat(hull));
-			double ratio = area / hullArea;
-			if (ratio < params.minConvexity || ratio >= params.maxConvexity)
+
+			double convexityRatio = area / hullArea;
+			if (convexityRatio < params.minConvexity || convexityRatio >= params.maxConvexity)
 				continue;
 		}
+
+
 
 		center.location = Point2d(moms.m10 / moms.m00, moms.m01 / moms.m00);
 
 		if (params.filterByColor)
 		{
-			if (binaryImage.at<uchar>(cvRound(center.location.y), cvRound(center.location.x)) != params.blobColor)
+			ushort color = binaryImage.at<ushort>(cvRound(center.location.y), cvRound(center.location.x));
+			if (color != params_blobColor)
 				continue;
 		}
 
-		//compute blob radius
+		dists.clear();
+		for (size_t pointIdx = 0; pointIdx < contour.size(); pointIdx++)
 		{
-			vector<double> dists;
-			for (size_t pointIdx = 0; pointIdx < contours[contourIdx].size(); pointIdx++)
-			{
-				Point2d pt = contours[contourIdx][pointIdx];
-				dists.push_back(norm(center.location - pt));
-			}
-			std::sort(dists.begin(), dists.end());
-			center.radius = (dists[(dists.size() - 1) / 2] + dists[dists.size() / 2]) / 2.;
+			Point2d pt = contour[pointIdx];
+			dists.push_back(norm(center.location - pt));
 		}
+		std::sort(dists.begin(), dists.end());
+		center.radius = (dists[(dists.size() - 1) / 2] + dists[dists.size() / 2]) / 2.0;
 
 		centers.push_back(center);
 	}
 }
 
 
-void ClassBlobDetector::detectImpl(const cv::Mat& image, std::vector<cv::KeyPoint>& keypoints, const cv::Mat&) const { // from openCV blobdetector.cpp
+void ClassBlobDetector::detectImpl(const cv::Mat& image, std::vector<cv::KeyPoint>& keypoints, const cv::Mat&) { // from openCV blobdetector.cpp
 	keypoints.clear();
 
 	const Size boardSize = _chess_board? g_boardChessSize: g_boardSize;
@@ -236,18 +281,12 @@ void ClassBlobDetector::detectImpl(const cv::Mat& image, std::vector<cv::KeyPoin
 	const double threshold_confidence = 0.3 * _min_confidence; 
 
 	Mat grayscaleImage;
-	//if (image.type() == CV_8UC3) {
-	//	image.convertTo(grayscaleImage, CV_32FC1);
-	//}
-	//else {
-	//	grayscaleImage = image.clone();
-	//}
 
 	cv::normalize(image, grayscaleImage, 0, 255 * g_bytedepth_scalefactor, NORM_MINMAX, CV_32FC1, Mat());
 
 	vector < vector<Center> > centers;
-	double thresh = _min_threshold * g_bytedepth_scalefactor;
-	for(size_t nstep = 0; nstep < 10 && thresh < 250 * g_bytedepth_scalefactor; thresh += (params.thresholdStep * g_bytedepth_scalefactor), ++nstep) {
+	double thresh = params.minThreshold;
+	for(size_t nstep = 0; nstep < 20 && thresh <= params.maxThreshold; thresh += params.thresholdStep, ++nstep) {
 		Mat binImage;
 		try {
 			threshold(grayscaleImage, binImage, thresh, 255 * g_bytedepth_scalefactor, THRESH_BINARY);
@@ -257,19 +296,8 @@ void ClassBlobDetector::detectImpl(const cv::Mat& image, std::vector<cv::KeyPoin
 			return; 
 		}
 
-		//if(_chess_board) {
-		//	if(params.blobColor > 0) {
-		//		cv::erode(binImage.clone(), binImage, getStructuringElement(MORPH_ELLIPSE, Size(5 * 1 + 1, 5 * 1 + 1)));
-		//	}
-		//	else {
-		//		cv::dilate(binImage.clone(), binImage, getStructuringElement(MORPH_ELLIPSE, Size(5 * 1 + 1, 5 * 1 + 1)));
-		//	}
-		//}
-
 		Mat binarizedImage;
-		//binImage *= std::max(256 / (int)g_bytedepth_scalefactor, 1);
-		//binImage /= g_bytedepth_scalefactor;
-		binImage.convertTo(binarizedImage, CV_8UC1);
+		binImage.convertTo(binarizedImage, CV_16UC1);
 
 		if(_invert_binary) {
 			uchar *val = (uchar*)binarizedImage.data;
@@ -280,7 +308,45 @@ void ClassBlobDetector::detectImpl(const cv::Mat& image, std::vector<cv::KeyPoin
 
 		vector < Center > curCenters;
 		try {
-			findBlobs(grayscaleImage, binarizedImage, curCenters);
+			double scale = 480.0 / binarizedImage.rows;
+			if (scale < 0.95) {
+				cv::resize(binarizedImage, binarizedImage, cv::Size(0, 0), scale, scale, INTER_AREA);
+				params.minArea *= scale * scale;
+				params.maxArea *= scale * scale;
+			}
+			else {
+				scale = 1;
+			}
+
+			std::vector<vector<Point>> contours;
+			findBlobs(grayscaleImage, binarizedImage, curCenters, contours);
+
+			Mat image0;
+			cvtColor(binarizedImage, image0, COLOR_GRAY2RGB);
+			for each(auto& points in contours)
+			{
+				int n = (int)points.size();
+				const Point* p = &points[0];
+				cv::polylines(image0, &p, &n, 1, true, Scalar(0, 255 * 256, 0), 1, LINE_AA);
+			}
+			for each (auto & center in curCenters) {
+				circle(image0, center.location, 3, Scalar(0, 0, 255 * 256), -1);
+			}
+			double fx = 280.0 / binarizedImage.rows;
+			Mat image1;
+			cv::resize(image0, image1, cv::Size(0, 0), fx, fx, INTER_AREA);
+			cv::imshow("IMAGECalibr3", image1);
+			while (ProcessWinMessages(100));
+
+			if (scale != 1) {
+				std::for_each(curCenters.begin(), curCenters.end(), [scale, &image0](ClassBlobDetector::Center& center) {
+					center.location.x /= scale;
+					center.location.y /= scale;
+					center.radius /= scale;
+				});
+				params.minArea /= scale * scale;
+				params.maxArea /= scale * scale;
+			}
 		}
 		catch(Exception& ex) {
 			std::cout << "BlobDetector:" << ' ' << ex.msg << std::endl;
@@ -781,15 +847,9 @@ bool ExtractCornersOfChessPattern(Mat& image, vector<Point2f>& pointBuf, const P
 		cv::resize(image, image, cv::Size(0, 0), fy, fy, INTER_AREA);
 	}
 
-	//Mat grayscaleImage;
-	//if (image.type() != CV_8UC1) {
-	//	image.convertTo(grayscaleImage, CV_8UC1);
-	//}
-	//else {
-	//	grayscaleImage = image.clone();
-	//}
+	bool found = findCirclesGrid(image, g_boardChessSize, pointBuf, CALIB_CB_ASYMMETRIC_GRID/* | CALIB_CB_CLUSTERING*/, detector);
 
-	bool found = findCirclesGrid(image, g_boardChessSize, pointBuf, CALIB_CB_ASYMMETRIC_GRID | CALIB_CB_CLUSTERING, detector);
+	// build min. enclosing quadrilateral
 	if(found) {
 		std::vector<Point> blobs(pointBuf.size());
 		for(int k = 0; k < pointBuf.size(); ++k) {
@@ -1650,7 +1710,7 @@ void Save_Images(Mat& image, vector<vector<Point2f>>& imagePoints, int points_id
 	}
 }
 
-return_t __stdcall AcquireImagepointsEx(LPVOID lp) {
+return_t __stdcall AcquireImagepoints(LPVOID lp) {
 	SImageAcquisitionCtl *ctl = (SImageAcquisitionCtl*)lp;
 
 	size_t max_images = g_min_images * 3; 
@@ -1664,9 +1724,6 @@ return_t __stdcall AcquireImagepointsEx(LPVOID lp) {
 	imagePoints_right.resize(1);
 
 	ProcessWinMessages(0);
-
-	std::string cv_windows[3];
-	rootCVWindows(_g_calibrationimages_frame, 3, 0, cv_windows);
 
 	size_t current_N = 1; 
 	size_t min_repeatability = 5; 
@@ -1692,10 +1749,7 @@ return_t __stdcall AcquireImagepointsEx(LPVOID lp) {
 
 		if(ctl->_images_from_files) {
 			if(!GetImagesFromFile(left_image, right_image, std::to_string(current_N))) {
-				if(stereoImagePoints_left.size() >= g_min_images) {
-					break; 
-				}
-				continue;
+				break;
 			}
 			min_repeatability = 2; 
 		}
@@ -1710,6 +1764,23 @@ return_t __stdcall AcquireImagepointsEx(LPVOID lp) {
 			continue;
 		}
 		while(ProcessWinMessages());
+
+
+		Mat cv_image[2] = { left_image.clone(), right_image.clone()};
+		for (int c = 0; c < ARRAY_NUM_ELEMENTS(cv_image); ++c) {
+			double fx = 700.0 / cv_image[c].cols;
+			double fy = fx;
+			HWND hwnd = (HWND)cvGetWindowHandle(cv_windows[c + 3].c_str());
+			RECT clrect;
+			if (GetWindowRect(GetParent(hwnd), &clrect)) {
+				fx = (double)(clrect.right - clrect.left) / (double)cv_image[c].cols;
+				fy = (double)(clrect.bottom - clrect.top) / (double)cv_image[c].rows;
+				fx = fy = std::min(fx, fy);
+			}
+			cv::resize(cv_image[c], cv_image[c], cv::Size(0, 0), fx, fy, INTER_AREA);
+			cv::imshow(cv_windows[c + 3], cv_image[c]);
+		}
+
 
 		int nl = -1;
 		int nr = -1;
@@ -1803,34 +1874,41 @@ return_t __stdcall AcquireImagepointsEx(LPVOID lp) {
 	}
 	while(ProcessWinMessages());
 
-	g_aposteriory_minsdistance /= (ctl->_images_from_files? 1: 1.01);
+	return 0;
+}
+
+return_t __stdcall ConductCalibration(LPVOID lp) {
+	SImageAcquisitionCtl* ctl = (SImageAcquisitionCtl*)lp;
+
+
+	g_aposteriory_minsdistance /= (ctl->_images_from_files ? 1 : 1.01);
 
 	imagePoints_left.resize(imagePoints_left.size() - 1);
-	imagePoints_right.resize(imagePoints_right.size() -	 1);
+	imagePoints_right.resize(imagePoints_right.size() - 1);
 
 	srand((unsigned)time(NULL));
 
-	if(g_configuration._file_log == 2) {
+	if (g_configuration._file_log == 2) {
 		VS_FileLog("", /*close*/true);
 	}
 
-	for(; stereoImagePoints_left.size() >= g_min_images && !g_bTerminated;) {
+	for (; stereoImagePoints_left.size() >= g_min_images && !g_bTerminated;) {
 		Mat cameraMatrix[4];
 		Mat distortionCoeffs[4];
 
 		double rms[2];
-		double rms_s = 0; 
+		double rms_s = 0;
 
 		Mat R, T, E, F;
 
-		size_t number_of_iterations = (stereoImagePoints_left.size() - g_min_images) * 3 + 1; 
-		if(number_of_iterations > 64) {
-			number_of_iterations = 64; 
+		size_t number_of_iterations = (stereoImagePoints_left.size() - g_min_images) * 3 + 1;
+		if (number_of_iterations > 64) {
+			number_of_iterations = 64;
 		}
 
 		std::cout << "Calibrating cameras: iterations " << number_of_iterations << std::endl;
 
-		if(ctl->_two_step_calibration) {
+		if (ctl->_two_step_calibration) {
 			std::cout << "Calibrating cameras: first undistort (because 2 step calibration is selected)" << std::endl;
 
 			BoostCalibrate(number_of_iterations, cameraMatrix[2], cameraMatrix[3], distortionCoeffs[2], distortionCoeffs[3], rms);
@@ -1844,18 +1922,18 @@ return_t __stdcall AcquireImagepointsEx(LPVOID lp) {
 
 			bool ok = !g_bTerminated;
 
-			ok = ok? ReEvaluateUndistortImagePoints(imageRaw_left, imagePoints_left, cameraMatrix[2], distortionCoeffs[2], *ctl, cv_windows[0]): false;
-			ok = ok? ReEvaluateUndistortImagePoints(imageRaw_right, imagePoints_right, cameraMatrix[3], distortionCoeffs[3], *ctl, cv_windows[1]): false;
-			ok = ok? ReEvaluateUndistortImagePoints(stereoImageRaw_left, stereoImagePoints_left, cameraMatrix[2], distortionCoeffs[2], *ctl, cv_windows[0], &stereoImagePoints_right, &stereoImageRaw_right): false;
-			ok = ok? ReEvaluateUndistortImagePoints(stereoImageRaw_right, stereoImagePoints_right, cameraMatrix[3], distortionCoeffs[3], *ctl, cv_windows[1], &stereoImagePoints_left, &stereoImageRaw_left): false;
+			ok = ok ? ReEvaluateUndistortImagePoints(imageRaw_left, imagePoints_left, cameraMatrix[2], distortionCoeffs[2], *ctl, cv_windows[0]) : false;
+			ok = ok ? ReEvaluateUndistortImagePoints(imageRaw_right, imagePoints_right, cameraMatrix[3], distortionCoeffs[3], *ctl, cv_windows[1]) : false;
+			ok = ok ? ReEvaluateUndistortImagePoints(stereoImageRaw_left, stereoImagePoints_left, cameraMatrix[2], distortionCoeffs[2], *ctl, cv_windows[0], &stereoImagePoints_right, &stereoImageRaw_right) : false;
+			ok = ok ? ReEvaluateUndistortImagePoints(stereoImageRaw_right, stereoImagePoints_right, cameraMatrix[3], distortionCoeffs[3], *ctl, cv_windows[1], &stereoImagePoints_left, &stereoImageRaw_left) : false;
 
-			if(ok) {
-				if(stereoImagePoints_left.size() != stereoImagePoints_right.size() || stereoImagePoints_left.size() < g_min_images) {
-					ok = false; 
+			if (ok) {
+				if (stereoImagePoints_left.size() != stereoImagePoints_right.size() || stereoImagePoints_left.size() < g_min_images) {
+					ok = false;
 				}
 			}
 
-			if(!ok) {
+			if (!ok) {
 				imagePoints_left = imagePoints_left2;
 				imagePoints_right = imagePoints_right2;
 				stereoImagePoints_left = stereoImagePoints_left2;
@@ -1865,9 +1943,9 @@ return_t __stdcall AcquireImagepointsEx(LPVOID lp) {
 				std::cout << "two-step calibration has been canceled" << std::endl;
 			}
 
-			while(ProcessWinMessages());
+			while (ProcessWinMessages());
 
-			if(g_configuration._file_log == 2) {
+			if (g_configuration._file_log == 2) {
 				VS_FileLog("", /*close*/true);
 			}
 		}
@@ -1892,16 +1970,16 @@ return_t __stdcall AcquireImagepointsEx(LPVOID lp) {
 		double max_rms = 0;
 
 		size_t iter_num;
-		for(iter_num = 0; !g_bTerminated && iter_num < number_of_iterations; ++iter_num) {
+		for (iter_num = 0; !g_bTerminated && iter_num < number_of_iterations; ++iter_num) {
 			vector<vector<Point2f>> stereoImagePoints_left1(g_min_images);
 			vector<vector<Point2f>> stereoImagePoints_right1(g_min_images);
 
 			SampleImagepoints(stereoImagePoints_left, stereoImagePoints_left1, &stereoImagePoints_right, &stereoImagePoints_right1);
 
-			bool fix_intrinsic = ctl->_two_step_calibration && !g_configuration._calib_use_homography; 
-			fix_intrinsic = false; 
+			bool fix_intrinsic = ctl->_two_step_calibration && !g_configuration._calib_use_homography;
+			fix_intrinsic = false;
 
-			CMVec[2 * iter_num] = cameraMatrix[0].clone(); 
+			CMVec[2 * iter_num] = cameraMatrix[0].clone();
 			CMVec[2 * iter_num + 1] = cameraMatrix[1].clone();
 			DCVec[2 * iter_num] = distortionCoeffs[0].clone();
 			DCVec[2 * iter_num + 1] = distortionCoeffs[1].clone();
@@ -1910,7 +1988,7 @@ return_t __stdcall AcquireImagepointsEx(LPVOID lp) {
 			rms_s = stereoCalibrate(g_objectPoints, stereoImagePoints_left1, stereoImagePoints_right1, CMVec[2 * iter_num], DCVec[2 * iter_num], CMVec[2 * iter_num + 1], DCVec[2 * iter_num + 1], g_imageSize, RVec[iter_num], TVec[iter_num], EVec[iter_num], FVec[iter_num], fix_intrinsic ? CALIB_FIX_INTRINSIC : CALIB_USE_INTRINSIC_GUESS, TermCriteria(TermCriteria::COUNT + TermCriteria::EPS, 30, 1e-6));
 
 			iteration_rms[iter_num] = rms_s;
-			if(max_rms < rms_s) {
+			if (max_rms < rms_s) {
 				max_rms = rms_s;
 			}
 			average_rms += rms_s;
@@ -1918,7 +1996,7 @@ return_t __stdcall AcquireImagepointsEx(LPVOID lp) {
 
 			std::cout << iter_num << ' ' << "Re-projection error for stereo camera: " << rms_s << std::endl;
 
-			while(ProcessWinMessages());
+			while (ProcessWinMessages());
 
 		}
 		average_rms /= rms_cnt;
@@ -1929,8 +2007,8 @@ return_t __stdcall AcquireImagepointsEx(LPVOID lp) {
 		R = RVec[0]; T = TVec[0]; E = EVec[0]; F = FVec[0];
 		cameraMatrix[0] = CMVec[0]; cameraMatrix[1] = CMVec[1]; distortionCoeffs[0] = DCVec[0]; distortionCoeffs[1] = DCVec[1];
 
-		for(iter_num = 0; iter_num < max_iter; ++iter_num) {
-			if(iteration_rms[iter_num] <= average_rms) {
+		for (iter_num = 0; iter_num < max_iter; ++iter_num) {
+			if (iteration_rms[iter_num] <= average_rms) {
 				R = RVec[iter_num]; T = TVec[iter_num]; E = EVec[iter_num]; F = FVec[iter_num];
 				cameraMatrix[0] = CMVec[iter_num * 2]; cameraMatrix[1] = CMVec[iter_num * 2 + 1]; distortionCoeffs[0] = DCVec[iter_num * 2]; distortionCoeffs[1] = DCVec[iter_num * 2 + 1];
 				break;
@@ -1940,8 +2018,8 @@ return_t __stdcall AcquireImagepointsEx(LPVOID lp) {
 			}
 		}
 
-		for(++iter_num; iter_num < max_iter; ++iter_num) {
-			if(iteration_rms[iter_num] <= average_rms) {
+		for (++iter_num; iter_num < max_iter; ++iter_num) {
+			if (iteration_rms[iter_num] <= average_rms) {
 				R = R + RVec[iter_num];
 				T = T + TVec[iter_num];
 				E = E + EVec[iter_num];
@@ -1955,7 +2033,7 @@ return_t __stdcall AcquireImagepointsEx(LPVOID lp) {
 				--number_of_iterations;
 			}
 		}
-		if(number_of_iterations > 0) {
+		if (number_of_iterations > 0) {
 			R = R / (double)number_of_iterations;
 			T = T / (double)number_of_iterations;
 			E = E / (double)number_of_iterations;
@@ -1967,8 +2045,8 @@ return_t __stdcall AcquireImagepointsEx(LPVOID lp) {
 		}
 
 
-		if(g_bTerminated) {
-			break; 
+		if (g_bTerminated) {
+			break;
 		}
 
 
@@ -2020,8 +2098,8 @@ return_t __stdcall AcquireImagepointsEx(LPVOID lp) {
 
 
 
-		cv::Size rectified_image_size(g_imageSize.width * 6 / 4, g_imageSize.height * 6 / 4); 
-		rectified_image_size = g_imageSize; 
+		cv::Size rectified_image_size(g_imageSize.width * 6 / 4, g_imageSize.height * 6 / 4);
+		rectified_image_size = g_imageSize;
 
 		Mat Rl, Rr, Pl, Pr, Q;
 		//cv::stereoRectify(cameraMatrix[0], distortionCoeffs[0], cameraMatrix[1], distortionCoeffs[1], g_imageSize, R, T, Rl, Rr, Pl, Pr, Q, 0);
@@ -2031,7 +2109,7 @@ return_t __stdcall AcquireImagepointsEx(LPVOID lp) {
 
 		//cv::stereoRectify(cameraMatrix[0], distortionCoeffs[0], cameraMatrix[1], distortionCoeffs[1], g_imageSize, R, T, Rl, Rr, Pl, Pr, Q, 0, 0, rectified_image_size);
 
-		cv::Rect Roi[2]; 
+		cv::Rect Roi[2];
 		cv::stereoRectify(cameraMatrix[0], distortionCoeffs[0], cameraMatrix[1], distortionCoeffs[1], g_imageSize, R, T, Rl, Rr, Pl, Pr, Q, 0, g_configuration._calib_rectify_alpha_param, rectified_image_size, &Roi[0], &Roi[1]);
 		//if(Roi[0].width < (g_imageSize.width * 0.8) || Roi[1].width < (g_imageSize.width * 0.8)) {
 		//	cv::stereoRectify(cameraMatrix[0], distortionCoeffs[0], cameraMatrix[1], distortionCoeffs[1], g_imageSize, R, T, Rl, Rr, Pl, Pr, Q, 0, 0, rectified_image_size, &Roi[0], &Roi[1]);
@@ -2039,7 +2117,7 @@ return_t __stdcall AcquireImagepointsEx(LPVOID lp) {
 		//}
 
 
-		if(g_bTerminated) {
+		if (g_bTerminated) {
 			break;
 		}
 
@@ -2050,7 +2128,7 @@ return_t __stdcall AcquireImagepointsEx(LPVOID lp) {
 		cv::initUndistortRectifyMap(cameraMatrix[0], distortionCoeffs[0], Rl, Pl, rectified_image_size, CV_16SC2/*CV_32F*/, map_l[0], map_l[1]);
 		cv::initUndistortRectifyMap(cameraMatrix[1], distortionCoeffs[1], Rr, Pr, rectified_image_size, CV_16SC2/*CV_32F*/, map_r[0], map_r[1]);
 
-		if(ctl->_two_step_calibration) {
+		if (ctl->_two_step_calibration) {
 			cv::initUndistortRectifyMap(cameraMatrix[2], distortionCoeffs[2], cv::Mat(), cv::getOptimalNewCameraMatrix(cameraMatrix[2], distortionCoeffs[2], g_imageSize, 0), g_imageSize, CV_16SC2/*CV_32F*/, map_l[2], map_l[3]);
 			cv::initUndistortRectifyMap(cameraMatrix[3], distortionCoeffs[3], cv::Mat(), cv::getOptimalNewCameraMatrix(cameraMatrix[3], distortionCoeffs[3], g_imageSize, 0), g_imageSize, CV_16SC2/*CV_32F*/, map_r[2], map_r[3]);
 		}
@@ -2075,7 +2153,7 @@ return_t __stdcall AcquireImagepointsEx(LPVOID lp) {
 		fs << "map_r1" << map_r[0];
 		fs << "map_r2" << map_r[1];
 
-		if(ctl->_two_step_calibration) {
+		if (ctl->_two_step_calibration) {
 			fs << "cameraMatrix_l_first" << cameraMatrix[2];
 			fs << "cameraMatrix_r_first" << cameraMatrix[3];
 			fs << "distCoeffs_l_first" << distortionCoeffs[2];
@@ -2092,19 +2170,9 @@ return_t __stdcall AcquireImagepointsEx(LPVOID lp) {
 		fs.release();
 
 		g_images_are_collected = true;
-		break; 
+		break;
 	}
-	while(ProcessWinMessages()) {}
-
-	for(int x = 0; x < ARRAY_NUM_ELEMENTS(cv_windows); ++x) {
-		try {
-			if(cv_windows[x].size())
-				destroyWindow(cv_windows[x]);
-			cv_windows[x].resize(0);
-		}
-		catch(...) {
-		}
-	}
+	while (ProcessWinMessages()) {}
 
 	ctl->_imagepoints_status = 0;
 
@@ -2112,10 +2180,10 @@ return_t __stdcall AcquireImagepointsEx(LPVOID lp) {
 }
 
 
-return_t __stdcall AcquireImagepoints(LPVOID lp) {
-	//SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
+return_t __stdcall AcquireImagepointsWorkItem(LPVOID lp) {
+	SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
 	try {
-		AcquireImagepointsEx(lp);
+		AcquireImagepoints(lp);
 	}
 	catch(Exception& ex) {
 		std::cout << "AcquireImagepoints:" << ' ' << ex.msg << std::endl;
@@ -2126,11 +2194,8 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 }
 
 
-void launch_calibration(SImageAcquisitionCtl& ctl, SPointsReconstructionCtl*) {
+void launch_AcquireImages_calibration(SImageAcquisitionCtl& ctl, SPointsReconstructionCtl*) {
 	int exposure_times[2] = {ctl._exposure_times[0], ctl._exposure_times[1]};
-
-	//ctl._exposure_times[0] = -1;
-	//ctl._exposure_times[1] = -1;
 
 	if(g_bCamerasAreOk && !ctl._images_from_files && !g_bTerminated) {
 		OpenCameras(ctl);
@@ -2140,11 +2205,10 @@ void launch_calibration(SImageAcquisitionCtl& ctl, SPointsReconstructionCtl*) {
 	ctl._exposure_times[1] = exposure_times[1];
 
 	if((g_bCamerasAreOk || ctl._images_from_files) && !g_bTerminated) {
-		ctl._status = -1;
 		ctl._imagepoints_status = -1;
 		ctl._terminated = 0;
-		//QueueWorkItem(AcquireImagepoints, &ctl);
 		if(g_bCamerasAreOk && !ctl._images_from_files) {
+			ctl._status = -1;
 			QueueWorkItem(AcquireImages, &ctl);
 		}
 	}
@@ -2165,11 +2229,12 @@ void CalibrateCameras(StereoConfiguration& configuration, SImageAcquisitionCtl& 
 
 	IPCSetLogHandler(_g_calibrationimages_frame->_hwnd);
 
-	//rootCVWindows(_g_calibrationimages_frame, 2, 3, cv_windows);
+	rootCVWindows(_g_calibrationimages_frame, 3, 0, cv_windows);
+	rootCVWindows(_g_calibrationimages_frame, 2, 3, &cv_windows[3]);
 
 
 
-	launch_calibration(image_acquisition_ctl, NULL);
+	launch_AcquireImages_calibration(image_acquisition_ctl, NULL);
 
 
 
@@ -2177,48 +2242,9 @@ void CalibrateCameras(StereoConfiguration& configuration, SImageAcquisitionCtl& 
 
 
 
-	while((g_bCamerasAreOk || image_acquisition_ctl._images_from_files) && !g_bTerminated && !g_images_are_collected && !g_bCalibrationExists) {
-		static uint64 lastwritten_timestamp = 0;
+	ConductCalibration(&image_acquisition_ctl);
 
-		if(lastwritten_timestamp != g_lastwritten_sframe.frames[0].timestamp) {
-			g_lastwritten_sframe.gate.lock();
-			lastwritten_timestamp = g_lastwritten_sframe.frames[0].timestamp;
 
-			SStereoFrame sframe;
-			for(size_t j = 0; j < ARRAY_NUM_ELEMENTS(sframe.frames); ++j) {
-				sframe.frames[j] = g_lastwritten_sframe.frames[j];
-			}
-			g_lastwritten_sframe.gate.unlock();
-
-			for(int c = 0; c < ARRAY_NUM_ELEMENTS(sframe.frames); ++c) {
-				double fx = 700.0 / sframe.frames[c].cv_image.cols;
-				double fy = fx; 
-				HWND hwnd = (HWND)cvGetWindowHandle(cv_windows[c].c_str());
-				RECT clrect;
-				if(GetWindowRect(GetParent(hwnd), &clrect)) {
-					fx = (double)(clrect.right - clrect.left) / (double)sframe.frames[c].cv_image.cols;
-					fy = (double)(clrect.bottom - clrect.top) / (double)sframe.frames[c].cv_image.rows;
-					fx = fy = std::min(fx, fy); 
-				}
-				cv::resize(sframe.frames[c].cv_image, cv_image[c], cv::Size(0, 0), fx, fy, INTER_AREA);
-			}
-
-			for(int c = 0; c < ARRAY_NUM_ELEMENTS(sframe.frames); ++c) {
-				cv::imshow(cv_windows[c], cv_image[c]);
-			}
-		}
-
-		if(!ProcessWinMessages(40)) {
-			PostMessage(0, WM_USER, 0, 0);
-		}
-
-		if(g_configuration._changes_pending) {
-			AcceptNewGlobalConfiguration(configuration, image_acquisition_ctl, 0, launch_calibration);
-			if(!g_bTerminated) {
-				VS_SaveConfiguration(configuration);
-			}
-		}
-	}
 
 	image_acquisition_ctl._terminated = 1;
 	while(image_acquisition_ctl._status != 0) {

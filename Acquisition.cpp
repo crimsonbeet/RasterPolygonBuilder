@@ -466,24 +466,24 @@ bool GetImagesFromFile(Mat& left_image, Mat& right_image, const std::string& cur
 		return false;
 	}
 
-	if (!g_bTerminated) {
-		g_lastwritten_sframe.gate.lock();
-		__int64 time_now = OSDayTimeInMilliseconds();
-		for (int j = 0; j < NUMBER_OF_CAMERAS; ++j) {
-			g_lastwritten_sframe.frames[j].timestamp = time_now;
-			g_lastwritten_sframe.frames[j].camera_index = j;
-		}
-		g_lastwritten_sframe.local_timestamp = time_now;
-		g_lastwritten_sframe.isActive = false;
-		Mat* images[2] = { &g_lastwritten_sframe.frames[0].cv_image, &g_lastwritten_sframe.frames[NUMBER_OF_CAMERAS - 1].cv_image };
-		matCV_16UC1_memcpy(*images[0], left_image);
-		matCV_16UC1_memcpy(*images[1], right_image);
-		g_lastwritten_sframe.gate.unlock();
+	//if (!g_bTerminated) {
+	//	g_lastwritten_sframe.gate.lock();
+	//	__int64 time_now = OSDayTimeInMilliseconds();
+	//	for (int j = 0; j < NUMBER_OF_CAMERAS; ++j) {
+	//		g_lastwritten_sframe.frames[j].timestamp = time_now;
+	//		g_lastwritten_sframe.frames[j].camera_index = j;
+	//	}
+	//	g_lastwritten_sframe.local_timestamp = time_now;
+	//	g_lastwritten_sframe.isActive = false;
+	//	Mat* images[2] = { &g_lastwritten_sframe.frames[0].cv_image, &g_lastwritten_sframe.frames[NUMBER_OF_CAMERAS - 1].cv_image };
+	//	matCV_16UC1_memcpy(*images[0], left_image);
+	//	matCV_16UC1_memcpy(*images[1], right_image);
+	//	g_lastwritten_sframe.gate.unlock();
 
-		if (g_event_SFrameIsAvailable != INVALID_HANDLE_VALUE) {
-			SetEvent(g_event_SFrameIsAvailable);
-		}
-	}
+	//	if (g_event_SFrameIsAvailable != INVALID_HANDLE_VALUE) {
+	//		SetEvent(g_event_SFrameIsAvailable);
+	//	}
+	//}
 
 	return true;
 }

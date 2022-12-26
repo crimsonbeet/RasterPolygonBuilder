@@ -2715,7 +2715,7 @@ int BlobsLoG(std::vector<ABoxedblob>& blobs, Mat& image, unsigned int& threshold
 	return cnt; 
 }
 
-int BlobCentersLoG(std::vector<ABox>& boxes, std::vector<ClusteredPoint>& points, Mat& image, unsigned int& threshold_intensity, cv::Rect roi, Mat_<double>& kmat, bool arff_file_requested = false, ushort *intensity_avg_ptr = 0) {
+int BlobCentersLoG(std::vector<ABox>& boxes, std::vector<ClusteredPoint>& points, Mat& image, unsigned int& threshold_intensity, cv::Rect roi, Mat_<double>& kmat, bool arff_file_requested, ushort *intensity_avg_ptr) {
 	const int imcols = image.cols;
 	const int imrows = image.rows;
 
@@ -3929,12 +3929,6 @@ size_t ConductOverlapEliminationEx(const std::vector<std::vector<cv::Point2d>>& 
 	}
 
 	return count; 
-}
-
-template<typename T1, typename T2>
-void CopyVector(std::vector<T1>& dst, std::vector<T2>& src) {
-	dst.clear();
-	std::transform(src.cbegin(), src.cend(), std::back_inserter(dst), [](T2 p) { return T1(p); });
 }
 
 return_t __stdcall EvaluateContours(LPVOID lp) {

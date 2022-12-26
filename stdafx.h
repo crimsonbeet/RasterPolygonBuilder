@@ -566,10 +566,8 @@ class ClassBlobDetector : public SimpleBlobDetector {
 		double confidence;
 	};
 
-	void findBlobs(const Mat& image, const Mat& binaryImage, std::vector<Center>& centers) const;
-	void detectImpl(const Mat& image, std::vector<KeyPoint>& keypoints, const Mat& mask = Mat()) const;
-
-	Ptr<SimpleBlobDetector> This = nullptr;
+	void findBlobs(const Mat& image, Mat& binaryImage, std::vector<Center>& centers, std::vector<std::vector<Point>>& contours) const;
+	void detectImpl(const Mat& image, std::vector<KeyPoint>& keypoints, const Mat& mask = Mat());
 
 public:
 	Params params;
@@ -577,37 +575,33 @@ public:
 	virtual void detect(InputArray image, CV_OUT std::vector<KeyPoint>& keypoints, InputArray mask = noArray()) {
 		detectImpl(image.getMat(), keypoints);
 	}
-	ClassBlobDetector(double min_confidence = 0.3, size_t min_repeatability = 2, int min_threshold = 120, bool invert_binary = false, bool chess_board = false) {
+	ClassBlobDetector(double min_confidence = 0.3, size_t min_repeatability = 3, int min_threshold = 80, bool white_on_black = false, bool chess_board = false) {
 
 		_min_confidence = min_confidence;
 		_min_threshold = min_threshold;
 		_chess_board = chess_board;
 		_invert_binary = false; // use blobColor instead
 		
-		if (invert_binary) {
-			params.blobColor = 255;
-		}
+		params.blobColor = white_on_black ? 255 : 0;
 
 		params.minDistBetweenBlobs = 2;
-		params.minThreshold = _min_threshold;
-		params.maxThreshold = 250 * g_bytedepth_scalefactor;
+		params.minThreshold = _min_threshold * g_bytedepth_scalefactor;
+		params.thresholdStep = 20 * g_bytedepth_scalefactor;
+		params.maxThreshold = 180 * g_bytedepth_scalefactor;
 		params.minRepeatability = min_repeatability/*5*/; // 2015-09-15 Set repeatabilty to 3 because of difficulties with capturing images
-		params.minArea = 50;
-		params.maxArea = 50000;
-		params.filterByColor = false; 
-		//params.filterByArea = false; 
-		//params.filterByInertia = false;
-		//params.filterByCircularity = false; 
-		//params.filterByConvexity = false;
-		params.minInertiaRatio = 0.05;
-		params.minCircularity = 0.3f;
-		params.minConvexity = 0.3f;
+		params.minArea = 70;
+		params.maxArea = 10000;
+		params.minInertiaRatio = 0.3;
+		params.minCircularity = 0.8f;
+		params.minConvexity = 0.9f;
 
-		This = create(params);
+		params.filterByColor = true;
+		params.filterByCircularity = true;
+		params.filterByInertia = true;
+		params.filterByArea = true; 
+		params.filterByConvexity = true;
 	}
 };
-
-
 
 
 
@@ -634,11 +628,6 @@ struct ABox {
 	std::vector<Point> contour;
 	std::vector<Point> contour_notsmoothed;
 };
-
-
-void BlobDetector(std::vector<ABox>& boxes, Mat& image, const unsigned int min_intensity, cv::Rect roi, const unsigned int max_intensity = 255 * g_bytedepth_scalefactor, int max_boxsize_pixels = g_max_boxsize_pixels, const double circularity_ratio = 3.0 / 5.0);
-
-
 
 
 
@@ -768,6 +757,26 @@ struct ReconstructedPoint: public Matx41d {
 	int _isACorner; 
 	int _isACenter;
 };
+
+
+
+
+
+void BlobDetector(std::vector<ABox>& boxes, Mat& image, const unsigned int min_intensity, cv::Rect roi, const unsigned int max_intensity = 255 * g_bytedepth_scalefactor, int max_boxsize_pixels = g_max_boxsize_pixels, const double circularity_ratio = 3.0 / 5.0);
+
+int BlobCentersLoG(std::vector<ABox>& boxes, std::vector<ClusteredPoint>& points, Mat& image, unsigned int& threshold_intensity, cv::Rect roi, Mat_<double>& kmat, bool arff_file_requested = false, ushort* intensity_avg_ptr = 0);
+
+template<typename T1, typename T2>
+void CopyVector(std::vector<T1>& dst, std::vector<T2>& src) {
+	dst.clear();
+	std::transform(src.cbegin(), src.cend(), std::back_inserter(dst), [](T2 p) { return T1(p); });
+}
+
+
+
+
+
+
 
 
 
