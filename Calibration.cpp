@@ -184,8 +184,9 @@ void ClassBlobDetector::findBlobs(const Mat& image, Mat& binaryImage, std::vecto
 		if (params.filterByArea)
 		{
 			double area = moms.m00;
-			if (area < params.minArea || area >= params.maxArea)
+			if (area < params.minArea || area >= params.maxArea) {
 				continue;
+			}
 		}
 
 
@@ -211,8 +212,9 @@ void ClassBlobDetector::findBlobs(const Mat& image, Mat& binaryImage, std::vecto
 				ratio = 1;
 			}
 
-			if (ratio < params.minInertiaRatio || ratio >= params.maxInertiaRatio)
+			if (ratio < params.minInertiaRatio || ratio >= params.maxInertiaRatio) {
 				continue;
+			}
 
 			center.confidence = ratio * ratio;
 		}
@@ -243,8 +245,9 @@ void ClassBlobDetector::findBlobs(const Mat& image, Mat& binaryImage, std::vecto
 			double hullArea = contourArea(Mat(hull));
 
 			double convexityRatio = area / hullArea;
-			if (convexityRatio < params.minConvexity || convexityRatio >= params.maxConvexity)
+			if (convexityRatio < params.minConvexity || convexityRatio >= params.maxConvexity) {
 				continue;
+			}
 		}
 
 
@@ -254,8 +257,9 @@ void ClassBlobDetector::findBlobs(const Mat& image, Mat& binaryImage, std::vecto
 		if (params.filterByColor)
 		{
 			ushort color = binaryImage.at<ushort>(cvRound(center.location.y), cvRound(center.location.x));
-			if (color != params_blobColor)
+			if (color != params_blobColor) {
 				continue;
+			}
 		}
 
 		dists.clear();
@@ -336,7 +340,7 @@ void ClassBlobDetector::detectImpl(const cv::Mat& image, std::vector<cv::KeyPoin
 			Mat image1;
 			cv::resize(image0, image1, cv::Size(0, 0), fx, fx, INTER_AREA);
 			cv::imshow("IMAGECalibr3", image1);
-			while (ProcessWinMessages(100));
+			while (ProcessWinMessages());
 
 			if (scale != 1) {
 				std::for_each(curCenters.begin(), curCenters.end(), [scale, &image0](ClassBlobDetector::Center& center) {
@@ -1733,7 +1737,7 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 	_g_calibrationimages_frame->_toolbar->SetButtonStateByindex(TBSTATE_ENABLED, 0/*btn - save document*/, true/*remove enabled*/);
 	_g_calibrationimages_frame->_stop_capturing = false; 
 
-	g_aposteriory_minsdistance *= (ctl->_images_from_files? 1: 1.01);
+	g_aposteriory_minsdistance *= (ctl->_calib_images_from_files? 1: 1.01);
 
 	while(!g_bTerminated && !ctl->_terminated && stereoImagePoints_left.size() < max_images && !_g_calibrationimages_frame->_stop_capturing) {
 		if(ProcessWinMessages(10)) {
@@ -1747,7 +1751,7 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 		Mat left_image;
 		Mat right_image;
 
-		if(ctl->_images_from_files) {
+		if(ctl->_calib_images_from_files) {
 			if(!GetImagesFromFile(left_image, right_image, std::to_string(current_N))) {
 				break;
 			}
@@ -1839,7 +1843,7 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 
 
 		if(nl > 0 || nr > 0) {
-			if(!ctl->_images_from_files) {
+			if(!ctl->_calib_images_from_files) {
 				lambda_Save_Images(std::max(current_N, size_t(std::max(nl, nr))), nl, nr);
 			}
 
@@ -1862,7 +1866,7 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 			while(ProcessWinMessages());
 		}
 		else
-		if(ctl->_images_from_files) {
+		if(ctl->_calib_images_from_files) {
 			++current_N;
 		}
 		else
@@ -1881,7 +1885,7 @@ return_t __stdcall ConductCalibration(LPVOID lp) {
 	SImageAcquisitionCtl* ctl = (SImageAcquisitionCtl*)lp;
 
 
-	g_aposteriory_minsdistance /= (ctl->_images_from_files ? 1 : 1.01);
+	g_aposteriory_minsdistance /= (ctl->_calib_images_from_files ? 1 : 1.01);
 
 	imagePoints_left.resize(imagePoints_left.size() - 1);
 	imagePoints_right.resize(imagePoints_right.size() - 1);
@@ -2197,17 +2201,17 @@ return_t __stdcall AcquireImagepointsWorkItem(LPVOID lp) {
 void launch_AcquireImages_calibration(SImageAcquisitionCtl& ctl, SPointsReconstructionCtl*) {
 	int exposure_times[2] = {ctl._exposure_times[0], ctl._exposure_times[1]};
 
-	if(g_bCamerasAreOk && !ctl._images_from_files && !g_bTerminated) {
+	if(g_bCamerasAreOk && !ctl._calib_images_from_files && !g_bTerminated) {
 		OpenCameras(ctl);
 	}
 
 	ctl._exposure_times[0] = exposure_times[0];
 	ctl._exposure_times[1] = exposure_times[1];
 
-	if((g_bCamerasAreOk || ctl._images_from_files) && !g_bTerminated) {
+	if((g_bCamerasAreOk || ctl._calib_images_from_files) && !g_bTerminated) {
 		ctl._imagepoints_status = -1;
 		ctl._terminated = 0;
-		if(g_bCamerasAreOk && !ctl._images_from_files) {
+		if(g_bCamerasAreOk && !ctl._calib_images_from_files) {
 			ctl._status = -1;
 			QueueWorkItem(AcquireImages, &ctl);
 		}

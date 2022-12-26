@@ -798,7 +798,7 @@ struct SImageAcquisitionCtl {
 	bool _use_trigger;
 	bool _trigger_source_software;
 
-	bool _images_from_files; 
+	bool _calib_images_from_files; 
 	bool _save_all_calibration_images; 
 	bool _two_step_calibration;
 	bool _pattern_is_chessBoard;
@@ -819,7 +819,7 @@ struct SImageAcquisitionCtl {
 		_use_trigger = true;
 		_trigger_source_software = true; 
 
-		_images_from_files = false; 
+		_calib_images_from_files = false; 
 		_save_all_calibration_images = false;
 		_two_step_calibration = true;
 		_pattern_is_gridOfSquares = true;
@@ -1275,7 +1275,7 @@ bool GetImagesEx(Mat& left, Mat& right, int64_t* time_spread, const int N/*min_f
 /*
 Copies from g_lastwritten_sframe. Waits if neccessary.
 */
-bool GetLastImages(Mat& left, Mat& right, int64_t* time_received = NULL, int64_t expiration = 3000);
+bool GetLastFrame(Mat& left, Mat& right, int64_t* time_received = NULL, int64_t expiration = 3000);
 
 
 

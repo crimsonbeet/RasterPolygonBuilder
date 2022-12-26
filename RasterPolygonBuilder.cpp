@@ -299,7 +299,7 @@ void AcceptNewGlobalConfiguration(StereoConfiguration& configuration/*out - loca
 	image_acquisition_ctl._trigger_source_software = configuration._trigger_source_hardware == 0;
 
 	image_acquisition_ctl._two_step_calibration = configuration._two_step_calibration != 0;
-	image_acquisition_ctl._images_from_files = configuration._images_from_files != 0;
+	image_acquisition_ctl._calib_images_from_files = configuration._calib_images_from_files != 0;
 	image_acquisition_ctl._save_all_calibration_images = configuration._save_all_calibration_images != 0;
 
 	image_acquisition_ctl._pattern_is_whiteOnBlack = configuration._pattern_is_whiteOnBlack != 0;
@@ -875,6 +875,8 @@ int main() {
 
 
 
+
+
 	HINSTANCE hInstance = GetModuleHandle(NULL);
 
 	HICON hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_ICON1));
@@ -905,20 +907,45 @@ int main() {
 		_g_images_frame->NEW_StereoConfiguration(g_configuration);
 	}
 
-	if (!g_configuration._evaluate_contours && !(g_bCalibrationExists = CalibrationFileExists())) {
-		if (g_bCamerasAreOk || image_acquisition_ctl._images_from_files) {
-			CalibrateCameras(configuration, image_acquisition_ctl);
+
+
+
+
+	bool do_calibration = !g_configuration._evaluate_contours && !(g_bCalibrationExists = CalibrationFileExists()); 
+	bool do_calibration_from_files = do_calibration && image_acquisition_ctl._calib_images_from_files;
+
+
+	if (g_configuration._frames_acquisition_mode < 0 && !do_calibration_from_files) {
+		InitializeCameras(image_acquisition_ctl);
+
+		if (g_bCamerasAreOk && !g_bTerminated) {
+			OpenCameras(image_acquisition_ctl);
+		}
+		if (!g_bTerminated) {
+			image_acquisition_ctl._status = -1;
+			image_acquisition_ctl._terminated = 0;
+			QueueWorkItem(AcquireImages, &image_acquisition_ctl);
 		}
 	}
+
+
+
+
+
+	if (do_calibration) {
+		if (g_bCamerasAreOk || image_acquisition_ctl._calib_images_from_files) {
+			CalibrateCameras(configuration, image_acquisition_ctl);
+			g_bTerminated = true;
+		}
+	}
+
+
 
 	int time_average = 0;
 
 	//VLDEnable();
 	//ReconstructPoints(&reconstruction_ctl);
 	//return 0;
-
-	InitializeCameras(image_acquisition_ctl);
-
 
 	if (!g_bTerminated) {
 		launch_reconstruction(image_acquisition_ctl, &reconstruction_ctl);

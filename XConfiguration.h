@@ -45,7 +45,7 @@ struct StereoConfiguration {
 
 	int _calib_auto_image_capture;
 	int _two_step_calibration;
-	int _images_from_files; // is used for re-calibration from previously captured images in "Calibimages" folder. 
+	int _calib_images_from_files; // is used for re-calibration from previously captured images in "Calibimages" folder. 
 	int _save_all_calibration_images;
 
 	double _calib_min_confidence; 
@@ -76,7 +76,7 @@ struct StereoConfiguration {
 
 	int _supervised_LoG = 1; 
 
-	int _frames_from_files; // is used to input from files the frames for reconstruction; value of >1 means read the first image and then re-use it in N threads; -N means read from cameras with N threads. 
+	int _frames_acquisition_mode; // is used to input from files the frames for reconstruction; value of >1 means read the first image and then re-use it in N threads; -N means read from cameras with N threads. 
 	int _evaluate_contours = 0;
 
 	int _visual_diagnostics; 
@@ -114,7 +114,7 @@ struct StereoConfiguration {
 
 		_calib_auto_image_capture = 1; 
 		_two_step_calibration = 1;
-		_images_from_files = 0;
+		_calib_images_from_files = 0;
 		_save_all_calibration_images = 0;
 
 		_max_boxsize_pixels = 25; 
@@ -142,7 +142,7 @@ struct StereoConfiguration {
 
 		_use_center_of_gravity = 0; 
 
-		_frames_from_files = 0; 
+		_frames_acquisition_mode = 0;
 
 		_visual_diagnostics = 1; 
 
@@ -202,7 +202,7 @@ private:
 
 		_calib_auto_image_capture = other._calib_auto_image_capture;
 		_two_step_calibration = other._two_step_calibration;
-		_images_from_files = other._images_from_files;
+		_calib_images_from_files = other._calib_images_from_files;
 		_save_all_calibration_images = other._save_all_calibration_images; 
 
 		_calib_min_confidence = other._calib_min_confidence; 
@@ -225,7 +225,7 @@ private:
 
 		_use_center_of_gravity = other._use_center_of_gravity; 
 
-		_frames_from_files = other._frames_from_files; 
+		_frames_acquisition_mode = other._frames_acquisition_mode;
 
 		_use_ellipse_fit = other._use_ellipse_fit; 
 		_file_log = other._file_log; 
@@ -257,7 +257,7 @@ CONTAINS_FLAT_MEMBER(_12bit_format, Format12Bit)
 CONTAINS_FLAT_MEMBER(_percent_maxintensity, PercentMaxintensity) // is used only in BlobDetector() that implements center of gravity (not used)
 CONTAINS_FLAT_MEMBER(_calib_auto_image_capture, CalibAutoImageCapture)
 CONTAINS_FLAT_MEMBER(_two_step_calibration, TwoStepCalibration)
-CONTAINS_FLAT_MEMBER(_images_from_files, ImagesFromFiles)
+CONTAINS_FLAT_MEMBER(_calib_images_from_files, CalibImagesFromFiles)
 CONTAINS_FLAT_MEMBER(_save_all_calibration_images, SaveAll)
 CONTAINS_FLAT_MEMBER(_calib_min_confidence, CalibMinConfidence)
 CONTAINS_FLAT_MEMBER(_calib_rectify_alpha_param, CalibRectifyAlphaParam)
@@ -274,7 +274,7 @@ CONTAINS_FLAT_MEMBER(_file_log, FileLog)
 CONTAINS_FLAT_MEMBER(_use_ellipse_fit, UseEllipseFit)
 CONTAINS_FLAT_MEMBER(_use_center_of_gravity, UseCenterOfGravity)
 CONTAINS_FLAT_MEMBER(_supervised_LoG, SupervisedLoG)
-CONTAINS_FLAT_MEMBER(_frames_from_files, FramesFromFiles)
+CONTAINS_FLAT_MEMBER(_frames_acquisition_mode, FramesAcquisitionMode)
 CONTAINS_FLAT_MEMBER(_evaluate_contours, EvaluateContours)
 CONTAINS_FLAT_MEMBER(_visual_diagnostics, VisualDiagnostics)
 CONTAINS_FLAT_MEMBER(_continuous_capture, ContinuousCapture)

@@ -3967,20 +3967,26 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 		std::string file_name; 
 		std::string path_name;
 
-		if (g_configuration._frames_from_files > 0) {
-			if (!image_isok || g_configuration._frames_from_files == 1/* >1 means iterate through the first image (for profiling and leakage testing)*/) {
+		if (g_configuration._frames_acquisition_mode > 0) {
+			if (!image_isok) {
 				image_isok = GetFramesFromFilesWithSubdirectorySearch(cv_image/*out*/, arff_file_requested/*out*/, file_name, path_name);
 				Sleep(20);
 			}
-
-			_g_images_frame->Invalidate();
 		}
+		else {
+			if (!image_isok) {
+				image_isok = GetImages(cv_image[0], cv_image[1], &image_localtime, 1);
+				Sleep(20);
+			}
+		}
+		_g_images_frame->Invalidate();
+
 
 		final_contours.resize(0); 
 
 		if (image_isok) {
 
-			__int64 time_start = OSDayTimeInMilliseconds();
+			int64_t time_start = OSDayTimeInMilliseconds();
 
 			if (cv_image[0].cols == 0 || cv_image[1].cols == 0) {
 				continue;
@@ -3990,7 +3996,7 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 			cv_image[3] = cv_image[1].clone();
 
 
-			if (g_configuration._frames_from_files > 0) {
+			if (g_configuration._frames_acquisition_mode > 0) {
 				unchangedImage = imread(std::string(g_path_nwpu_images_dir) + path_name + ".jpg", ImreadModes::IMREAD_ANYDEPTH | ImreadModes::IMREAD_ANYCOLOR);
 			}
 			else {
@@ -4008,10 +4014,13 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 			auto readyImages = [&cv_image, &cv_edges](int window) {
 				normalize(cv_image[window].clone(), cv_image[window], 0, (size_t)256 * g_bytedepth_scalefactor, NORM_MINMAX, CV_16UC1, Mat());
 
-				medianBlur(cv_image[window].clone(), cv_image[window], 3);
-
 				Mat aux = cv_image[window];
-				AnisotropicDiffusion(aux, 14);
+				int anysotropicIntensity = 14 - 5 * (aux.rows / 480);
+				if (anysotropicIntensity > 0) {
+					medianBlur(aux.clone(), aux, 3);
+
+					AnisotropicDiffusion(aux, anysotropicIntensity);
+				}
 				aux.convertTo(cv_image[window], CV_16UC1);
 
 				cv_edges[window] = cv_image[window].clone();
@@ -4410,8 +4419,8 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 		std::string file_name;
 		std::string path_name;
 
-		if (g_configuration._frames_from_files < 0) {
-			image_isok = GetLastImages(cv_image[0], cv_image[1], &image_localtime);
+		if (g_configuration._frames_acquisition_mode < 0) {
+			image_isok = GetLastFrame(cv_image[0], cv_image[1], &image_localtime);
 		}
 
 		final_contours.resize(0);
@@ -4496,27 +4505,19 @@ return_t __stdcall ReconstructPoints(LPVOID lp) {
 
 
 void launch_reconstruction(SImageAcquisitionCtl& image_acquisition_ctl, SPointsReconstructionCtl *reconstruction_ctl) {
-	if (g_bCamerasAreOk && !g_bTerminated) {
-		OpenCameras(image_acquisition_ctl);
-	}
-	if(!g_bTerminated) {
-		image_acquisition_ctl._status = -1;
-		image_acquisition_ctl._terminated = 0;
-		QueueWorkItem(AcquireImages, &image_acquisition_ctl);
-	}
 	if(!g_bTerminated) {
 		reconstruction_ctl->_status = 4; // each thread decrements twice; default 2 threads. 
 		reconstruction_ctl->_terminated = 0;
-		if(g_configuration._frames_from_files == 1) { // reads from files sequentially, so just one thread.
+		if(g_configuration._frames_acquisition_mode == 1) { // reads from files sequentially, so just one thread.
 			reconstruction_ctl->_status -= 2;
 		}
 		else
-		if(g_configuration._frames_from_files > 1) { // for memory leak detection. reads just one image from file per thread (N alltogether), then cycles through those images. 
-			reconstruction_ctl->_status = g_configuration._frames_from_files * 2;
+		if(g_configuration._frames_acquisition_mode > 1) { // for memory leak detection. reads just one image from file per thread (N alltogether), then cycles through those images. 
+			reconstruction_ctl->_status = g_configuration._frames_acquisition_mode * 2;
 		}
 		else
-		if(g_configuration._frames_from_files < 0) { // -N means read from cameras with N threads. 
-			reconstruction_ctl->_status = -g_configuration._frames_from_files * 2;
+		if(g_configuration._frames_acquisition_mode < 0) { // -N means read from cameras with N threads. 
+			reconstruction_ctl->_status = -g_configuration._frames_acquisition_mode * 2;
 		}
 
 		const int N = (reconstruction_ctl->_status >> 1); // number of reconstruction threads. 

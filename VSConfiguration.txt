@@ -28,10 +28,10 @@ CalibAutoImageCapture=1
 
 CalibMinConfidence=0.0 
 CalibRectifyAlphaParam=0.0 
-
-FramesFromFiles=-1
-ImagesFromFiles=1 
+CalibImagesFromFiles=1 
 TwoStepCalibration=1 
+
+FramesAcquisitionMode=-1
 
 PercentMaxintensity=0.1333
 

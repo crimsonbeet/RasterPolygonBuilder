@@ -451,12 +451,12 @@ bool GetImagesFromFile(Mat& left_image, Mat& right_image, const std::string& cur
 	}
 
 	if (left_image.rows == 0 || left_image.cols == 0) {
-		//left_image = imread(std::string(g_path_calib_images_dir) + current_N + ".jpg", CV_LOAD_IMAGE_ANYDEPTH);
-		left_image = imread(std::string(g_path_calib_images_dir) + current_N + ".jpg", ImreadModes::IMREAD_ANYDEPTH | ImreadModes::IMREAD_ANYCOLOR);
+		//left_image = imread(std::string(g_path_nwpu_images_dir) + current_N + ".jpg", CV_LOAD_IMAGE_ANYDEPTH);
+		left_image = imread(std::string(g_path_nwpu_images_dir) + current_N + ".jpg", ImreadModes::IMREAD_ANYDEPTH | ImreadModes::IMREAD_ANYCOLOR);
 	}
 	if (right_image.rows == 0 || right_image.cols == 0) {
-		//right_image = imread(std::string(g_path_calib_images_dir) + current_N + ".jpg", CV_LOAD_IMAGE_ANYDEPTH);
-		right_image = imread(std::string(g_path_calib_images_dir) + current_N + ".jpg", ImreadModes::IMREAD_ANYDEPTH | ImreadModes::IMREAD_ANYCOLOR);
+		//right_image = imread(std::string(g_path_nwpu_images_dir) + current_N + ".jpg", CV_LOAD_IMAGE_ANYDEPTH);
+		right_image = imread(std::string(g_path_nwpu_images_dir) + current_N + ".jpg", ImreadModes::IMREAD_ANYDEPTH | ImreadModes::IMREAD_ANYCOLOR);
 	}
 
 	if(left_image.rows <= 10 || right_image.rows <= 10 || left_image.rows != right_image.rows) {
@@ -632,6 +632,8 @@ bool GetImagesEx(Mat& left, Mat& right, int64_t* time_spread, const int N/*min_f
 	return GetImages(left, right, time_spread, N);
 }
 
+#pragma warning ( push )
+#pragma warning ( disable : 6201 ) // Index 'index-name' is out of valid index range 'minimum' to 'maximum' for possibly stack allocated buffer 'variable'
 bool GetImages(Mat& left, Mat& right, int64_t* time_received, const int N/*min_frames_2_consider*/, int64_t expiration) {
 	__int64 start_time = OSDayTimeInMilliseconds();
 
@@ -640,10 +642,10 @@ bool GetImages(Mat& left, Mat& right, int64_t* time_received, const int N/*min_f
 	int64_t minimal_time_difference = std::numeric_limits<int64_t>::max();
 	SStereoFrame* pframe = NULL;
 	while (!g_bTerminated) {
+		if (count >= N) {
+			break;
+		}
 		if ((pframe = NextReadFrame()) == NULL) {
-			if (count >= N) {
-				break;
-			}
 			if (expiration) {
 				if ((OSDayTimeInMilliseconds() - start_time) > expiration) {
 					break;
@@ -661,14 +663,13 @@ bool GetImages(Mat& left, Mat& right, int64_t* time_received, const int N/*min_f
 			++count;
 		}
 
+		int idx[2] = { pframe->frames[0].camera_index == 0 ? 0 : (NUMBER_OF_CAMERAS - 1), pframe->frames[0].camera_index == 0 ? (NUMBER_OF_CAMERAS - 1) : 0 };
+		int64_t dif = max(pframe->frames[idx[0]].timestamp, pframe->frames[idx[1]].timestamp) - min(pframe->frames[idx[0]].timestamp, pframe->frames[idx[1]].timestamp);
 		int64_t time_difference = std::numeric_limits<int64_t>::max();
-		for (int j = NUMBER_OF_CAMERAS - 1; j > 0; --j) {
-			int64_t dif = max(pframe->frames[j - 1].timestamp, pframe->frames[j].timestamp) - min(pframe->frames[j - 1].timestamp, pframe->frames[j].timestamp);
-			if (dif < time_difference) {
-				time_difference = dif;
-			}
+		if (dif < time_difference) {
+			time_difference = dif;
 		}
-		
+
 		if (pframe->isActive && time_difference < minimal_time_difference) {
 			minimal_time_difference = time_difference;
 			CopyStereoFrame(left, right, pframe, time_received);
@@ -680,6 +681,7 @@ bool GetImages(Mat& left, Mat& right, int64_t* time_received, const int N/*min_f
 	bool ok = count > 0 && !left.empty() && !right.empty();
 	return ok;
 }
+#pragma warning ( pop )
 
 
 
@@ -715,7 +717,7 @@ uint64_t EvaluateTimestampDifference(uint64_t* timestamp, size_t nsize) {
 	return timestamp_max - timestamp_min;
 }
 
-bool GetLastImages(Mat& left, Mat& right, int64_t* time_received, int64_t expiration) {
+bool GetLastFrame(Mat& left, Mat& right, int64_t* time_received, int64_t expiration) {
 	int64_t start_time = OSDayTimeInMilliseconds();
 
 	int count = 0;

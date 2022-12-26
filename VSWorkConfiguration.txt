@@ -2,4 +2,4 @@
 CameraNames={ACE1 ACE2 } PixelThreshold=40 
 SceneTranslate={-30 } 
 SceneTranslate@3={-20 } 
-LocalSceneTranslate@2={-10 40 } ImageHeight=966 PercentMaxintensity=0.1333 PatternIsWhiteOnBlack=1 PatternIsChessBoard=1 CalibAutoImageCapture=1 CalibMinConfidence=0.4 MaxBoxsizePixels=25 DistanceToTarget=4 VersionNumber=11 SupervisedLoG=1 FramesFromFiles=-1 ImagesFromFiles=1 TwoStepCalibration=1 VisualDiagnostics=1 FeaturesRequested=1 EvaluateContours=0 
+LocalSceneTranslate@2={-10 40 } ImageHeight=966 PercentMaxintensity=0.1333 PatternIsWhiteOnBlack=1 PatternIsChessBoard=1 CalibAutoImageCapture=1 CalibMinConfidence=0.4 MaxBoxsizePixels=25 DistanceToTarget=4 VersionNumber=11 SupervisedLoG=1 FramesAcquisitionMode=-1 CalibImagesFromFiles=1 TwoStepCalibration=1 VisualDiagnostics=1 FeaturesRequested=1 EvaluateContours=0 
