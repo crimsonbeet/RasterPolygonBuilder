@@ -953,6 +953,14 @@ Mat mat_convert2byte(const Mat& src, const int bytedepth_scalefactor = g_bytedep
 Mat mat_loginvert2byte(const Mat& src, const int bytedepth_scalefactor = g_bytedepth_scalefactor); // returns CV_8UC1 matrix of log inverted values
 
 
+bool StandardizeImage_HSV_Likeness(Mat& image, double rgbIdeal[3]);
+void StandardizeImage_Likeness(Mat& image, Mat mean/*rgb*/, Mat invCovar/*inverted covariance of colors*/, Mat invCholesky);
+
+Mat mat_invert2word(const Mat& src, const int bytedepth_scalefactor = g_bytedepth_scalefactor, const uint16_t maxvalue = 65535); // returns CV_16UC1 matrix
+Mat mat_loginvert2word(const Mat& src, const int bytedepth_scalefactor = g_bytedepth_scalefactor); // returns CV_16UC1 matrix
+
+
+
 inline double approx_log2(double x) {
 	//static double pow2_52 = pow(2, 52);
 	//static double log2_e = log2(2.71828182845904523536028747135266249775724709369995);
@@ -1276,7 +1284,6 @@ bool GetImagesEx(Mat& left, Mat& right, int64_t* time_spread, const int N/*min_f
 Copies from g_lastwritten_sframe. Waits if neccessary.
 */
 bool GetLastFrame(Mat& left, Mat& right, int64_t* time_received = NULL, int64_t expiration = 3000);
-
 
 
 

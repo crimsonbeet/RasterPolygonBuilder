@@ -21,7 +21,7 @@ extern bool g_bCalibrationExists;
 
 Size g_boardSize = Size(6/*points_per_row*/, 5/*points_per_colum*/); // describes matrix of centers that are on symmetric grid
 Size g_boardQuadSize = Size(g_boardSize.width * 2/*points_per_row*/, g_boardSize.height * 2/*points_per_colum*/); // describes matrix of corners that can be found around each center (4 corners per center)
-Size g_boardChessSize = Size(4/*points_per_row*/, 7/*points_per_colum*/); // describes matrix of centers that are on asymmetric grid
+Size g_boardChessSize = Size(4/*points_per_row*/, 8/*points_per_colum*/); // describes matrix of centers that are on asymmetric grid
 Size g_boardChessCornersSize = Size(g_boardChessSize.width * 2 - 1/*points_per_row*/, g_boardChessSize.height - 1/*points_per_colum*/); // describes matrix of corners on asymetric grid, i.e. where quads of same color connect. 
 Size g_imageSize = Size(1280, 1024);
 
@@ -846,9 +846,31 @@ bool ExtractCornersOfChessPattern(Mat& image, vector<Point2f>& pointBuf, const P
 
 	double fy = 1.0; 
 
-	if(image.rows > 1600) {
-		double fy = 1600.0 / image.rows; 
-		cv::resize(image, image, cv::Size(0, 0), fy, fy, INTER_AREA);
+	//if(image.rows > 1600) {
+	//	double fy = 1600.0 / image.rows; 
+	//	cv::resize(image, image, cv::Size(0, 0), fy, fy, INTER_AREA);
+	//}
+
+	auto image_type = image.type();
+
+	if (image_type == CV_8UC3) {
+		//double black_color[3] = { 117, 110, 86 };// { 109, 110, 87 };
+		//StandardizeImage_HSV_Likeness(image, black_color);
+
+		float invCovar_data[9] = { 0.023863367, -0.014549229, -0.007678366, -0.014549229, 0.020680217, -0.002604613, -0.007678366, -0.002604613, 0.009066458 };// { 0.008480210, -0.009493337, 0.000479789, -0.009493337, 0.014612858, -0.004419325, 0.000479789, -0.004419325, 0.004113333 };
+		float mean_data[3] = { 86.00596, 110.26242, 116.83199 };// { 85.33815, 109.98449, 117.31401 };// { 80.63069, 106.25501, 105.63298 };// { 120.5631, 147.1386, 161.4877 };
+		float invCholesky_data[9] = { 0.0572367, 0, 0, -0.1186783, 1.411806e-01, 0, -0.0806399, -2.735422e-02, 9.521795e-02 };// { 0.04941644, 0, 0, -0.10656424, 1.346013e-01, 0, -0.04061453, -7.950196e-02, 1.030287e-01 };//  { 0.09003559, 0.0000000, 0.0000000, -0.15749678, 0.1951192, 0.0000000, -0.02881720, -0.1063943, 0.1733445 };
+
+		cv::Mat invCovar = cv::Mat(3, 3, CV_32F, invCovar_data);
+		cv::Mat invCholesky = cv::Mat(3, 3, CV_32F, invCholesky_data);
+		cv:Mat mean = cv::Mat(1, 3, CV_32F, mean_data);
+
+		StandardizeImage_Likeness(image, mean, invCovar, invCholesky);
+
+		image = mat_loginvert2word(image);
+		image = mat_invert2word(image);
+		normalize(image.clone(), image, 0, (size_t)256 * g_bytedepth_scalefactor, NORM_MINMAX, CV_16UC1, Mat());
+		image_type = image.type();
 	}
 
 	bool found = findCirclesGrid(image, g_boardChessSize, pointBuf, CALIB_CB_ASYMMETRIC_GRID/* | CALIB_CB_CLUSTERING*/, detector);
@@ -1438,7 +1460,7 @@ bool optimizePointsFromImage(Mat& image, vector<Point2f>& pointBuf, const Ptr<Fe
 
 bool buildPointsFromImage(Mat& image, vector<Point2f>& pointBuf, SImageAcquisitionCtl& ctl, double min_confidence = 0.0, size_t min_repeatability = 3, int warped_iterations = 0, bool use_idealMapped = false) {
 	//Ptr<FeatureDetector> blobDetector = ClassBlobDetector::create(ClassBlobDetector(min_confidence, min_repeatability, 120, ctl._pattern_is_whiteOnBlack, ctl._pattern_is_chessBoard).params);
-	Ptr<FeatureDetector> blobDetector = new ClassBlobDetector(min_confidence, min_repeatability, 120, ctl._pattern_is_whiteOnBlack, ctl._pattern_is_chessBoard);
+	Ptr<FeatureDetector> blobDetector = new ClassBlobDetector(min_confidence, min_repeatability, 40, ctl._pattern_is_whiteOnBlack, ctl._pattern_is_chessBoard);
 	pointBuf.clear();
 	bool found = false;
 	if(image.data) { 
@@ -1756,6 +1778,7 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 				break;
 			}
 			min_repeatability = 2; 
+			g_boardChessSize = Size(4/*points_per_row*/, 7/*points_per_colum*/); 
 		}
 		else 
 		if(g_configuration._calib_auto_image_capture) {
@@ -2238,7 +2261,7 @@ void CalibrateCameras(StereoConfiguration& configuration, SImageAcquisitionCtl& 
 
 
 
-	launch_AcquireImages_calibration(image_acquisition_ctl, NULL);
+	//launch_AcquireImages_calibration(image_acquisition_ctl, NULL);
 
 
 

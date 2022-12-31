@@ -922,8 +922,9 @@ int main() {
 			OpenCameras(image_acquisition_ctl);
 		}
 		if (!g_bTerminated) {
+			image_acquisition_ctl._imagepoints_status = -1;
 			image_acquisition_ctl._status = -1;
-			image_acquisition_ctl._terminated = 0;
+			image_acquisition_ctl._terminated = 0; 
 			QueueWorkItem(AcquireImages, &image_acquisition_ctl);
 		}
 	}

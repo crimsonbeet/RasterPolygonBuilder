@@ -44,9 +44,10 @@ void BuildWeights_ByChannel(Mat& image, Point& pt, double weights_out[3]);
 
 
 void StandardizeImage_Likeness(Mat& image, double chIdeal[3]);
-bool StandardizeImage_HSV_Likeness(Mat& image, double chIdeal[3]);
+bool StandardizeImage_HSV_Likeness(Mat& image, double rgbIdeal[3]);
 void SquareImage_Likeness(Mat& image, double chIdeal[3]);
 void BuildIdealChannels_Likeness(Mat& image, Point& pt, double chIdeal[3]);
+bool BuildIdealChannels_Distribution(Mat& image, Point& pt, Mat& mean, Mat& invCovar, Mat& invCholesky);
 
 void StandardizeImage_Likeness(Mat& image, uchar chIdeal[3]);
 void SquareImage_Likeness(Mat& image, uchar chIdeal[3]);
@@ -518,7 +519,7 @@ inline Mat mat_loginvert2word(const T *src_val, const cv::Size& src_size, const 
 	return dst;
 }
 
-Mat mat_loginvert2word(const Mat& src, const int bytedepth_scalefactor = g_bytedepth_scalefactor) { // returns CV_16UC1 matrix
+Mat mat_loginvert2word(const Mat& src, const int bytedepth_scalefactor) { // returns CV_16UC1 matrix
 	Mat dst;
 	switch (src.type()) {
 	case CV_8UC1:
@@ -572,7 +573,7 @@ inline Mat mat_invert2word(const T* src_val, const cv::Size& src_size, const siz
 	return dst;
 }
 
-Mat mat_invert2word(const Mat& src, const int bytedepth_scalefactor = g_bytedepth_scalefactor, const uint16_t maxvalue = 65535) { // returns CV_16UC1 matrix
+Mat mat_invert2word(const Mat& src, const int bytedepth_scalefactor, const uint16_t maxvalue) { // returns CV_16UC1 matrix
 	Mat dst;
 	switch (src.type()) {
 	case CV_8UC1:
@@ -2935,11 +2936,10 @@ int BlobCentersLoG(std::vector<ABox>& boxes, std::vector<ClusteredPoint>& points
 						double fx = 240.0 / crop.rows;
 
 						if (g_configuration._visual_diagnostics) {
-							crop.convertTo(crop_colored, CV_16UC1, std::max(256 / (int)g_bytedepth_scalefactor, 1));
-							cv::cvtColor(crop_colored, maux, ColorConversionCodes::COLOR_GRAY2RGB);
-							crop_colored = Mat();
-							cv::resize(maux, crop_colored, cv::Size(0, 0), fx, fx, INTER_AREA);
-							crop_colored.copyTo(crop_coloredOriginal);
+							crop.convertTo(maux, CV_16UC1, std::max(256 / (int)g_bytedepth_scalefactor, 1));
+							cv::cvtColor(maux, crop_colored, ColorConversionCodes::COLOR_GRAY2RGB);
+							cv::resize(crop_colored, crop_coloredOriginal, cv::Size(0, 0), fx, fx, INTER_AREA);
+							crop_coloredOriginal.copyTo(crop_colored);
 						}
 
 
@@ -4015,7 +4015,7 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 				normalize(cv_image[window].clone(), cv_image[window], 0, (size_t)256 * g_bytedepth_scalefactor, NORM_MINMAX, CV_16UC1, Mat());
 
 				Mat aux = cv_image[window];
-				int anysotropicIntensity = 14 - 5 * (aux.rows / 480);
+				int anysotropicIntensity = 7 - 3 * (aux.rows / 480); // takes too long on large images, so skip it alltogether for large images.
 				if (anysotropicIntensity > 0) {
 					medianBlur(aux.clone(), aux, 3);
 
@@ -4133,6 +4133,7 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 				}
 				if (anEvent == (WAIT_OBJECT_0 + 1)) {
 					if (g_LoG_seedPoint.params.windowNumber == 5) {
+						image_isok = false;
 						break; 
 					}
 
@@ -4207,18 +4208,39 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 					int windowNumber = g_LoG_seedPoint.params.windowNumber - 1;
 
+					//if (g_LoG_seedPoint.eventValue == 2/*right button*/) {
+					//}
+
 					if (g_LoG_seedPoint.eventValue == 2/*right button*/) {
-						//BuildWeights_ByChannel(unchangedImage, pt, chWeights);
+						Mat aux = cv_image[2 + windowNumber].clone();
 
-						double chIdeal[3];
-						BuildIdealChannels_Likeness(unchangedImage, pt, chIdeal);
+						Mat mean;
+						Mat invCovar;
+						Mat invCholesky;
 
-						//prepImages_Likeness(chIdeal, chWeights);
-						//readyImages_Likeness();
+						if (BuildIdealChannels_Distribution(aux, pt, mean, invCovar, invCholesky)) {
+							StandardizeImage_Likeness(aux, mean, invCovar, invCholesky);
 
-						prepImages_HSV_Likeness(chIdeal, windowNumber);
+							cv_image[windowNumber] = mat_loginvert2word(aux);
+							cv_image[windowNumber] = mat_invert2word(cv_image[windowNumber]);
+
+						}
+						else {
+								//BuildWeights_ByChannel(unchangedImage, pt, chWeights);
+
+								double chIdeal[3];
+								BuildIdealChannels_Likeness(unchangedImage, pt, chIdeal);
+
+								//prepImages_Likeness(chIdeal, chWeights);
+								//readyImages_Likeness();
+
+								prepImages_HSV_Likeness(chIdeal, windowNumber);
+						}
+
 						readyImages(windowNumber);
 					}
+
+					void BuildIdealChannels_Distribution(Mat & image, Point & pt, Mat & invCovar, Mat & invCholesky);
 
 					submitGraphics(unchangedImage);
 
