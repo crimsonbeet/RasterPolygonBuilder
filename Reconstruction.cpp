@@ -1024,7 +1024,7 @@ double convolveLoG(const Mat& image, const size_t rowy, const size_t colx, const
 
 
 
-void BlobLoG(std::vector<ABoxedblob>& blobs,
+int64_t BlobLoG(std::vector<ABoxedblob>& blobs,
 	const Point2d& aSeed, 
 	const Mat& image, 
 	const Mat_<double>& kmat, 
@@ -1068,6 +1068,8 @@ void BlobLoG(std::vector<ABoxedblob>& blobs,
 
 	int min_max_rows[2] = {200, 200/*g_max_boxsize_pixels, g_max_boxsize_pixels*/};
 
+	int64_t qcounter_convolve = 0;
+
 	for(int i = 0; i < 2; ++i) {
 		// up then down
 		int& currentrow = min_max_rows[i];
@@ -1099,6 +1101,8 @@ void BlobLoG(std::vector<ABoxedblob>& blobs,
 								if(val == 0.0) {
 									//val = convolveLoG(image, next_row, next_col, kmat);
 
+									int64_t qcounter = MyQueryCounter();// +qcounter_delta;
+
 									const size_t offsetrow = next_row - knrows2;
 									const size_t offsetcol = next_col - kncols2;
 
@@ -1115,6 +1119,8 @@ void BlobLoG(std::vector<ABoxedblob>& blobs,
 											val += (*kmat_data++) * (*ptr++);
 										}
 									}
+
+									qcounter_convolve += MyQueryCounter() - qcounter;
 								}
 								if(val > min_LoG_value && val < max_LoG_value) {
 									if(vincr != 0) {
@@ -1172,6 +1178,8 @@ void BlobLoG(std::vector<ABoxedblob>& blobs,
 	if(aBlob._rows.size() == 0) {
 		blobs.resize(blobs.size() - 1);
 	}
+
+	return qcounter_convolve;
 }
 
 void MergeBlobs(std::vector<ABoxedblob>& blobs, const int id) {
@@ -2038,6 +2046,11 @@ void filterContour(std::vector<Point_<T>>& contour, std::vector<Point2d>& shocks
 	const int L = (int)contour.size();
 	const int N = (contour[0] == contour[L - 1]) ? (L - 1) : L;
 
+	if (L < NFilter) {
+		shocks.resize(L);
+		return; 
+	}
+
 	std::vector<Point_<T>> aux(L);
 	std::vector<Point2d> aux_shocks(L);
 
@@ -2674,6 +2687,13 @@ int BlobsLoG(std::vector<ABoxedblob>& blobs, Mat& image, unsigned int& threshold
 
 	unsigned long long intensity_avg = 0; 
 
+
+	int64_t qcounter_marker = 0;
+	int64_t qcounter_convolve = 0;
+
+	qcounter_marker = MyQueryCounter() + qcounter_delta;
+
+
 	for(int y1 = row_limits[0]; y1 < row_limits[1]; ++y1) {
 		int x1 = col_limits[0];
 		const signed short *tracker_data = &tracker(y1, x1);
@@ -2687,10 +2707,13 @@ int BlobsLoG(std::vector<ABoxedblob>& blobs, Mat& image, unsigned int& threshold
 				int rlims[2] = { std::max(y1 - g_max_boxsize_pixels, blob_row_lim[0]), std::min(y1 + g_max_boxsize_pixels, blob_row_lim[1]) };
 				int clims[2] = { std::max(x1 - g_max_boxsize_pixels, blob_col_lim[0]), std::min(x1 + g_max_boxsize_pixels, blob_col_lim[1]) };
 
-				BlobLoG(blobs, Point2d(x1, y1), image, kmat, rlims, clims, tracker, tracker_value);
+				qcounter_convolve += BlobLoG(blobs, Point2d(x1, y1), image, kmat, rlims, clims, tracker, tracker_value);
 			}
 		}
 	}
+
+	qcounter_marker = MyQueryCounter() - qcounter_marker;
+
 
 	intensity_avg /= (row_limits[1] - row_limits[0]) * (col_limits[1] - col_limits[0]);
 	if(intensity_avg_ptr) {
@@ -2725,7 +2748,7 @@ int BlobCentersLoG(std::vector<ABox>& boxes, std::vector<ClusteredPoint>& points
 	std::vector<ABoxedblob> blobs;
 	BlobsLoG(blobs, image, threshold_intensity, roi, kmat, intensity_avg_ptr);
 
-	bool supervised_LoG = (roi.height == kmat.rows) || (roi.width = kmat.cols);
+	bool supervised_LoG = ((roi.height == 0) && (roi.width == 0)) || (roi.height == kmat.rows) || (roi.width == kmat.cols);
 
 	boxes.resize(0);
 	points.resize(0);
@@ -3058,31 +3081,31 @@ int BlobCentersLoG(std::vector<ABox>& boxes, std::vector<ClusteredPoint>& points
 							isValid = false;
 						}
 
-						if(isValid) {
-							// the following test capitalizes on existence of multiple contours in a complex structure. 
-							// it builds all possible contours in the image. A valid blob should have just one. 
-							// the ground for this is that the valid blobs represent plain object like cylinders, semi-spheres, and circles. 
-							// a more complex structure is an indication that an object is a random reflection. 
-							// a reflection as a more complex structure will produce a multitude of contours. 
-							// complication: the correct outcome depends on thresholding. 
+						//if(isValid) {
+						//	// the following test capitalizes on existence of multiple contours in a complex structure. 
+						//	// it builds all possible contours in the image. A valid blob should have just one. 
+						//	// the ground for this is that the valid blobs represent plain object like cylinders, semi-spheres, and circles. 
+						//	// a more complex structure is an indication that an object is a random reflection. 
+						//	// a reflection as a more complex structure will produce a multitude of contours. 
+						//	// complication: the correct outcome depends on thresholding. 
 
-							maux = Mat(); 
-							crop.convertTo(maux, CV_32FC1);
-							crop = maux; 
+						//	maux = Mat(); 
+						//	crop.convertTo(maux, CV_32FC1);
+						//	crop = maux; 
 
-							double minMax[2];
-							mat_minMax(crop, minMax); // it assumes that global thresholding is done before calling BlobCentersLoG().
-							const double thresholdVal = /*(minMax[0] + minMax[1]) / 2*/std::max((minMax[0] + minMax[1]) / 2, intensity);
+						//	double minMax[2];
+						//	mat_minMax(crop, minMax); // it assumes that global thresholding is done before calling BlobCentersLoG().
+						//	const double thresholdVal = /*(minMax[0] + minMax[1]) / 2*/std::max((minMax[0] + minMax[1]) / 2, intensity);
 
-							maux = Mat();
-							threshold(crop, maux, thresholdVal, (size_t)255 * g_bytedepth_scalefactor, THRESH_TOZERO);
-							Mat binarizedImage = mat_binarize2byte(maux);
-							std::vector<std::vector<cv::Point> > contours;
-							findContours(binarizedImage, contours, RetrievalModes::RETR_LIST, ContourApproximationModes::CHAIN_APPROX_SIMPLE);
-							if(contours.size() > 1) {
-								isValid = false;
-							}
-						}
+						//	maux = Mat();
+						//	threshold(crop, maux, thresholdVal, (size_t)255 * g_bytedepth_scalefactor, THRESH_TOZERO);
+						//	Mat binarizedImage = mat_binarize2byte(maux);
+						//	std::vector<std::vector<cv::Point> > contours;
+						//	findContours(binarizedImage, contours, RetrievalModes::RETR_LIST, ContourApproximationModes::CHAIN_APPROX_SIMPLE);
+						//	if(contours.size() > 1) {
+						//		isValid = false;
+						//	}
+						//}
 
 						bool rectangleDetected = false;
 						if(isValid && corners_areValid && (covar > 6 || shapemeasure > 0.36) && (covar * shapemeasure) > (6 * /*0.36*/0.27) && (std::abs(contour_area) * intensity_upperquantile) > 12) { // std::abs(contour_area) > 70 && intensity_upperquantile > 0.18
@@ -3130,14 +3153,14 @@ int BlobCentersLoG(std::vector<ABox>& boxes, std::vector<ClusteredPoint>& points
 
 
 
-						if ((isValid || supervised_LoG) || corners_areValid) {
-							if(g_configuration._use_ellipse_fit) {
-								isValid = RowsCenterEllipse(aBlob._rows, point, image, min_intensity - 1, aBox.intensity, roi) && isValid;
-							}
-							else {
-								isValid = RowsCenter(aBlob._rows, point, image, min_intensity - 1, aBox.intensity, aBox, roi) && isValid;
-							}
-						}
+						//if ((isValid || supervised_LoG) || corners_areValid) {
+						//	if(g_configuration._use_ellipse_fit) {
+						//		isValid = RowsCenterEllipse(aBlob._rows, point, image, min_intensity - 1, aBox.intensity, roi) && isValid;
+						//	}
+						//	else {
+						//		isValid = RowsCenter(aBlob._rows, point, image, min_intensity - 1, aBox.intensity, aBox, roi) && isValid;
+						//	}
+						//}
 
 						if ((isValid || supervised_LoG) && corners_areValid) {
 							point._corners.reserve(corners.size());
@@ -3941,8 +3964,10 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 	ctl->_gate.unlock();
 
 
+	g_configuration._visual_diagnostics = true;
 
-	int64 image_localtime = 0;
+
+	int64_t image_localtime = 0;
 
 
 	Mat cv_image[4];
@@ -4104,6 +4129,8 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 				ctl->_last_image_timestamp = image_localtime;
 				ctl->_unchangedImage[0] = originalImage.clone();
 				ctl->_unchangedImage[1] = unchangedImage.clone();
+
+				ctl->_draw_epipolar_lines = false; 
 
 				if (data_is_valid) {
 					ctl->_boxes[0] = boxes[0];

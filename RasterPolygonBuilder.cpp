@@ -17,6 +17,8 @@
 
 #include "opencv2\highgui\highgui_c.h"
 
+#include "profileapi.h"
+
 //#ifdef _DEBUG
 //#include "vld.h"
 //#endif
@@ -28,6 +30,7 @@
 
 #define STROther_Instance_running 150019 
 
+int64_t qcounter_delta;
 
 const Scalar RED(0, 0, 255), GREEN(0, 255, 0), BLUE(0, 0, 255), WHITE(255, 255, 255);
 const char ESC_KEY = 27;
@@ -548,9 +551,11 @@ bool DisplayReconstructionData(SPointsReconstructionCtl& reconstruction_ctl, SIm
 						rectangle(cv_image[j], Point((int)(box.x[0] * fx[j]), (int)(box.y[0] * fy[j])), Point((int)(box.x[1] * fx[j]), (int)(box.y[1] * fy[j])), Scalar(0, 0, 255 * cdf));
 				}
 
-				if (!g_configuration._supervised_LoG) {
-					for (int y = 0; y < cv_image[j].rows; y += 15) {
-						line(cv_image[j], Point(0, y), Point(cv_image[j].cols, y), Scalar(0, 255 * cdf, 0));
+				if (reconstruction_ctl._draw_epipolar_lines) {
+					if (!g_configuration._supervised_LoG) {
+						for (int y = 0; y < cv_image[j].rows; y += 15) {
+							line(cv_image[j], Point(0, y), Point(cv_image[j].cols, y), Scalar(0, 255 * cdf, 0));
+						}
 					}
 				}
 
@@ -667,10 +672,10 @@ bool DisplayReconstructionData(SPointsReconstructionCtl& reconstruction_ctl, SIm
 					}
 					else
 					{
-						image_count = 1; 
+						image_count = 1;
 						crop = sorted_bycircularity[0]->_crop.clone();
 					}
-					if (image_count > 0 && imagewin_names[j + 2].size() > 0) {
+					if (image_count > 0 && imagewin_names[j + 2].size() > 0 && crop.rows > 0) {
 						int q = j + 2;
 						scaleImage(imagewin_names[q], fx[q], fy[q], crop);
 						//HWND hwnd = (HWND)cvGetWindowHandle(imagewin_names[q].c_str());
@@ -707,9 +712,9 @@ bool DisplayReconstructionData(SPointsReconstructionCtl& reconstruction_ctl, SIm
 					cv::imshow(imagewin_names[j], cv_image[j]);
 				}
 			}
-			show_image(cv_unchangedImage[0], imagewin_names[4]); 
+			show_image(cv_unchangedImage[0], imagewin_names[4]);
 
-			int indices[3] = {0, 1, 4}; 
+			int indices[3] = { 0, 1, 4 };
 			for (int j : indices) {
 				if (!onMouse_isActive[j]) {
 					mouse_callbackParams[j].scaleFactors.fx = fx[j];
@@ -822,8 +827,22 @@ std::vector<api_handle> g_api_handles;
 
 
 
+int64_t MyQueryCounter(void) {
+	LARGE_INTEGER performanceCount;
+	if (QueryPerformanceCounter(&performanceCount)) {
+		return performanceCount.QuadPart;
+	}
+	return 0;
+}
+
+
+
 
 int main() {
+	qcounter_delta = MyQueryCounter();
+	qcounter_delta = MyQueryCounter() - qcounter_delta;
+	qcounter_delta *= 2;
+
 	srand((unsigned)time(NULL));
 	std::mt19937 rand_gen(070764);
 

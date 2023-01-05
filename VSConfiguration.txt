@@ -18,7 +18,7 @@ ImageHeight=966
 
 CameraNames={DART1 DART2} 
 
-ExposureTimes={1500 1500}
+ExposureTimes={0 0}
 
 Format12Bit=0 
 

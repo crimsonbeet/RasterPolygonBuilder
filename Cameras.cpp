@@ -147,7 +147,7 @@ void OpenCameras(SImageAcquisitionCtl& ctl) {
 				cameras[j].PixelFormat = Basler_UsbCameraParams::PixelFormat_Mono12;
 			}
 			else {
-				cameras[j].PixelFormat = Basler_UsbCameraParams::PixelFormat_RGB8;
+				cameras[j].PixelFormat = Basler_UsbCameraParams::PixelFormat_BGR8;
 			}
 
 			cameras[j].ExposureMode.SetValue(Basler_UsbCameraParams::ExposureMode_Timed);

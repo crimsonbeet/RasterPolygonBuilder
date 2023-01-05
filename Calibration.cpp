@@ -836,13 +836,15 @@ bool ExtractCornersOfRectangles(Mat& image/*in*/, vector<Point2f>& pointBuf/*in*
 	return true; 
 }
 
-bool ExtractCornersOfChessPattern(Mat& image, vector<Point2f>& pointBuf, const Ptr<FeatureDetector> &detector) {
+bool ExtractCornersOfChessPattern(Mat& imageInp, vector<Point2f>& pointBuf, const Ptr<FeatureDetector> &detector) {
 	vector<Point2f> edgesBuf;
 
 	vector<Point2f> approx2fminQuad; // Qaudrilateral delimiting the area of the image that contains corners. 
 	Mat H; // Homography that transforms quadrilateral to rectangle (not rotated), enabling therefore the sorting of corners. 
 	vector<Point2f> approx2fminRectMapped(4); // Qadrilateral tranformed to rectangle.
 	Rect approxBoundingRectMapped;
+
+	Mat image = imageInp.clone();
 
 	double fy = 1.0; 
 
@@ -857,9 +859,9 @@ bool ExtractCornersOfChessPattern(Mat& image, vector<Point2f>& pointBuf, const P
 		//double black_color[3] = { 117, 110, 86 };// { 109, 110, 87 };
 		//StandardizeImage_HSV_Likeness(image, black_color);
 
-		float invCovar_data[9] = { 0.023863367, -0.014549229, -0.007678366, -0.014549229, 0.020680217, -0.002604613, -0.007678366, -0.002604613, 0.009066458 };// { 0.008480210, -0.009493337, 0.000479789, -0.009493337, 0.014612858, -0.004419325, 0.000479789, -0.004419325, 0.004113333 };
-		float mean_data[3] = { 86.00596, 110.26242, 116.83199 };// { 85.33815, 109.98449, 117.31401 };// { 80.63069, 106.25501, 105.63298 };// { 120.5631, 147.1386, 161.4877 };
-		float invCholesky_data[9] = { 0.0572367, 0, 0, -0.1186783, 1.411806e-01, 0, -0.0806399, -2.735422e-02, 9.521795e-02 };// { 0.04941644, 0, 0, -0.10656424, 1.346013e-01, 0, -0.04061453, -7.950196e-02, 1.030287e-01 };//  { 0.09003559, 0.0000000, 0.0000000, -0.15749678, 0.1951192, 0.0000000, -0.02881720, -0.1063943, 0.1733445 };
+		float invCovar_data[9] = { 0.0111434420, -0.01021773, -0.0008936313, -0.0102177345, 0.02846203, -0.0126143043, -0.0008936313, -0.01261430, 0.0118032002 };// { 0.009066458, -0.002604613, -0.007678366, -0.002604613, 0.020680217, -0.014549229, -0.007678366, -0.014549229, 0.023863367 };// { 0.006623272, -0.005202919, -0.001526119, -0.005202919, 0.009449343, -0.003572090, -0.001526119, -0.003572090, 0.005443892 };
+		float mean_data[3] = { 142.88684, 118.87482, 66.52122 };// { 116.83199, 110.26242, 86.00596 };// { 158.8078, 147.9445, 125.1749 };
+		float invCholesky_data[9] = { 0.052374674, 0.0000000, 0.0000000, -0.091283503, 0.1223964, 0.0000000, -0.008225428, -0.1161083, 0.1086425 };// { 0.04583349, 0.00000000, 0.0000000, -0.06704573, 0.10867251, 0.0000000, -0.04970533, -0.09418335, 0.1544777 };// { 0.02789284, 0.00000000, 0.00000000, -0.07360323, 0.08429391, 0.00000000, -0.02068396, -0.04841362, 0.07378274 };
 
 		cv::Mat invCovar = cv::Mat(3, 3, CV_32F, invCovar_data);
 		cv::Mat invCholesky = cv::Mat(3, 3, CV_32F, invCholesky_data);
@@ -953,15 +955,25 @@ bool ExtractCornersOfChessPattern(Mat& image, vector<Point2f>& pointBuf, const P
 			// 2. Use ideal points to build homography. 
 
 			const int rows = image.rows;
-			const float unitinpx = (float)0.4 * rows / (float)(g_boardSize.height + 1);
+			const float unitinpx = (float)0.4 * rows / (float)(g_boardChessSize.height);
 
-			std::vector<Point2f> ideal_approx2f(6);
-			ideal_approx2f[0] = Point2f((0 + 5) * unitinpx, (0 + 5) * unitinpx);
-			ideal_approx2f[1] = Point2f((6 + 5) * unitinpx, (0 + 5) * unitinpx);
-			ideal_approx2f[2] = Point2f((7 + 5) * unitinpx, (1 + 5) * unitinpx);
-			ideal_approx2f[3] = Point2f((7 + 5) * unitinpx, (5 + 5) * unitinpx);
-			ideal_approx2f[4] = Point2f((6 + 5) * unitinpx, (6 + 5) * unitinpx);
-			ideal_approx2f[5] = Point2f((0 + 5) * unitinpx, (6 + 5) * unitinpx);
+			std::vector<Point2f> ideal_approx2f(6); // counterclockwise starting from top right.
+			if (g_boardChessSize.height == 7) {
+				ideal_approx2f[0] = Point2f((0 + 5) * unitinpx, (0 + 5) * unitinpx);
+				ideal_approx2f[1] = Point2f((6 + 5) * unitinpx, (0 + 5) * unitinpx);
+				ideal_approx2f[2] = Point2f((7 + 5) * unitinpx, (1 + 5) * unitinpx);
+				ideal_approx2f[3] = Point2f((7 + 5) * unitinpx, (6 + 5) * unitinpx);
+				ideal_approx2f[4] = Point2f((6 + 5) * unitinpx, (6 + 5) * unitinpx);
+				ideal_approx2f[5] = Point2f((0 + 5) * unitinpx, (6 + 5) * unitinpx);
+			}
+			else {
+				ideal_approx2f[0] = Point2f((0 + 5) * unitinpx, (0 + 5) * unitinpx);
+				ideal_approx2f[1] = Point2f((6 + 5) * unitinpx, (0 + 5) * unitinpx);
+				ideal_approx2f[2] = Point2f((7 + 5) * unitinpx, (1 + 5) * unitinpx);
+				ideal_approx2f[3] = Point2f((7 + 5) * unitinpx, (7 + 5) * unitinpx);
+				ideal_approx2f[4] = Point2f((1 + 5) * unitinpx, (7 + 5) * unitinpx);
+				ideal_approx2f[5] = Point2f((0 + 5) * unitinpx, (6 + 5) * unitinpx);
+			}
 			if(approx2f[0].x > approx2f[1].x) {
 				float max_x = 0;
 				for_each(ideal_approx2f.begin(), ideal_approx2f.end(), [&max_x](Point2f& point) {
@@ -1036,6 +1048,12 @@ bool ExtractCornersOfChessPattern(Mat& image, vector<Point2f>& pointBuf, const P
 	}
 
 	if(approx2fminQuad.size()) {
+		//imageInp.convertTo(image, CV_16UC1);
+		image = imageInp.clone();
+		double color2gray[3] = { 0.299, 0.587, 0.114 };
+		ConvertColoredImage2Mono(image, color2gray, [](double ch) {
+			return std::min(ch * 256, 256.0 * 256.0);
+		});
 		Mat imageMapped;
 		warpPerspective(image, imageMapped, H, image.size()/*, INTER_CUBIC*/);
 		Mat crop(imageMapped, approxBoundingRectMapped);
@@ -2244,6 +2262,8 @@ void launch_AcquireImages_calibration(SImageAcquisitionCtl& ctl, SPointsReconstr
 
 void CalibrateCameras(StereoConfiguration& configuration, SImageAcquisitionCtl& image_acquisition_ctl) {
 	g_images_are_collected = false;
+
+	g_configuration._visual_diagnostics = false;
 
 	ProcessWinMessages(0);
 

@@ -156,6 +156,7 @@ void ARFF_FileLog(const std::string& msg, bool do_close = false, bool do_ipclog 
 extern const char ESC_KEY;
 
 
+extern int64_t qcounter_delta;
 
 
 extern const char *g_path_vsconfiguration;
@@ -203,7 +204,7 @@ extern double g_aposteriory_minsdistance;
 extern const unsigned int g_bytedepth_scalefactor;
 
 
-
+int64_t MyQueryCounter();
 
 
 template<typename T> struct ATLSMatrixvar {
@@ -589,8 +590,8 @@ public:
 		params.thresholdStep = 20 * g_bytedepth_scalefactor;
 		params.maxThreshold = 180 * g_bytedepth_scalefactor;
 		params.minRepeatability = min_repeatability/*5*/; // 2015-09-15 Set repeatabilty to 3 because of difficulties with capturing images
-		params.minArea = 70;
-		params.maxArea = 10000;
+		params.minArea = 100;
+		params.maxArea = 50000;
 		params.minInertiaRatio = 0.3;
 		params.minCircularity = 0.8f;
 		params.minConvexity = 0.9f;
@@ -908,7 +909,7 @@ struct ABoxedblob {
 
 Mat_<double> LoG(double sigma, int ksize); // Build Laplacian of Gaussian kernel
 
-void BlobLoG(std::vector<ABoxedblob>& blobs,
+int64_t BlobLoG(std::vector<ABoxedblob>& blobs, // it returns counter for time spent in convolving
 	const Point2d& aSeed,
 	const Mat& image,
 	const Mat_<double>& kmat,
@@ -958,6 +959,8 @@ void StandardizeImage_Likeness(Mat& image, Mat mean/*rgb*/, Mat invCovar/*invert
 
 Mat mat_invert2word(const Mat& src, const int bytedepth_scalefactor = g_bytedepth_scalefactor, const uint16_t maxvalue = 65535); // returns CV_16UC1 matrix
 Mat mat_loginvert2word(const Mat& src, const int bytedepth_scalefactor = g_bytedepth_scalefactor); // returns CV_16UC1 matrix
+
+void ConvertColoredImage2Mono(Mat& image, double chWeights[3], std::function<double(double)> convert);
 
 
 
@@ -1199,11 +1202,14 @@ struct SPointsReconstructionCtl {
 
 	bool volatile _foreground_extraction_isvalid;
 
+	bool _draw_epipolar_lines;
+
 	SPointsReconstructionCtl(int pixel_threshold = 70): _pixel_threshold(pixel_threshold), _status(0), _terminated(0), _data_isvalid(false), _image_isvalid(false), _last_image_timestamp(0) {
 		_local_acquisition_hasfinished = false;
 		_world_transform_timestamp = std::numeric_limits<long long>::min();
 		_foreground_extraction_isvalid = false;
 		_coordsystem_label = -1; 
+		_draw_epipolar_lines = true;
 	}
 };
 
