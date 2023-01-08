@@ -2128,52 +2128,58 @@ void filterContour(std::vector<Point_<T>>& contour, std::vector<Point2d>& shocks
 			//R(0, 1) = 0;
 			//R(1, 0) = 0;
 
-			cv::invert(Zet + R, X, DECOMP_SVD);
-			K = Zet * X;
-			//ostr << "X(0,0):" << X(0, 0) << " X(1,0):" << X(1, 0) << " X(0,1):" << X(0, 1) << " X(1,1):" << X(1, 1) << std::endl;
-			//ostr << "K(0,0):" << K(0, 0) << " K(1,0):" << K(1, 0) << " K(0,1):" << K(0, 1) << " K(1,1):" << K(1, 1) << std::endl;
-			for (int i = 0; i < 2; ++i) {
-				for (int j = 0; j < 2; ++j) {
-					auto kval = std::abs(K(i, j));
-					if (kval > max_kval) {
-						max_kval = kval;
-					}
-				}
+			double invConditionNumber = cv::invert(Zet + R, X, DECOMP_SVD);
+			if (invConditionNumber < 0.001) {
+				//ostr << "invConditionNumber:" << invConditionNumber << std::endl;
+				point = measurement;
 			}
-			if (max_kval > 1) {
+			else {
+				K = Zet * X;
+				//ostr << "X(0,0):" << X(0, 0) << " X(1,0):" << X(1, 0) << " X(0,1):" << X(0, 1) << " X(1,1):" << X(1, 1) << std::endl;
+				//ostr << "K(0,0):" << K(0, 0) << " K(1,0):" << K(1, 0) << " K(0,1):" << K(0, 1) << " K(1,1):" << K(1, 1) << std::endl;
 				for (int i = 0; i < 2; ++i) {
 					for (int j = 0; j < 2; ++j) {
-						K(i, j) /= max_kval;
+						auto kval = std::abs(K(i, j));
+						if (kval > max_kval) {
+							max_kval = kval;
+						}
 					}
 				}
+				if (max_kval > 1) {
+					for (int i = 0; i < 2; ++i) {
+						for (int j = 0; j < 2; ++j) {
+							K(i, j) /= max_kval;
+						}
+					}
 
-				//max_kval -= 0.1;
-				//if (max_kval < 1) {
-				//	max_kval = 1;
-				//}
-				max_kval = 1;
+					//max_kval -= 0.1;
+					//if (max_kval < 1) {
+					//	max_kval = 1;
+					//}
+					max_kval = 1;
+				}
+				K(0, 1) = 0;
+				K(1, 0) = 0;
+
+				//ostr << "K(0,0):" << K(0, 0) << " K(1,1):" << K(1, 1) << std::endl;
+
+				Z(0, 0) = shock.x;
+				Z(1, 0) = shock.y;
+				//ostr << "Z(0,0):" << Z(0, 0) << " Z(1,0):" << Z(1, 0) << std::endl;
+
+				Z = K * Z;
+				//ostr << "Z(0,0):" << Z(0, 0) << " Z(1,0):" << Z(1, 0) << std::endl;
+
+				shock.x = Z(0, 0);
+				shock.y = Z(1, 0);
+
+				point.x += shock.x;
+				point.y += shock.y;
+
+				Zet = (I - K) * Zet;
+				//ostr << "Zet(0,0):" << Zet(0, 0) << " Zet(1,0):" << Zet(1, 0) << " Zet(0,1):" << Zet(0, 1) << " Zet(1,1):" << Zet(1, 1) << std::endl;
+				//ostr << std::endl;
 			}
-			K(0, 1) = 0;
-			K(1, 0) = 0;
-
-			//ostr << "K(0,0):" << K(0, 0) << " K(1,1):" << K(1, 1) << std::endl;
-
-			Z(0, 0) = shock.x;
-			Z(1, 0) = shock.y;
-			//ostr << "Z(0,0):" << Z(0, 0) << " Z(1,0):" << Z(1, 0) << std::endl;
-
-			Z = K * Z;
-			//ostr << "Z(0,0):" << Z(0, 0) << " Z(1,0):" << Z(1, 0) << std::endl;
-
-			shock.x = Z(0, 0);
-			shock.y = Z(1, 0);
-
-			point.x += shock.x;
-			point.y += shock.y;
-
-			Zet = (I - K) * Zet; 
-			//ostr << "Zet(0,0):" << Zet(0, 0) << " Zet(1,0):" << Zet(1, 0) << " Zet(0,1):" << Zet(0, 1) << " Zet(1,1):" << Zet(1, 1) << std::endl;
-			//ostr << std::endl;
 
 			//printf("%s", ostr.str().c_str());
 		}
@@ -2745,6 +2751,8 @@ int BlobCentersLoG(std::vector<ABox>& boxes, std::vector<ClusteredPoint>& points
 
 	const unsigned short *data = (unsigned short *)image.data;
 
+	//std::cout << "BlobsLoG: threshold_intensity " << ' ' << threshold_intensity << std::endl;
+
 	std::vector<ABoxedblob> blobs;
 	BlobsLoG(blobs, image, threshold_intensity, roi, kmat, intensity_avg_ptr);
 
@@ -2769,6 +2777,10 @@ int BlobCentersLoG(std::vector<ABox>& boxes, std::vector<ClusteredPoint>& points
 	std::vector<Point2f> corners;
 
 	Mat maux; // temporary matrix to hold intermediate results. 
+
+	if (blobs.size() > 10) {
+		std::cout << "BlobCentersLoG: total blobs " << ' ' << blobs.size() << std::endl;
+	}
 
 	for(auto& aBlob : blobs) {
 		if(aBlob._rows.size() > 1) {
@@ -3233,6 +3245,10 @@ int BlobCentersLoG(std::vector<ABox>& boxes, std::vector<ClusteredPoint>& points
 				}
 			}
 		}
+	}
+
+	if (blobs.size() > 10) {
+		std::cout << "BlobCentersLoG: finished " << std::endl;
 	}
 
 	return max_shapemeasure_rectangle_index;

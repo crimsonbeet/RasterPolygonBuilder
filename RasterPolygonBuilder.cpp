@@ -863,35 +863,44 @@ int main() {
 		AcceptNewGlobalConfiguration(configuration/*out - local config*/, image_acquisition_ctl, &reconstruction_ctl);
 	}
 
-	std::string connectConfig = ReadTextFile(g_path_connectconfiguration);
-	if (connectConfig.size()) {
-		PIPCObjInterface ds7remoting = IPCObjectGetInterface();
-		if (ds7remoting) {
-			g_ds7remoting_success = ds7remoting->Initialize(connectConfig.c_str());
 
-			ds7remoting->GetSettings(g_remoting_settings);
 
-			if (g_remoting_settings._changeable_addresses.size()) {
-				for (auto& e : g_remoting_settings._changeable_addresses) {
-					g_producer_settings.insert(std::make_pair(e._name, e));
+	bool do_calibration = !g_configuration._evaluate_contours && !(g_bCalibrationExists = CalibrationFileExists());
+	bool do_calibration_from_files = do_calibration && image_acquisition_ctl._calib_images_from_files;
+
+
+
+
+	if (!do_calibration) {
+		std::string connectConfig = ReadTextFile(g_path_connectconfiguration);
+		if (connectConfig.size()) {
+			PIPCObjInterface ds7remoting = IPCObjectGetInterface();
+			if (ds7remoting) {
+				g_ds7remoting_success = ds7remoting->Initialize(connectConfig.c_str());
+
+				ds7remoting->GetSettings(g_remoting_settings);
+
+				if (g_remoting_settings._changeable_addresses.size()) {
+					for (auto& e : g_remoting_settings._changeable_addresses) {
+						g_producer_settings.insert(std::make_pair(e._name, e));
+					}
 				}
 			}
 		}
-	}
-	if (g_ds7remoting_success) {
-		PIPCObjInterface ds7remoting = IPCObjectGetInterface();
-		if (ds7remoting) {
-			ds7remoting->SetTraceLevel(1 | 2 | 4 | 8);
+		if (g_ds7remoting_success) {
+			PIPCObjInterface ds7remoting = IPCObjectGetInterface();
+			if (ds7remoting) {
+				ds7remoting->SetTraceLevel(1 | 2 | 4 | 8);
 
-			g_api_handles.push_back(SetCallback(Process_CameraImage));
+				g_api_handles.push_back(SetCallback(Process_CameraImage));
 
-			ds7remoting->AddExceptionDelegate(&g_xipcexception_handler);
-			ds7remoting->JoinNetwork();
+				ds7remoting->AddExceptionDelegate(&g_xipcexception_handler);
+				ds7remoting->JoinNetwork();
 
-			IPCSetLogDelegate(Handle_LogEvent);
+				IPCSetLogDelegate(Handle_LogEvent);
+			}
 		}
 	}
-
 
 
 
@@ -928,10 +937,6 @@ int main() {
 
 
 
-
-
-	bool do_calibration = !g_configuration._evaluate_contours && !(g_bCalibrationExists = CalibrationFileExists()); 
-	bool do_calibration_from_files = do_calibration && image_acquisition_ctl._calib_images_from_files;
 
 
 	if (g_configuration._frames_acquisition_mode < 0 && !do_calibration_from_files) {

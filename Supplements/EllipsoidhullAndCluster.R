@@ -5,9 +5,9 @@ library(Matrix)
 
 setwd("D:/Projects/RasterPolygonBuilder/Supplements")
 
-#X0<-readJPEG("Image__2022-12-28__23-58-14_crop4.jpg")
+X0<-readJPEG("Image__2022-12-28__23-58-14_crop4.jpg")
 #X0<-readJPEG("Image__2023-01-03__18-08-15_crop.jpg")
-X0<-readJPEG("Image__2023-01-05__00-52-09-crop.jpg")
+#X0<-readJPEG("Image__2023-01-05__00-52-09-crop.jpg")
 
 N0<-attributes(X0)$dim[1]*attributes(X0)$dim[2]
 Y0<-array(dim=c(N0, attributes(X0)$dim[3]))

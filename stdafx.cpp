@@ -81,6 +81,7 @@ void PrintLastError(DWORD dwErr) {
 
 
 int MyCreateDirectory(const std::string& dir_name, const std::string& err_prefix) {
+	std::cout << "Creating directory" << ' ' << dir_name << std::endl;
 	int rc = 0;
 	HANDLE hdir = CreateFile(dir_name.c_str(), FILE_LIST_DIRECTORY, FILE_SHARE_READ | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
 	if(hdir == INVALID_HANDLE_VALUE) {
@@ -117,6 +118,7 @@ int Delete_FilesInDirectory(const std::string& dir) {
 	while(!err && fOk) {
 		if((stFindData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0) {
 			std::string strLocalFileName = dir + stFindData.cFileName;
+			std::cout << "Deleting file" << ' ' << strLocalFileName << std::endl;
 			if(!DeleteFileA(strLocalFileName.c_str())) {
 				LPVOID lpMsgBuf;
 				FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, 0, GetLastError(), 0, (LPSTR)&lpMsgBuf, 0, 0);

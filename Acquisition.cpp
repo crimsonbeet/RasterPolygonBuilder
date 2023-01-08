@@ -203,9 +203,9 @@ bool BuildIdealChannels_Distribution(Mat& image, Point& pt, Mat& mean, Mat& invC
 		}
 		Mat Q;
 		cv::calcCovarMatrix(neighbours, Q, mean, CovarFlags::COVAR_NORMAL | CovarFlags::COVAR_ROWS, CV_32F);
-		double conditionNumber = cv::invert(Q.clone(), invCovar, DECOMP_SVD);
-		std::cout << "Covar condition number " << conditionNumber << std::endl;
-		if (conditionNumber > 0.01) {
+		double invConditionNumber = cv::invert(Q.clone(), invCovar, DECOMP_SVD);
+		std::cout << "Covar inverse condition number " << invConditionNumber << std::endl;
+		if (invConditionNumber > 0.01) {
 			if (cv::Cholesky(&Q.at<float>(0, 0), (size_t)Q.step, Q.rows, nullptr, 0, 0)) {
 				for (int i = 0; i < 2; ++i) {
 					for (int j = i + 1; j < 3; ++j) {

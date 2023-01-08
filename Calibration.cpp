@@ -61,11 +61,12 @@ std::string cv_windows[5];
 void DrawImageAndBoard(const std::string& aname, const std::string& window_name, Mat& cv_image, const vector<Point2f>& board) {
 	Mat cv_image1;
 
-	if (cv_image.type() != CV_8UC1) {
+	if (cv_image.type() != CV_8UC3) {
 		cv::cvtColor(cv_image, cv_image1, COLOR_GRAY2RGB);
 	}
 	else {
-		cv::cvtColor(cv_image, cv_image1, COLOR_GRAY2RGB);
+		cv_image1 = cv_image.clone();
+		//cv::cvtColor(cv_image, cv_image1, COLOR_GRAY2RGB);
 	}
 
 	cv::Size boardSize;
@@ -163,9 +164,11 @@ void ClassBlobDetector::findBlobs(const Mat& image, Mat& binaryImage, std::vecto
 
 
 	
-	unsigned int threshold_intensity = 200 * g_bytedepth_scalefactor;
+	unsigned int threshold_intensity = 250 * g_bytedepth_scalefactor;
 
+	while (ProcessWinMessages());
 	BlobCentersLoG(boxes, points, binaryImage, threshold_intensity, cv::Rect(), kmat);
+	while (ProcessWinMessages());
 
 	double desired_min_inertia = sqrt(_min_confidence);
 	double ratio_threshold = desired_min_inertia * params.minCircularity;
@@ -836,7 +839,7 @@ bool ExtractCornersOfRectangles(Mat& image/*in*/, vector<Point2f>& pointBuf/*in*
 	return true; 
 }
 
-bool ExtractCornersOfChessPattern(Mat& imageInp, vector<Point2f>& pointBuf, const Ptr<FeatureDetector> &detector) {
+bool ExtractCornersOfChessPattern(Mat& imageInp, vector<Point2f>& pointBuf, const Ptr<FeatureDetector>& detector) {
 	vector<Point2f> edgesBuf;
 
 	vector<Point2f> approx2fminQuad; // Qaudrilateral delimiting the area of the image that contains corners. 
@@ -859,23 +862,35 @@ bool ExtractCornersOfChessPattern(Mat& imageInp, vector<Point2f>& pointBuf, cons
 		//double black_color[3] = { 117, 110, 86 };// { 109, 110, 87 };
 		//StandardizeImage_HSV_Likeness(image, black_color);
 
-		float invCovar_data[9] = { 0.0111434420, -0.01021773, -0.0008936313, -0.0102177345, 0.02846203, -0.0126143043, -0.0008936313, -0.01261430, 0.0118032002 };// { 0.009066458, -0.002604613, -0.007678366, -0.002604613, 0.020680217, -0.014549229, -0.007678366, -0.014549229, 0.023863367 };// { 0.006623272, -0.005202919, -0.001526119, -0.005202919, 0.009449343, -0.003572090, -0.001526119, -0.003572090, 0.005443892 };
-		float mean_data[3] = { 142.88684, 118.87482, 66.52122 };// { 116.83199, 110.26242, 86.00596 };// { 158.8078, 147.9445, 125.1749 };
-		float invCholesky_data[9] = { 0.052374674, 0.0000000, 0.0000000, -0.091283503, 0.1223964, 0.0000000, -0.008225428, -0.1161083, 0.1086425 };// { 0.04583349, 0.00000000, 0.0000000, -0.06704573, 0.10867251, 0.0000000, -0.04970533, -0.09418335, 0.1544777 };// { 0.02789284, 0.00000000, 0.00000000, -0.07360323, 0.08429391, 0.00000000, -0.02068396, -0.04841362, 0.07378274 };
+		float mean_data[3] = { 116.83199, 110.26242, 86.00596 };// { 143.05750, 119.46569, 68.23818 };// { 158.8078, 147.9445, 125.1749 };
+		float invCovar_data[9] = { 0.009066458, -0.002604613, -0.007678366, -0.002604613, 0.020680217, -0.014549229, -0.007678366, -0.014549229, 0.023863367 };// { 0.0102539613, -0.01036747, 0.0004458039, -0.0103674702, 0.03199960, -0.0149542107, 0.0004458039, -0.01495421, 0.0114805264 };// { 0.006623272, -0.005202919, -0.001526119, -0.005202919, 0.009449343, -0.003572090, -0.001526119, -0.003572090, 0.005443892 };
+		float invCholesky_data[9] = { 0.04583349, 0.00000000, 0.0000000, -0.06704573, 0.10867251, 0.0000000, -0.04970533, -0.09418335, 0.1544777 };// { 0.050860724, 0.0000000, 0.0000000, -0.087463346, 0.1118958, 0.0000000, 0.004160667, -0.1395670, 0.1071472 };// { 0.02789284, 0.00000000, 0.00000000, -0.07360323, 0.08429391, 0.00000000, -0.02068396, -0.04841362, 0.07378274 };
 
+		cv:Mat mean = cv::Mat(1, 3, CV_32F, mean_data);
 		cv::Mat invCovar = cv::Mat(3, 3, CV_32F, invCovar_data);
 		cv::Mat invCholesky = cv::Mat(3, 3, CV_32F, invCholesky_data);
-		cv:Mat mean = cv::Mat(1, 3, CV_32F, mean_data);
 
 		StandardizeImage_Likeness(image, mean, invCovar, invCholesky);
 
 		image = mat_loginvert2word(image);
 		image = mat_invert2word(image);
-		normalize(image.clone(), image, 0, (size_t)256 * g_bytedepth_scalefactor, NORM_MINMAX, CV_16UC1, Mat());
+		cv::normalize(image.clone(), image, 0, (size_t)256 * g_bytedepth_scalefactor, NORM_MINMAX, CV_16UC1, Mat());
 		image_type = image.type();
 	}
 
-	bool found = findCirclesGrid(image, g_boardChessSize, pointBuf, CALIB_CB_ASYMMETRIC_GRID/* | CALIB_CB_CLUSTERING*/, detector);
+	//bool found = findCirclesGrid(image, g_boardChessSize, pointBuf, CALIB_CB_ASYMMETRIC_GRID/* | CALIB_CB_CLUSTERING*/, detector);
+
+	std::vector<KeyPoint> keyPoints;
+	detector->detect(image, keyPoints);
+
+	pointBuf.reserve(keyPoints.size());
+	pointBuf.resize(0);
+
+	for (auto& keyPoint : keyPoints) {
+		pointBuf.push_back(keyPoint.pt);
+	}
+
+	bool found = pointBuf.size() == g_boardChessSize.width * g_boardChessSize.height;
 
 	// build min. enclosing quadrilateral
 	if(found) {
@@ -1040,6 +1055,7 @@ bool ExtractCornersOfChessPattern(Mat& imageInp, vector<Point2f>& pointBuf, cons
 			compression_params.push_back(0);
 
 			cv::imwrite(std::string(g_path_calib_images_dir) + "ST1-ChessPattern-enclose.png", image1, compression_params);
+			while (ProcessWinMessages());
 		}
 	}
 	else {
@@ -1051,6 +1067,7 @@ bool ExtractCornersOfChessPattern(Mat& imageInp, vector<Point2f>& pointBuf, cons
 		//imageInp.convertTo(image, CV_16UC1);
 		image = imageInp.clone();
 		double color2gray[3] = { 0.299, 0.587, 0.114 };
+		//double color2gray[3] = { 0.114, 0.587, 0.299 };
 		ConvertColoredImage2Mono(image, color2gray, [](double ch) {
 			return std::min(ch * 256, 256.0 * 256.0);
 		});
@@ -1059,6 +1076,8 @@ bool ExtractCornersOfChessPattern(Mat& imageInp, vector<Point2f>& pointBuf, cons
 		Mat crop(imageMapped, approxBoundingRectMapped);
 		Mat grayscale;
 		normalize(crop, grayscale, 0, 255, NORM_MINMAX, CV_8UC1, Mat());
+		while (ProcessWinMessages());
+
 
 		vector<vector<Point2f>> edgesMappedBuf;
 		int ylevel_maxwidth = 0;
@@ -1739,18 +1758,28 @@ void Save_Images(Mat& image, vector<vector<Point2f>>& imagePoints, int points_id
 	compression_params.push_back(IMWRITE_PNG_COMPRESSION); // Mar.4 2015.
 	compression_params.push_back(0);
 
-	cv::imwrite(std::string(g_path_calib_images_dir) + name + ".png", image * std::max(256 / (int)g_bytedepth_scalefactor, 1), compression_params); // Mar.4 2015.
+	std::string image_name = std::string(g_path_calib_images_dir) + name + ".png";
 
-	if(points_idx) {
+	std::cout << "Saving image" << ' ' << image_name << std::endl;
+	cv::imwrite(image_name, image * std::max(256 / (int)g_bytedepth_scalefactor, 1), compression_params); // Mar.4 2015.
+
+	if(points_idx > 0) {
 		Mat color_image;
 
-		normalize(image, color_image, 0, 255 * 256, NORM_MINMAX, CV_16UC1);
-		cvtColor(color_image.clone(), color_image, COLOR_GRAY2RGB);
+		if (image.type() != CV_8UC3) {
+			normalize(image, color_image, 0, 255 * 256, NORM_MINMAX, CV_16UC1);
+			cvtColor(color_image.clone(), color_image, COLOR_GRAY2RGB);
+		}
+		else {
+			color_image = image.clone();
+		}
 
 		for(int k = 0; k < imagePoints[points_idx - 1].size(); ++k) {
-			circle(color_image, Point2i((int)(imagePoints[points_idx - 1][k].x + 0.5), (int)(imagePoints[points_idx - 1][k].y + 0.5)), 1, Scalar(0, 0, 255 * 256), -1);
+			circle(color_image, Point2i((int)(imagePoints[points_idx - 1][k].x + 0.5), (int)(imagePoints[points_idx - 1][k].y + 0.5)), 5, Scalar(0, 0, 255 * 256), -1);
 		}
-		cv::imwrite(std::string(g_path_calib_images_dir) + name + "-points" + ".png", color_image, compression_params); // Mar.4 2015.
+		image_name = std::string(g_path_calib_images_dir) + name + "-points" + ".png";
+		std::cout << "Saving image" << ' ' << image_name << std::endl;
+		cv::imwrite(image_name, color_image, compression_params); // Mar.4 2015.
 	}
 }
 
@@ -1767,7 +1796,7 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 	imagePoints_left.resize(1);
 	imagePoints_right.resize(1);
 
-	ProcessWinMessages(0);
+	while (ProcessWinMessages());
 
 	size_t current_N = 1; 
 	size_t min_repeatability = 5; 
@@ -1800,17 +1829,18 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 		}
 		else 
 		if(g_configuration._calib_auto_image_capture) {
+			std::cout << "Getting images" << std::endl;
 			if(!GetImages(left_image, right_image, &image_localtime, (int)g_rotating_buf_size - 1)) {
 				continue;
 			}
+			std::cout << "Images Ok" << std::endl;
 		}
 		else
 		if(!GetImagesEx(left_image, right_image, &image_localtime, (int)g_rotating_buf_size - 1)) {
 			continue;
 		}
+
 		while(ProcessWinMessages());
-
-
 		Mat cv_image[2] = { left_image.clone(), right_image.clone()};
 		for (int c = 0; c < ARRAY_NUM_ELEMENTS(cv_image); ++c) {
 			double fx = 700.0 / cv_image[c].cols;
@@ -1836,11 +1866,14 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 		// and then if one of the images has been recognized, but the other has been not, then run one more time with lowered constraint. 
 
 		double min_confidence[2] = {g_configuration._calib_min_confidence, g_configuration._calib_min_confidence / 2}; // 2015-09-15 It is very difficult to capture images in certain environments.
-		for(int j = 0; j < 2; ++j) {
+		for(int j = 0; j < 1/*2*/; ++j) {
+			while (ProcessWinMessages());
+			std::cout << "EvaluateImagePoints(left)" << std::endl;
 			if(nl == -1 && EvaluateImagePoints(left_image, imagePoints_left, *ctl, min_confidence[j], min_repeatability)) {
 				nl = (int)imagePoints_left.size();
 			}
 			while(ProcessWinMessages());
+			std::cout << "EvaluateImagePoints(right)" << std::endl;
 			if(nr == -1 && EvaluateImagePoints(right_image, imagePoints_right, *ctl, min_confidence[j], min_repeatability)) {
 				nr = (int)imagePoints_right.size();
 			}
@@ -1870,13 +1903,19 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 
 		auto lambda_Save_Images = [&left_image, &right_image, current_N](size_t N, int nl, int nr) {
 			MyCreateDirectory(g_path_calib_images_dir, "AcquireImagepointsEx");
+			while (ProcessWinMessages());
 			if(current_N == 1) {
 				Delete_FilesInDirectory(g_path_calib_images_dir);
+				while (ProcessWinMessages());
 			}
 			Save_Images(left_image, imagePoints_left, nl, std::to_string(N) + 'l');
+			while (ProcessWinMessages());
 			Save_Images(right_image, imagePoints_right, nr, std::to_string(N) + 'r');
+			while (ProcessWinMessages());
 
-			FileStorage fw(std::string(g_path_calib_images_dir) + std::to_string(N) + ".xml", FileStorage::WRITE);
+			std::string xml_name = std::string(g_path_calib_images_dir) + std::to_string(N) + ".xml";
+			std::cout << "Saving xml" << ' ' << xml_name << std::endl;
+			FileStorage fw(xml_name, FileStorage::WRITE);
 			fw << "left_image" << left_image;
 			fw << "right_image" << right_image;
 			fw.release();
@@ -2265,19 +2304,21 @@ void CalibrateCameras(StereoConfiguration& configuration, SImageAcquisitionCtl& 
 
 	g_configuration._visual_diagnostics = false;
 
-	ProcessWinMessages(0);
-
 	Mat cv_image[2];
 
+	while (ProcessWinMessages());
 	_g_descriptorsLOCKER.lock();
 	_g_calibrationimages_frame->SetTopMost();
 	_g_main_frame->InsertHistory(_g_calibrationimages_frame);
 	_g_descriptorsLOCKER.unlock();
 
+	while (ProcessWinMessages());
 	IPCSetLogHandler(_g_calibrationimages_frame->_hwnd);
 
+	while (ProcessWinMessages());
 	rootCVWindows(_g_calibrationimages_frame, 3, 0, cv_windows);
 	rootCVWindows(_g_calibrationimages_frame, 2, 3, &cv_windows[3]);
+
 
 
 

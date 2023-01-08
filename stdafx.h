@@ -596,7 +596,7 @@ public:
 		params.minCircularity = 0.8f;
 		params.minConvexity = 0.9f;
 
-		params.filterByColor = true;
+		params.filterByColor = false;
 		params.filterByCircularity = true;
 		params.filterByInertia = true;
 		params.filterByArea = true; 
@@ -781,7 +781,7 @@ void CopyVector(std::vector<T1>& dst, std::vector<T2>& src) {
 
 
 
-constexpr auto NUMBER_OF_CAMERAS = 1;
+constexpr auto NUMBER_OF_CAMERAS = 2;
 
 /*
 A structure to pass (by pointer) to image acquisition thread,
@@ -832,10 +832,9 @@ struct SImageAcquisitionCtl {
 		_12bit_format = 0; 
 
 		_camera_serialnumbers[0] = "40269283"; // defines what cameras to use
-		//_camera_serialnumbers[1] = "24513580";
+		_camera_serialnumbers[NUMBER_OF_CAMERAS - 1] = "40294791";
 
-		_exposure_times[0] = 0;
-		//_exposure_times[1] = 0;
+		for (auto& exp : _exposure_times) exp = 0;
 	}
 
 private:
