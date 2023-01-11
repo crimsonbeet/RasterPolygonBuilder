@@ -1,0 +1,56 @@
+	float max_factor = std::numeric_limits<float>::min();
+	float min_factor = std::numeric_limits<float>::max();
+
+
+	Mat_<float> scores(aux.rows, aux.cols);
+
+	for (int r = 0; r < aux.rows; ++r) {
+		for (int c = 0; c < aux.cols; ++c) {
+			Vec3c pixOrig = image.at<Vec3c>(r, c);
+
+			if (factorLoadings.rows == 3 && factorLoadings.cols == 1) {
+				cv::Mat pix = cv::Mat(1, 3, factorLoadings.type(), { (float)pixOrig(0) - mean_data[0], (float)pixOrig(1) - mean_data[1], (float)pixOrig(2) - mean_data[2] });
+				Mat f = pix * invCovar * factorLoadings; 
+
+				float score = f.at<float>(0, 0);
+
+				if (score > max_factor) {
+					max_factor = score;
+				}
+				if (score < min_factor) {
+					min_factor = score;
+				}
+
+				scores.at<float>(r, c) = score;
+			}
+			else {
+				double pix_data[3] = { pixOrig(0) - mean_data[0], pixOrig(1) - mean_data[1], pixOrig(2) - mean_data[2] };
+
+				double pix_norm_data[3];
+				pix_norm_data[0] = invCholesky_data[0][0] * pix_data[0];
+				pix_norm_data[1] = invCholesky_data[1][0] * pix_data[0] + invCholesky_data[1][1] * pix_data[1];
+				pix_norm_data[2] = invCholesky_data[2][0] * pix_data[0] + invCholesky_data[2][1] * pix_data[1] + invCholesky_data[2][2] * pix_data[2];
+
+				double sum = 0;
+				sum += pix_norm_data[0] * pix_norm_data[0];
+				sum += pix_norm_data[1] * pix_norm_data[1];
+				sum += pix_norm_data[2] * pix_norm_data[2];
+
+				if (sum < 9) {
+					aux.at<ushort>(r, c) = (9 - sum) * 25 + 0.5;// convert((9 - sum)) + 0.5;
+				}
+				else {
+					aux.at<ushort>(r, c) = 0;
+				}
+			}
+		}
+	}
+
+	if (factorLoadings.rows == 3 && factorLoadings.cols == 1) {
+		for (int r = 0; r < aux.rows; ++r) {
+			for (int c = 0; c < aux.cols; ++c) {
+				float score = scores.at<float>(r, c);
+				aux.at<ushort>(r, c) = 255 * (1 - std::abs(score) / max_factor);
+			}
+		}
+	}

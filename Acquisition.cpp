@@ -179,9 +179,9 @@ void BuildWeights_ByChannel(Mat& image, Point& pt, double weights_out[3]) {
 
 
 
-bool BuildIdealChannels_Distribution(Mat& image, Point& pt, Mat& mean, Mat& invCovar, Mat& invCholesky) {
+bool BuildIdealChannels_Distribution(Mat& image, Point& pt, Mat& mean, Mat& stdDev, Mat& factorLoadings, Mat& invCovar, Mat& invCholesky) {
 	if (image.type() == CV_8UC3) {
-		Mat_<float> neighbours(/*25*//*49*/81, 3);
+		Mat_<double> neighbours(/*25*//*49*/81, 3);
 		int yStart = pt.y - 4;
 		int yEnd = pt.y + 5; 
 		while (yStart < 0) ++yStart, ++yEnd;
@@ -202,14 +202,37 @@ bool BuildIdealChannels_Distribution(Mat& image, Point& pt, Mat& mean, Mat& invC
 			}
 		}
 		Mat Q;
-		cv::calcCovarMatrix(neighbours, Q, mean, CovarFlags::COVAR_NORMAL | CovarFlags::COVAR_ROWS, CV_32F);
+		cv::calcCovarMatrix(neighbours, Q, mean, CovarFlags::COVAR_NORMAL | CovarFlags::COVAR_ROWS, CV_64F);
+
+
+		double deviation[3];
+		deviation[0] = sqrt(Q.at<double>(0, 0));
+		deviation[1] = sqrt(Q.at<double>(1, 1));
+		deviation[2] = sqrt(Q.at<double>(2, 2));
+
+		double loadings[3];
+		loadings[1] = sqrt(Q.at<double>(1, 0) * Q.at<double>(2, 1) / Q.at<double>(2, 0)); // l(1) = cov(1, 0) * cov(2, 1) / cov(2, 0)
+		loadings[0] = Q.at<double>(1, 0) / loadings[1]; // l(0) = cov(1, 0) / l(1)
+		loadings[2] = (Q.at<double>(2, 0) / Q.at<double>(1, 0)) * loadings[1]; // l(2) = (cov(2, 0) / cov(1, 0)) * l(1)
+
+		stdDev = Mat_<double>(3, 1);
+		stdDev.at<double>(0, 0) = deviation[0];
+		stdDev.at<double>(1, 0) = deviation[1];
+		stdDev.at<double>(2, 0) = deviation[2];
+
+		factorLoadings = Mat_<double>(3, 1);
+		factorLoadings.at<double>(0, 0) = loadings[0];
+		factorLoadings.at<double>(1, 0) = loadings[1];
+		factorLoadings.at<double>(2, 0) = loadings[2];
+
+
 		double invConditionNumber = cv::invert(Q.clone(), invCovar, DECOMP_SVD);
 		std::cout << "Covar inverse condition number " << invConditionNumber << std::endl;
 		if (invConditionNumber > 0.01) {
-			if (cv::Cholesky(&Q.at<float>(0, 0), (size_t)Q.step, Q.rows, nullptr, 0, 0)) {
+			if (cv::Cholesky(&Q.at<double>(0, 0), (size_t)Q.step, Q.rows, nullptr, 0, 0)) {
 				for (int i = 0; i < 2; ++i) {
 					for (int j = i + 1; j < 3; ++j) {
-						Q.at<float>(i, j) = 0;;
+						Q.at<double>(i, j) = 0;;
 					}
 				}
 				return cv::invert(Q, invCholesky, DECOMP_LU) != 0.0;
@@ -246,27 +269,25 @@ void BuildIdealChannels_Likeness(Mat& image, Point& pt, double chIdeal[3]) {
 	}
 }
 
-void ConvertColoredImage2Mono_Likeness(cv::Mat& image, cv::Mat mean/*rgb*/, cv::Mat invCovar/*inverted covariance of colors*/, Mat invCholesky, std::function<double(double)> convert) {
+void ConvertColoredImage2Mono_Likeness(cv::Mat& image, cv::Mat mean/*rgb*/, Mat& stdDev, Mat& factorLoadings, cv::Mat invCovar/*inverted covariance of colors*/, Mat invCholesky, std::function<double(double)> convert) {
 	typedef Vec<uchar, 3> Vec3c;
 
-	float* mean_data = (float*)mean.data;
-	cv::Mat aux(image.size(), CV_16UC1);
+	double* mean_data = (double*)mean.data;
 
 	double invCholesky_data[3][3] = {
-		{ invCholesky.at<float>(0, 0), invCholesky.at<float>(0, 1), invCholesky.at<float>(0, 2) },
-		{ invCholesky.at<float>(1, 0), invCholesky.at<float>(1, 1), invCholesky.at<float>(1, 2) },
-		{ invCholesky.at<float>(2, 0), invCholesky.at<float>(2, 1), invCholesky.at<float>(2, 2) }
+		{ invCholesky.at<double>(0, 0), invCholesky.at<double>(0, 1), invCholesky.at<double>(0, 2) },
+		{ invCholesky.at<double>(1, 0), invCholesky.at<double>(1, 1), invCholesky.at<double>(1, 2) },
+		{ invCholesky.at<double>(2, 0), invCholesky.at<double>(2, 1), invCholesky.at<double>(2, 2) }
 	};
+
+	cv::Mat aux(image.size(), CV_16UC1);
 
 	for (int r = 0; r < aux.rows; ++r) {
 		for (int c = 0; c < aux.cols; ++c) {
 			Vec3c pixOrig = image.at<Vec3c>(r, c);
 
-			//cv::Mat pix = cv::Mat(1, 3, CV_32F, { (double)pixOrig(2), (double)pixOrig(1), (double)pixOrig(0) });
+			double pix_data[3] = { pixOrig(0) - mean_data[0], pixOrig(1) - mean_data[1], pixOrig(2) - mean_data[2] };
 
-			//double likeness = 64 * (4 - cv::Mahalanobis(pix, mean, invCovar));
-
-			double pix_data[3] = {pixOrig(0) - mean_data[0], pixOrig(1) - mean_data[1] , pixOrig(2) - mean_data[2]};
 			double pix_norm_data[3];
 			pix_norm_data[0] = invCholesky_data[0][0] * pix_data[0];
 			pix_norm_data[1] = invCholesky_data[1][0] * pix_data[0] + invCholesky_data[1][1] * pix_data[1];
@@ -278,7 +299,7 @@ void ConvertColoredImage2Mono_Likeness(cv::Mat& image, cv::Mat mean/*rgb*/, cv::
 			sum += pix_norm_data[2] * pix_norm_data[2];
 
 			if (sum < 9) {
-				aux.at<ushort>(r, c) = (9 - sum) * 25 + 0.5;// convert((9 - sum)) + 0.5;
+				aux.at<ushort>(r, c) = (9 - sum) * 26 + 0.5;// convert((9 - sum)) + 0.5;
 			}
 			else {
 				aux.at<ushort>(r, c) = 0;
@@ -436,9 +457,9 @@ void ConvertColoredImage2Mono_FScore(Mat& image, uchar chIdeal[3], std::function
 	image = aux.clone();
 }
 
-void StandardizeImage_Likeness(Mat& image, Mat mean/*rgb*/, Mat invCovar/*inverted covariance of colors*/, Mat invCholesky) {
+void StandardizeImage_Likeness(Mat& image, Mat mean/*rgb*/, Mat& stdDev, Mat& factorLoadings, Mat invCovar/*inverted covariance of colors*/, Mat invCholesky) {
 	if (image.type() == CV_8UC3) {
-		return ConvertColoredImage2Mono_Likeness(image, mean/*rgb*/, invCovar/*inverted covariance of colors*/, invCholesky, [](double ch) {
+		return ConvertColoredImage2Mono_Likeness(image, mean/*rgb*/, stdDev, factorLoadings, invCovar/*inverted covariance of colors*/, invCholesky, [](double ch) {
 			return std::min(ch * 256, 256.0 * 256.0);
 		});
 	}

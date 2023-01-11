@@ -47,7 +47,7 @@ void StandardizeImage_Likeness(Mat& image, double chIdeal[3]);
 bool StandardizeImage_HSV_Likeness(Mat& image, double rgbIdeal[3]);
 void SquareImage_Likeness(Mat& image, double chIdeal[3]);
 void BuildIdealChannels_Likeness(Mat& image, Point& pt, double chIdeal[3]);
-bool BuildIdealChannels_Distribution(Mat& image, Point& pt, Mat& mean, Mat& invCovar, Mat& invCholesky);
+bool BuildIdealChannels_Distribution(Mat& image, Point& pt, Mat& mean, Mat& stdDev, Mat& factorLoadings, Mat& invCovar, Mat& invCholesky);
 
 void StandardizeImage_Likeness(Mat& image, uchar chIdeal[3]);
 void SquareImage_Likeness(Mat& image, uchar chIdeal[3]);
@@ -1444,7 +1444,7 @@ bool RowsCenterEllipse(std::vector<ABoxedrow> rows, ClusteredPoint& point, Mat& 
 		transpose(Q, QT);
 
 		while(err > 0.01 && count < N) {
-			Mat_<double> X = QT * u *Q;
+			Mat_<double> X = QT * u * Q;
 			Mat_<double> I(X.cols, X.rows);
 			invert(X, I);
 			Mat_<double> M = Q * I * QT;
@@ -4251,18 +4251,17 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 					int windowNumber = g_LoG_seedPoint.params.windowNumber - 1;
 
-					//if (g_LoG_seedPoint.eventValue == 2/*right button*/) {
-					//}
-
 					if (g_LoG_seedPoint.eventValue == 2/*right button*/) {
 						Mat aux = cv_image[2 + windowNumber].clone();
 
 						Mat mean;
 						Mat invCovar;
 						Mat invCholesky;
+						Mat stdDev;
+						Mat factorLoadings;
 
-						if (BuildIdealChannels_Distribution(aux, pt, mean, invCovar, invCholesky)) {
-							StandardizeImage_Likeness(aux, mean, invCovar, invCholesky);
+						if (BuildIdealChannels_Distribution(aux, pt, mean, stdDev, factorLoadings, invCovar, invCholesky)) {
+							StandardizeImage_Likeness(aux, mean, stdDev, factorLoadings, invCovar, invCholesky);
 
 							cv_image[windowNumber] = mat_loginvert2word(aux);
 							cv_image[windowNumber] = mat_invert2word(cv_image[windowNumber]);
@@ -4283,7 +4282,6 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 						readyImages(windowNumber);
 					}
 
-					void BuildIdealChannels_Distribution(Mat & image, Point & pt, Mat & invCovar, Mat & invCholesky);
 
 					submitGraphics(unchangedImage);
 

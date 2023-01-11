@@ -954,7 +954,7 @@ Mat mat_loginvert2byte(const Mat& src, const int bytedepth_scalefactor = g_byted
 
 
 bool StandardizeImage_HSV_Likeness(Mat& image, double rgbIdeal[3]);
-void StandardizeImage_Likeness(Mat& image, Mat mean/*rgb*/, Mat invCovar/*inverted covariance of colors*/, Mat invCholesky);
+void StandardizeImage_Likeness(Mat& image, Mat mean/*rgb*/, Mat& stdDev, Mat& factorLoadings, Mat invCovar/*inverted covariance of colors*/, Mat invCholesky);
 
 Mat mat_invert2word(const Mat& src, const int bytedepth_scalefactor = g_bytedepth_scalefactor, const uint16_t maxvalue = 65535); // returns CV_16UC1 matrix
 Mat mat_loginvert2word(const Mat& src, const int bytedepth_scalefactor = g_bytedepth_scalefactor); // returns CV_16UC1 matrix
