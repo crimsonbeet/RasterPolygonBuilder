@@ -171,7 +171,7 @@ void ClassBlobDetector::findBlobs(const Mat& image, Mat& binaryImage, std::vecto
 	while (ProcessWinMessages());
 
 	double desired_min_inertia = sqrt(_min_confidence);
-	double ratio_threshold = desired_min_inertia * params.minCircularity;
+	double ratio_threshold = desired_min_inertia * params.minCircularity * 0.8;
 
 	for (size_t boxIdx = 0; boxIdx < boxes.size(); boxIdx++) {
 		auto& contour = boxes[boxIdx].contour;
@@ -289,7 +289,9 @@ void ClassBlobDetector::detectImpl(const cv::Mat& image, std::vector<cv::KeyPoin
 
 	Mat grayscaleImage;
 
-	cv::normalize(image, grayscaleImage, 0, 255 * g_bytedepth_scalefactor, NORM_MINMAX, CV_32FC1, Mat());
+	Mat aux = image.clone();
+	//cv::medianBlur(aux, aux, 3);
+	cv::normalize(aux, grayscaleImage, 0, 255 * g_bytedepth_scalefactor, NORM_MINMAX, CV_32FC1, Mat());
 
 	vector < vector<Center> > centers;
 	double thresh = params.minThreshold;
@@ -328,6 +330,8 @@ void ClassBlobDetector::detectImpl(const cv::Mat& image, std::vector<cv::KeyPoin
 			std::vector<vector<Point>> contours;
 			findBlobs(grayscaleImage, binarizedImage, curCenters, contours);
 
+
+
 			Mat image0;
 			cvtColor(binarizedImage, image0, COLOR_GRAY2RGB);
 			for each(auto& points in contours)
@@ -339,11 +343,13 @@ void ClassBlobDetector::detectImpl(const cv::Mat& image, std::vector<cv::KeyPoin
 			for each (auto & center in curCenters) {
 				circle(image0, center.location, 3, Scalar(0, 0, 255 * 256), -1);
 			}
-			double fx = 280.0 / binarizedImage.rows;
-			Mat image1;
-			cv::resize(image0, image1, cv::Size(0, 0), fx, fx, INTER_AREA);
-			cv::imshow("IMAGECalibr3", image1);
-			while (ProcessWinMessages());
+
+			_ctl->_gate.lock();
+			_ctl->_image2visualize = image0.clone();
+			_ctl->_image_isvalid = true;
+			_ctl->_last_image_timestamp = OSDayTimeInMilliseconds();
+			_ctl->_gate.unlock();
+
 
 			if (scale != 1) {
 				std::for_each(curCenters.begin(), curCenters.end(), [scale, &image0](ClassBlobDetector::Center& center) {
@@ -471,12 +477,13 @@ void ClassBlobDetector::detectImpl(const cv::Mat& image, std::vector<cv::KeyPoin
 	}
 }
 
-bool findCirclesGridEx(Mat& image, vector<Point2f>& pointBuf, const Ptr<FeatureDetector> &blobDetector) { // on symmetric grid
+bool findCirclesGridEx(Mat& image, vector<Point2f>& pointBuf, ClassBlobDetector& blobDetector) { // on symmetric grid
+	Ptr<FeatureDetector> detector = ClassBlobDetector::create(blobDetector.params);
 	bool found = false;
 	try {
-		found = findCirclesGrid(image, g_boardSize, pointBuf, CALIB_CB_SYMMETRIC_GRID | CALIB_CB_CLUSTERING, blobDetector);
+		found = findCirclesGrid(image, g_boardSize, pointBuf, CALIB_CB_SYMMETRIC_GRID | CALIB_CB_CLUSTERING, detector);
 		if(!found) {
-			found = findCirclesGrid(image, g_boardSize, pointBuf, CALIB_CB_SYMMETRIC_GRID, blobDetector);
+			found = findCirclesGrid(image, g_boardSize, pointBuf, CALIB_CB_SYMMETRIC_GRID, detector);
 		}
 		if(found) {
 			if(pointBuf[0].y > pointBuf[pointBuf.size() - g_boardSize.width].y) {
@@ -839,7 +846,82 @@ bool ExtractCornersOfRectangles(Mat& image/*in*/, vector<Point2f>& pointBuf/*in*
 	return true; 
 }
 
-bool ExtractCornersOfChessPattern(Mat& imageInp, vector<Point2f>& pointBuf, const Ptr<FeatureDetector>& detector) {
+
+return_t __stdcall DetectBlackSquaresVia_HSV_Likeness(LPVOID lp) {
+	SFeatureDetectorCtl* ctl = (SFeatureDetectorCtl*)lp;
+	cv::Mat& image = ctl->_image;
+
+	std::vector<KeyPoint> keyPoints;
+
+	ctl->_status = 2;
+	try {
+		if (image.type() == CV_8UC3) {
+			double mean_data[3] = { 108.59519, 106.87839, 93.29372 };// { 117.41603, 108.29612, 89.85426 };// { 117, 110, 86 };
+			if (StandardizeImage_HSV_Likeness(image, mean_data)) {
+
+				image = mat_loginvert2word(image);
+				image = mat_invert2word(image);
+				cv::normalize(image.clone(), image, 0, (size_t)256 * g_bytedepth_scalefactor, NORM_MINMAX, CV_16UC1, Mat());
+
+				ctl->_detector->detect(image, ctl->_keyPoints);
+			}
+		}
+	}
+	catch (...) {
+	}
+
+	ctl->_gate.lock();
+	ctl->_keyPoints.swap(keyPoints);
+	ctl->_gate.unlock();
+
+	ctl->_status = 0;
+
+	return 0;
+}
+
+return_t __stdcall DetectBlackSquaresVia_ColorDistribution(LPVOID lp) {
+	SFeatureDetectorCtl* ctl = (SFeatureDetectorCtl*)lp;
+	cv::Mat& image = ctl->_image;
+
+	std::vector<KeyPoint> keyPoints;
+
+	ctl->_status = 2;
+	try {
+		if (image.type() == CV_8UC3) {
+			double mean_data[3] = { 108.59519, 106.87839, 93.29372 };// { 117.41603, 108.29612, 89.85426 };
+			double invCovar_data[9] = { 0.008706637, 0.002279566, -0.01101841, 0.002279566, 0.043274569, -0.03528071, -0.011018411, -0.035280710, 0.04288963 };// { 0.003871324, 0.001966916, -0.001440268, 0.001966916, 0.036550065, -0.030285284, -0.001440268, -0.030285284, 0.035661410 };
+			double invCholesky_data[9] = { 0.05144795, 0.0000000, 0.0000000, -0.05682516, 0.1193855, 0.0000000, -0.05320382, -0.1703575, 0.2070981 };// { 0.061335769, 0.0000000, 0.0000000, 0.007146916, 0.1040693, 0.0000000, -0.007626832, -0.1603734, 0.1888423 };
+
+			cv:Mat mean = cv::Mat(1, 3, CV_64F, mean_data);
+			cv::Mat invCovar = cv::Mat(3, 3, CV_64F, invCovar_data);
+			cv::Mat invCholesky = cv::Mat(3, 3, CV_64F, invCholesky_data);
+
+			cv::Mat stdDev;
+			cv::Mat factorLoadings;
+
+			StandardizeImage_Likeness(image, mean, stdDev, factorLoadings, invCovar, invCholesky);
+
+			image = mat_loginvert2word(image);
+			image = mat_invert2word(image);
+			cv::normalize(image.clone(), image, 0, (size_t)256 * g_bytedepth_scalefactor, NORM_MINMAX, CV_16UC1, Mat());
+		}
+
+		ctl->_detector->detect(image, keyPoints);
+	}
+	catch (...) {
+	}
+
+	ctl->_gate.lock();
+	ctl->_keyPoints.swap(keyPoints);
+	ctl->_gate.unlock();
+
+	ctl->_status = 0;
+
+	return 0;
+}
+
+
+bool ExtractCornersOfChessPattern(Mat& imageInp, vector<Point2f>& pointBuf, ClassBlobDetector& blobDetector) {
 	vector<Point2f> edgesBuf;
 
 	vector<Point2f> approx2fminQuad; // Qaudrilateral delimiting the area of the image that contains corners. 
@@ -847,44 +929,52 @@ bool ExtractCornersOfChessPattern(Mat& imageInp, vector<Point2f>& pointBuf, cons
 	vector<Point2f> approx2fminRectMapped(4); // Qadrilateral tranformed to rectangle.
 	Rect approxBoundingRectMapped;
 
-	Mat image = imageInp.clone();
-
-	double fy = 1.0; 
-
-	//if(image.rows > 1600) {
-	//	double fy = 1600.0 / image.rows; 
-	//	cv::resize(image, image, cv::Size(0, 0), fy, fy, INTER_AREA);
-	//}
-
-	auto image_type = image.type();
-
-	if (image_type == CV_8UC3) {
-		//double black_color[3] = { 117, 110, 86 };// { 109, 110, 87 };
-		//StandardizeImage_HSV_Likeness(image, black_color);
-
-		double mean_data[3] = { 116.83199, 110.26242, 86.00596 };// { 143.05750, 119.46569, 68.23818 };// { 158.8078, 147.9445, 125.1749 };
-		double invCovar_data[9] = { 0.009066458, -0.002604613, -0.007678366, -0.002604613, 0.020680217, -0.014549229, -0.007678366, -0.014549229, 0.023863367 };// { 0.0102539613, -0.01036747, 0.0004458039, -0.0103674702, 0.03199960, -0.0149542107, 0.0004458039, -0.01495421, 0.0114805264 };// { 0.006623272, -0.005202919, -0.001526119, -0.005202919, 0.009449343, -0.003572090, -0.001526119, -0.003572090, 0.005443892 };
-		double invCholesky_data[9] = { 0.04583349, 0.00000000, 0.0000000, -0.06704573, 0.10867251, 0.0000000, -0.04970533, -0.09418335, 0.1544777 };// { 0.050860724, 0.0000000, 0.0000000, -0.087463346, 0.1118958, 0.0000000, 0.004160667, -0.1395670, 0.1071472 };// { 0.02789284, 0.00000000, 0.00000000, -0.07360323, 0.08429391, 0.00000000, -0.02068396, -0.04841362, 0.07378274 };
-
-		cv:Mat mean = cv::Mat(1, 3, CV_64F, mean_data);
-		cv::Mat invCovar = cv::Mat(3, 3, CV_64F, invCovar_data);
-		cv::Mat invCholesky = cv::Mat(3, 3, CV_64F, invCholesky_data);
-
-		cv::Mat stdDev;
-		cv::Mat factorLoadings;
-
-		StandardizeImage_Likeness(image, mean, stdDev, factorLoadings, invCovar, invCholesky);
-
-		image = mat_loginvert2word(image);
-		image = mat_invert2word(image);
-		cv::normalize(image.clone(), image, 0, (size_t)256 * g_bytedepth_scalefactor, NORM_MINMAX, CV_16UC1, Mat());
-		image_type = image.type();
+	SFeatureDetectorCtl controls[2];
+	for (auto& ctl : controls) {
+		ctl._detector = new ClassBlobDetector(blobDetector, &ctl);
+		ctl._image = imageInp.clone();
+		ctl._status = 1;
 	}
 
-	//bool found = findCirclesGrid(image, g_boardChessSize, pointBuf, CALIB_CB_ASYMMETRIC_GRID/* | CALIB_CB_CLUSTERING*/, detector);
+	controls[0]._outputWindow = "IMAGECalibr1";
+	controls[1]._outputWindow = "IMAGECalibr2";
 
+
+	QueueWorkItem(DetectBlackSquaresVia_ColorDistribution, &controls[0]);
+	QueueWorkItem(DetectBlackSquaresVia_HSV_Likeness, &controls[1]);
+
+	do {
+		for (auto& ctl : controls) {
+			if (ctl._image_isvalid) {
+
+				ctl._gate.lock();
+				cv::Mat image0 = ctl._image2visualize;
+				ctl._image2visualize = Mat();
+				int64_t image_timestamp = ctl._last_image_timestamp;
+				ctl._image_isvalid = false;
+				ctl._gate.unlock();
+
+
+				double fx = 280.0 / image0.rows;
+				cv::Mat image1;
+				cv::resize(image0, image1, cv::Size(0, 0), fx, fx, INTER_AREA);
+
+				cv::imshow(ctl._outputWindow, image1);
+			}
+
+			while (ProcessWinMessages(10));
+		}
+	} while (controls[0]._status != 0 || controls[1]._status != 0);
+
+	const int targetNumberOfKeyPoints = g_boardChessSize.width * g_boardChessSize.height; 
 	std::vector<KeyPoint> keyPoints;
-	detector->detect(image, keyPoints);
+
+	for (auto& ctl : controls) {
+		if (ctl._keyPoints.size() == targetNumberOfKeyPoints) {
+			keyPoints = ctl._keyPoints;
+			break;
+		}
+	}
 
 	pointBuf.reserve(keyPoints.size());
 	pointBuf.resize(0);
@@ -893,10 +983,17 @@ bool ExtractCornersOfChessPattern(Mat& imageInp, vector<Point2f>& pointBuf, cons
 		pointBuf.push_back(keyPoint.pt);
 	}
 
-	bool found = pointBuf.size() == g_boardChessSize.width * g_boardChessSize.height;
+
+
+	double fy = 1.0;
+
+
+	bool found = pointBuf.size() == targetNumberOfKeyPoints;
 
 	// build min. enclosing quadrilateral
 	if(found) {
+		Mat image = imageInp.clone();
+
 		std::vector<Point> blobs(pointBuf.size());
 		for(int k = 0; k < pointBuf.size(); ++k) {
 			blobs[k] = Point2i((int)(pointBuf[k].x + 0.5), (int)(pointBuf[k].y + 0.5));
@@ -1033,9 +1130,14 @@ bool ExtractCornersOfChessPattern(Mat& imageInp, vector<Point2f>& pointBuf, cons
 			// 5. Visualize the centers and quadrilateral. 
 
 			Mat image0;
-			normalize(image, image0, 0, 255 * 256, NORM_MINMAX);
 			Mat image1;
-			cvtColor(image0, image1, COLOR_GRAY2RGB);
+			if (image.type() == CV_16UC1) {
+				normalize(image, image0, 0, 255 * 256, NORM_MINMAX);
+				cvtColor(image0, image1, COLOR_GRAY2RGB);
+			}
+			else {
+				image1 = image.clone();
+			}
 
 			for(int j = 0; j < 4; ++j) {
 				cv::line(image1, approx2fminQuad[j], approx2fminQuad[(j + 1) % 4], Scalar(255 * 256, 0, 0));
@@ -1067,8 +1169,9 @@ bool ExtractCornersOfChessPattern(Mat& imageInp, vector<Point2f>& pointBuf, cons
 	}
 
 	if(approx2fminQuad.size()) {
+		Mat image = imageInp.clone();
 		//imageInp.convertTo(image, CV_16UC1);
-		image = imageInp.clone();
+
 		double color2gray[3] = { 0.299, 0.587, 0.114 };
 		//double color2gray[3] = { 0.114, 0.587, 0.299 };
 		ConvertColoredImage2Mono(image, color2gray, [](double ch) {
@@ -1245,10 +1348,15 @@ bool ExtractCornersOfChessPattern(Mat& imageInp, vector<Point2f>& pointBuf, cons
 
 	if(edgesBuf.size()) {
 		Mat grayscale;
-		normalize(image, grayscale, 0, 255, NORM_MINMAX, CV_8UC1, Mat());
+		if (imageInp.type() == CV_16UC1) {
+			cv::normalize(imageInp, grayscale, 0, 255, NORM_MINMAX, CV_8UC1, Mat());
+		}
+		else {
+			cvtColor(imageInp, grayscale, COLOR_BGR2GRAY);
+		}
 
 		try {
-			cornerSubPix(grayscale, edgesBuf, Size(5, 5)/*window size*/, Size(-1, -1)/*no zero zone*/, TermCriteria(CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, 40, 0.001));
+			cv::cornerSubPix(grayscale, edgesBuf, Size(5, 5)/*window size*/, Size(-1, -1)/*no zero zone*/, TermCriteria(CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, 40, 0.001));
 		}
 		catch(Exception& ex) {
 			std::cout << "ExtractCornersOfChessPattern:" << ' ' << ex.msg << std::endl;
@@ -1267,7 +1375,7 @@ bool ExtractCornersOfChessPattern(Mat& imageInp, vector<Point2f>& pointBuf, cons
 	return pointBuf.size() == (g_boardChessCornersSize.width * g_boardChessCornersSize.height); 
 }
 
-bool DetectGrid(Mat& image, vector<Point2f>& pointBuf, const Ptr<FeatureDetector> &blobDetector, int gridType/*0 - circles, 1 - regular grid squares, 2 - chess grid of squares*/) {
+bool DetectGrid(Mat& image, vector<Point2f>& pointBuf, ClassBlobDetector& blobDetector, int gridType/*0 - circles, 1 - regular grid squares, 2 - chess grid of squares*/) {
 	pointBuf.clear();
 	bool found = false;
 	if(image.data) {
@@ -1333,7 +1441,7 @@ void ProjectIdeal(vector<Point2f>& pointBuf, vector<Point2f>& idealMapped, const
 //findHomography
 //transform the image to coord.system of the pattern. 
 //evaluate the circl.centers in the transformed image and transform them back to the original system. 
-bool optimizePointsFromImage(Mat& image, vector<Point2f>& pointBuf, const Ptr<FeatureDetector> &blobDetector, int warped_iterations = 0, bool use_idealMapped = true) {
+bool optimizePointsFromImage(Mat& image, vector<Point2f>& pointBuf, ClassBlobDetector& blobDetector, int warped_iterations = 0, bool use_idealMapped = true) {
 	const static int warped_threshold = 140;
 
 	int gridTtype = 0; /*0 - circles, 1 - regular grid squares, 2 - chess grid of squares*/
@@ -1499,8 +1607,7 @@ bool optimizePointsFromImage(Mat& image, vector<Point2f>& pointBuf, const Ptr<Fe
 }
 
 bool buildPointsFromImage(Mat& image, vector<Point2f>& pointBuf, SImageAcquisitionCtl& ctl, double min_confidence = 0.0, size_t min_repeatability = 3, int warped_iterations = 0, bool use_idealMapped = false) {
-	//Ptr<FeatureDetector> blobDetector = ClassBlobDetector::create(ClassBlobDetector(min_confidence, min_repeatability, 120, ctl._pattern_is_whiteOnBlack, ctl._pattern_is_chessBoard).params);
-	Ptr<FeatureDetector> blobDetector = new ClassBlobDetector(min_confidence, min_repeatability, 40, ctl._pattern_is_whiteOnBlack, ctl._pattern_is_chessBoard);
+	ClassBlobDetector blobDetector = ClassBlobDetector(min_confidence, min_repeatability, 40, ctl._pattern_is_whiteOnBlack, ctl._pattern_is_chessBoard);
 	pointBuf.clear();
 	bool found = false;
 	if(image.data) { 
@@ -1540,7 +1647,7 @@ double calc_betweenimages_rmse(vector<Point2f>& image1, vector<Point2f>& image2)
 
 
 
-bool EvaluateImagePoints(Mat& cv_image, vector<vector<Point2f>>& imagePoints, SImageAcquisitionCtl& ctl, double min_confidence = 0, size_t min_repeatability = 5) {
+bool EvaluateImagePoints(Mat& cv_image, vector<vector<Point2f>>& imagePoints, SImageAcquisitionCtl& ctl, double min_confidence = 0.4, size_t min_repeatability = 3) {
 	bool is_ok = false;
 
 	int x = (int)imagePoints.size() - 1;
@@ -1786,6 +1893,80 @@ void Save_Images(Mat& image, vector<vector<Point2f>>& imagePoints, int points_id
 	}
 }
 
+
+
+/*
+Read the frame's buffer to the end and pick
+a frame that has images captured at smallest time-difference.
+The N controlls a minimum amount of frames to consider.
+*/
+void VisualizeCapturedImages(cv::Mat& left_image, cv::Mat& right_image) {
+	while (ProcessWinMessages());
+	Mat cv_image[2] = { left_image.clone(), right_image.clone() };
+	for (int c = 0; c < ARRAY_NUM_ELEMENTS(cv_image); ++c) {
+		double fx = 700.0 / cv_image[c].cols;
+		double fy = fx;
+		HWND hwnd = (HWND)cvGetWindowHandle(cv_windows[c + 3].c_str());
+		RECT clrect;
+		if (GetWindowRect(GetParent(hwnd), &clrect)) {
+			fx = (double)(clrect.right - clrect.left) / (double)cv_image[c].cols;
+			fy = (double)(clrect.bottom - clrect.top) / (double)cv_image[c].rows;
+			fx = fy = std::min(fx, fy);
+		}
+		cv::resize(cv_image[c], cv_image[c], cv::Size(0, 0), fx, fy, INTER_AREA);
+		cv::imshow(cv_windows[c + 3], cv_image[c]);
+	}
+}
+
+int g_sync_button_pressed;
+return_t __stdcall ShowSynchronizationButton(LPVOID lp) {
+	ProcessWinMessages(10);
+	MessageBoxA(NULL, "Press when ready", "Synchronization", MB_OK | MB_TOPMOST);
+	g_sync_button_pressed = true;
+	return 0;
+}
+std::function<void()> g_imageGetter = nullptr;
+return_t __stdcall GetImagesWorkItem(LPVOID lp) {
+	g_imageGetter();
+	return 0;
+}
+bool GetImagesEx(Mat& left, Mat& right, int64_t* time_spread, const int N/*min_frames_2_consider*/) {
+	g_sync_button_pressed = false;
+	QueueWorkItem(ShowSynchronizationButton);
+
+	bool imagesOk = false;
+
+	Mat image[2];
+	bool imageReady = false;
+	bool imageGetterFinished = true; 
+	while (!g_sync_button_pressed || !imageGetterFinished) {
+		if (imageReady) {
+			VisualizeCapturedImages(image[0], image[1]);
+			imageReady = false;
+			imagesOk = true;
+		}
+		if(imageGetterFinished && !g_sync_button_pressed) {
+			g_imageGetter = [&]() {
+				imageReady = GetImages(image[0], image[1], time_spread, N);
+				g_imageGetter = nullptr;
+				imageGetterFinished = true;
+			};
+			imageGetterFinished = false;
+			QueueWorkItem(GetImagesWorkItem);
+		}
+
+		while (ProcessWinMessages(10));
+	}
+	if (imagesOk) {
+		left = image[0];
+		right = image[1];
+	}
+	return imagesOk;
+}
+
+
+
+
 return_t __stdcall AcquireImagepoints(LPVOID lp) {
 	SImageAcquisitionCtl *ctl = (SImageAcquisitionCtl*)lp;
 
@@ -1802,7 +1983,7 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 	while (ProcessWinMessages());
 
 	size_t current_N = 1; 
-	size_t min_repeatability = 5; 
+	size_t min_repeatability = 3; 
 
 	ctl->_imagepoints_status = 1;
 
@@ -1839,26 +2020,11 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 			std::cout << "Images Ok" << std::endl;
 		}
 		else
-		if(!GetImagesEx(left_image, right_image, &image_localtime, (int)g_rotating_buf_size - 1)) {
+		if(!GetImagesEx(left_image, right_image, &image_localtime, 1/*(int)g_rotating_buf_size - 1*/)) {
 			continue;
 		}
 
-		while(ProcessWinMessages());
-		Mat cv_image[2] = { left_image.clone(), right_image.clone()};
-		for (int c = 0; c < ARRAY_NUM_ELEMENTS(cv_image); ++c) {
-			double fx = 700.0 / cv_image[c].cols;
-			double fy = fx;
-			HWND hwnd = (HWND)cvGetWindowHandle(cv_windows[c + 3].c_str());
-			RECT clrect;
-			if (GetWindowRect(GetParent(hwnd), &clrect)) {
-				fx = (double)(clrect.right - clrect.left) / (double)cv_image[c].cols;
-				fy = (double)(clrect.bottom - clrect.top) / (double)cv_image[c].rows;
-				fx = fy = std::min(fx, fy);
-			}
-			cv::resize(cv_image[c], cv_image[c], cv::Size(0, 0), fx, fy, INTER_AREA);
-			cv::imshow(cv_windows[c + 3], cv_image[c]);
-		}
-
+		VisualizeCapturedImages(left_image, right_image);
 
 		int nl = -1;
 		int nr = -1;

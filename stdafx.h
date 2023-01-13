@@ -549,6 +549,40 @@ template<typename T> struct ATLSMatrix : public ATLSMatrixvar<T> {
 
 
 
+struct SFeatureDetectorCtl {
+	int _status; // ==1 - unknown, 0 - not running, 2 - running. 
+	bool _terminated; // a command to stop execution.
+
+	std::string _outputWindow; // where the _image2visualize to put to.
+
+	wsi_gate _gate;
+
+	bool volatile _data_isvalid;
+	bool volatile _image_isvalid;
+
+	Ptr<FeatureDetector> _detector;
+
+	cv::Mat _image; // input to FeatureDetector
+
+	cv::Mat _image2visualize; // input to main thread
+
+	std::vector<KeyPoint> _keyPoints;
+
+	cv::Rect _roi;
+
+	long long _last_image_timestamp;
+
+
+	SFeatureDetectorCtl() : _status(1), _terminated(0), _data_isvalid(false), _image_isvalid(false), _last_image_timestamp(0) {
+	}
+};
+
+
+
+
+
+
+
 
 extern Size g_boardSize;
 extern Size g_boardQuadSize;
@@ -559,6 +593,8 @@ class ClassBlobDetector : public SimpleBlobDetector {
 	bool _invert_binary;
 	double _min_confidence;
 	int _min_threshold;
+
+	SFeatureDetectorCtl* _ctl = nullptr;
 
 	struct CV_EXPORTS Center
 	{
@@ -602,7 +638,21 @@ public:
 		params.filterByArea = true; 
 		params.filterByConvexity = true;
 	}
+
+	ClassBlobDetector(const ClassBlobDetector& other, SFeatureDetectorCtl *ctl) {
+		_min_confidence = other._min_confidence;
+		_min_threshold = other._min_threshold;
+		_chess_board = other._chess_board;
+		_invert_binary = other._invert_binary; 
+
+		_ctl = ctl;
+
+		params = other.params;
+	}
 };
+
+
+
 
 
 
@@ -1284,7 +1334,7 @@ struct SStereoFrame {
 extern SStereoFrame g_lastwritten_sframe;
 
 bool GetImages(Mat& left, Mat& right, int64_t* time_received = NULL, const int N = 0/*min_frames_2_consider*/, int64_t expiration = 3000);
-bool GetImagesEx(Mat& left, Mat& right, int64_t* time_spread, const int N/*min_frames_2_consider*/);
+
 /*
 Copies from g_lastwritten_sframe. Waits if neccessary.
 */

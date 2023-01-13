@@ -312,7 +312,6 @@ void ConvertColoredImage2Mono_Likeness(cv::Mat& image, cv::Mat mean/*rgb*/, Mat&
 
 bool ConvertColoredImage2Mono_HSV_Likeness(Mat& image, double rgbIdeal[3], std::function<double(double)> convert) {
 	typedef Vec<uchar, 3> Vec3c;
-	cv::Mat aux(image.size(), CV_16UC1);
 	double hsvIdeal[3];
 	double hsvOriginal[3];
 	
@@ -324,16 +323,18 @@ bool ConvertColoredImage2Mono_HSV_Likeness(Mat& image, double rgbIdeal[3], std::
 	RGB_TO_HSV(pixIdeal, hsvIdeal);
 
 	const double saturationIdeal = hsvIdeal[1];
+	const double valueIdeal = hsvIdeal[2];
 
 	const double y_componentIdeal = rgbIdeal[0] * 0.299 + rgbIdeal[1] * 0.587 + rgbIdeal[2] * 0.114;
-	//const double y_componentIdeal = rgbIdeal[0] * 0.257 + rgbIdeal[1] * 0.504 + rgbIdeal[2] * 0.098 + 16;
 
 	if (y_componentIdeal < 40) {
 		return false;
 	}
-	//if ((hsvIdeal[1] * hsvIdeal[2]) < 40) {
-	//	return false;
-	//}
+
+	double max_likeness = std::numeric_limits<double>::min();
+
+	cv::Mat aux(image.size(), CV_16UC1);
+
 	for (int r = 0; r < aux.rows; ++r) {
 		for (int c = 0; c < aux.cols; ++c) {
 			Vec3c& pixOriginal = image.at<Vec3c>(r, c);
@@ -370,35 +371,35 @@ bool ConvertColoredImage2Mono_HSV_Likeness(Mat& image, double rgbIdeal[3], std::
 				likeness = hueLikeness / tanThreshold;
 
 
-				for (int j = 1; j < 3; ++j) {
-					double chMax;
-					double chMin;
-					double ch = hsvOriginal[j];
-					double ch_ideal = hsvIdeal[j];
-					if (ch_ideal > ch) {
-						chMax = ch_ideal;
-						chMin = ch;
-					}
-					else {
-						chMax = ch;
-						chMin = ch_ideal;
-					}
+				//for (int j = 1; j < 3; ++j) {
+				//	double chMax;
+				//	double chMin;
+				//	double ch = hsvOriginal[j];
+				//	double ch_ideal = hsvIdeal[j];
+				//	if (ch_ideal > ch) {
+				//		chMax = ch_ideal;
+				//		chMin = ch;
+				//	}
+				//	else {
+				//		chMax = ch;
+				//		chMin = ch_ideal;
+				//	}
 
-					likeness *= chMin > 0 ? (chMin * chMin / chMax) : 0;
-				}
-
-				//double saturationOriginal = hsvOriginal[1];
-				//const double y_componentOriginal = pixOriginal[0] * 0.299 + pixOriginal[1] * 0.587 + pixOriginal[2] * 0.114;
-				////const double y_componentOriginal = pixOriginal[0] * 0.257 + pixOriginal[1] * 0.504 + pixOriginal[2] * 0.098 + 16;
+				//	likeness *= chMin > 0 ? (chMin * chMin / chMax) : 0;
+				//}
 
 
-				////likeness *= std::min(saturationIdeal, saturationOriginal) / std::max(saturationIdeal, saturationOriginal);
-
-				//likeness *= std::min(y_componentIdeal, y_componentOriginal) / std::max(y_componentIdeal, y_componentOriginal);
+				double saturationOriginal = hsvOriginal[1];
+				double valueOriginal = hsvOriginal[2];
+				likeness *= std::min(saturationIdeal, saturationOriginal) / std::max(saturationIdeal, saturationOriginal);
+				likeness *= std::min(valueIdeal, valueOriginal) / std::max(valueIdeal, valueOriginal);
 			}
 
-			//aux.at<ushort>(r, c) = convert(hsvOriginal[2] * likeness) + 0.5;
-			aux.at<ushort>(r, c) = convert(likeness) + 0.5;
+			aux.at<ushort>(r, c) = likeness * 256 + 0.5;//convert(likeness) + 0.5;
+
+			if (max_likeness < likeness) {
+				max_likeness = likeness;
+			}
 		}
 	}
 	image = aux.clone();
@@ -459,7 +460,7 @@ void ConvertColoredImage2Mono_FScore(Mat& image, uchar chIdeal[3], std::function
 
 void StandardizeImage_Likeness(Mat& image, Mat mean/*rgb*/, Mat& stdDev, Mat& factorLoadings, Mat invCovar/*inverted covariance of colors*/, Mat invCholesky) {
 	if (image.type() == CV_8UC3) {
-		return ConvertColoredImage2Mono_Likeness(image, mean/*rgb*/, stdDev, factorLoadings, invCovar/*inverted covariance of colors*/, invCholesky, [](double ch) {
+		ConvertColoredImage2Mono_Likeness(image, mean/*rgb*/, stdDev, factorLoadings, invCovar/*inverted covariance of colors*/, invCholesky, [](double ch) {
 			return std::min(ch * 256, 256.0 * 256.0);
 		});
 	}
@@ -746,29 +747,6 @@ SStereoFrame* NextReadFrame() {
 }
 
 
-
-
-/*
-Read the frame's buffer to the end and pick
-a frame that has images captured at smallest time-difference.
-The N controlls a minimum amount of frames to consider.
-*/
-int g_sync_button_pressed;
-return_t __stdcall ShowSynchronizationButton(LPVOID lp) {
-	ProcessWinMessages(10);
-	MessageBoxA(NULL, "Press when ready", "Synchronization", MB_OK | MB_TOPMOST);
-	g_sync_button_pressed = true;
-	return 0;
-}
-bool GetImagesEx(Mat& left, Mat& right, int64_t* time_spread, const int N/*min_frames_2_consider*/) {
-	g_sync_button_pressed = false;
-	QueueWorkItem(ShowSynchronizationButton);
-	while (!g_sync_button_pressed) {
-		GetImages(left, right, time_spread, N);
-		while (ProcessWinMessages());
-	}
-	return GetImages(left, right, time_spread, N);
-}
 
 #pragma warning ( push )
 #pragma warning ( disable : 6201 ) // Index 'index-name' is out of valid index range 'minimum' to 'maximum' for possibly stack allocated buffer 'variable'
