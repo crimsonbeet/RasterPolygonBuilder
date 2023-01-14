@@ -560,13 +560,20 @@ struct SFeatureDetectorCtl {
 	bool volatile _data_isvalid;
 	bool volatile _image_isvalid;
 
-	Ptr<FeatureDetector> _detector;
+	cv::Ptr<cv::FeatureDetector> _detector;
 
 	cv::Mat _image; // input to FeatureDetector
 
 	cv::Mat _image2visualize; // input to main thread
 
-	std::vector<KeyPoint> _keyPoints;
+	std::vector<cv::KeyPoint> _keyPoints;
+	std::vector<cv::Point2f> _pointBuf; // centers of black squares 
+
+	std::vector<cv::Point2f> _approx2fminQuad; // Qaudrilateral delimiting the area of the image that contains corners.
+	cv::Rect _approxBoundingRectMapped;
+	cv::Mat _H; // Homography that transforms quadrilateral to rectangle (not rotated).
+
+	std::vector<cv::Point2f> _edgesBuf;
 
 	cv::Rect _roi;
 
@@ -574,6 +581,10 @@ struct SFeatureDetectorCtl {
 
 
 	SFeatureDetectorCtl() : _status(1), _terminated(0), _data_isvalid(false), _image_isvalid(false), _last_image_timestamp(0) {
+	}
+
+	SFeatureDetectorCtl(cv::Mat& image) : SFeatureDetectorCtl() {
+		_image = image;
 	}
 };
 

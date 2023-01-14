@@ -53,13 +53,15 @@ bool g_images_are_collected;
 
 vector<vector<Point3f> > g_objectPoints;
 
-std::string cv_windows[5];
+std::string cv_windows[6];
 
 
 
 
 void DrawImageAndBoard(const std::string& aname, const std::string& window_name, Mat& cv_image, const vector<Point2f>& board) {
 	Mat cv_image1;
+
+	while (ProcessWinMessages());
 
 	if (cv_image.type() != CV_8UC3) {
 		cv::cvtColor(cv_image, cv_image1, COLOR_GRAY2RGB);
@@ -111,6 +113,8 @@ void DrawImageAndBoard(const std::string& aname, const std::string& window_name,
 	catch (Exception& ex) {
 		std::cout << "DrawImageAndBoard:" << ' ' << ex.msg << std::endl;
 	}
+
+	while (ProcessWinMessages());
 }
 
 
@@ -166,9 +170,7 @@ void ClassBlobDetector::findBlobs(const Mat& image, Mat& binaryImage, std::vecto
 	
 	unsigned int threshold_intensity = 250 * g_bytedepth_scalefactor;
 
-	while (ProcessWinMessages());
 	BlobCentersLoG(boxes, points, binaryImage, threshold_intensity, cv::Rect(), kmat);
-	while (ProcessWinMessages());
 
 	double desired_min_inertia = sqrt(_min_confidence);
 	double ratio_threshold = desired_min_inertia * params.minCircularity * 0.8;
@@ -477,30 +479,9 @@ void ClassBlobDetector::detectImpl(const cv::Mat& image, std::vector<cv::KeyPoin
 	}
 }
 
-bool findCirclesGridEx(Mat& image, vector<Point2f>& pointBuf, ClassBlobDetector& blobDetector) { // on symmetric grid
-	Ptr<FeatureDetector> detector = ClassBlobDetector::create(blobDetector.params);
-	bool found = false;
-	try {
-		found = findCirclesGrid(image, g_boardSize, pointBuf, CALIB_CB_SYMMETRIC_GRID | CALIB_CB_CLUSTERING, detector);
-		if(!found) {
-			found = findCirclesGrid(image, g_boardSize, pointBuf, CALIB_CB_SYMMETRIC_GRID, detector);
-		}
-		if(found) {
-			if(pointBuf[0].y > pointBuf[pointBuf.size() - g_boardSize.width].y) {
-				std::reverse(pointBuf.begin(), pointBuf.end());
-			}
-		}
-		if(!found) {
-			cv::imshow("IMAGECalibr3", imread(IMG_DELETEDOCUMENT_H, cv::IMREAD_ANYCOLOR));
-			while(ProcessWinMessages());
-		}
-	}
-	catch(Exception& ex) {
-		std::cout << "buildPointsFromImage:" << ' ' << ex.msg << std::endl;
-		return false;
-	}
-	return found;
-}
+
+
+
 
 // approximate contour with accuracy proportional to the contour perimeter
 bool approximateContourWithQuadrilateral(const std::vector<Point>& contour, std::vector<Point>& approx, double minArea, double maxArea) {
@@ -533,318 +514,6 @@ bool approximateContourWithQuadrilateral(const std::vector<Point>& contour, std:
 }
 
 
-// returns sequence of squares detected on the image.
-void findSquares(const Mat& image, vector<vector<Point> >& squares, double maxArea) {
-	squares.clear();
-
-	vector<vector<Point> > contours;
-
-	Mat gray0;
-	image.convertTo(gray0, CV_8UC1);
-
-	//uchar *val = (uchar*)gray0.data;
-	//for(int j = 0, N = gray0.cols * gray0.rows; j < N; ++j, ++val) {
-	//	*val = 255 - *val;
-	//}
-
-	int thresh = 255;
-
-	for(int k = 0; k < gray0.rows; ++k) {
-		for(int j = 0; j < gray0.cols; ++j) {
-			auto p = gray0.at<unsigned char>(k, j);
-			if(p > 20 && p < thresh) {
-				thresh = p;
-			}
-		}
-	}
-
-	Mat gray1;
-	normalize(gray0, gray1, 0, 255, NORM_MINMAX, CV_8UC1);
-
-	// try several threshold levels
-	const int NL = 11;
-	Mat gray;
-	for(int l = (int)((1.5 * thresh * NL) / 255.0 + 1.5); l < NL; ++l) { 
-		gray = gray1 >= (l - 1) * 255 / NL; 
-
-		contours.resize(0); 
-		findContours(gray, contours, CV_RETR_LIST, CV_CHAIN_APPROX_SIMPLE); 
-
-		vector<Point> approx; 
-		for(size_t i = 0; i < contours.size(); i++) {
-			approx.resize(0); 
-			if(approximateContourWithQuadrilateral(contours[i], approx, 50, maxArea)) {
-				squares.push_back(approx); 
-			}
-		}
-	}
-}
-
-double FindMinDistanceBetweenNeighbours(vector<Point2f>& pointBuf, vector<vector<double>>& distancesMap) { // on symmetric grid
-	distancesMap.resize(g_boardSize.height, vector<double>(g_boardSize.width, std::numeric_limits<double>::max()));
-	int k = 0;
-	int j = 0;
-	double dist = std::numeric_limits<double>::max();
-	for(auto& point : pointBuf) {
-		int kk[4] = {-1, 0, 0, 1};
-		int jj[4] = {0, -1, 1, 0};
-		for(int n = 0; n < 4; ++n) {
-			int kn = k + kk[n];
-			int jn = j + jj[n];
-			if(kn < 0 || kn >= g_boardSize.width) {
-				continue;
-			}
-			if(jn < 0 || jn >= g_boardSize.height) {
-				continue;
-			}
-			Point2f& p = pointBuf[jn * g_boardSize.width + kn];
-			double d = sqrt(pow(point.x - p.x, 2) + pow(point.y - p.y, 2));
-			if(d < dist) {
-				dist = d;
-			}
-			if(d < distancesMap[j][k]) {
-				distancesMap[j][k] = d; 
-			}
-		}
-		if(++k >= g_boardSize.width) {
-			k = 0;
-			++j;
-		}
-	}
-	return dist;
-}
-
-bool ExtractCornersOfRectangles(Mat& image/*in*/, vector<Point2f>& pointBuf/*in*/, vector<Point2f>& cornersBuf/*out*/) {
-	vector<vector<double>> distancesMap;
-	double dist = FindMinDistanceBetweenNeighbours(pointBuf, distancesMap);
-
-	const int rows = image.rows;
-	const float unitinpx = (float)0.5 * rows / (float)(g_boardSize.height + 1);
-
-
-	// do pre-build homography for sorting the corners. 
-	cornersBuf.resize(0);
-
-	std::vector<Point2f> idealPoints;
-	for(int i = 0; i < g_boardSize.height; ++i) {
-		for(int j = 0; j < g_boardSize.width; ++j) {
-			idealPoints.push_back(Point2f((float(j*g_pattern_distance) + 1) * unitinpx, (float(i*g_pattern_distance) + 1) * unitinpx));
-		}
-	}
-
-	Mat H;
-	try {
-		H = findHomography(pointBuf, idealPoints, 0/*LMEDS*//*RANSAC*/, 4);
-	}
-	catch(Exception& ex) {
-		std::cout << "DetectRectangularGridOfRectangles:" << ' ' << ex.msg << std::endl;
-		return false; 
-	}
-
-
-	cornersBuf.resize(pointBuf.size() * 4); // 4 corners per one center
-
-
-	Mat grayscaleImage;
-	normalize(image, grayscaleImage, 0, 255, NORM_MINMAX, CV_8UC1);
-
-
-	int currentPt = 0;
-	int currentRw = 0;
-	int currentCl = 0;
-
-	for(auto& point : pointBuf) {
-		currentCl = currentPt % g_boardSize.width;
-		currentRw = currentPt / g_boardSize.width;
-		++currentPt;
-
-		dist = distancesMap[currentRw][currentCl];
-
-		Rect box((int)(point.x - dist * 3.0 / 8.0), (int)(point.y - dist * 3.0 / 8.0), (int)(dist * 7.0 / 8.0), (int)(dist * 7.0 / 8.0));
-		if(box.x < 0) {
-			box.x = 0; 
-		}
-		if(box.y < 0) {
-			box.y = 0;
-		}
-		Mat crop(grayscaleImage, box);
-
-		vector<vector<Point> > squares;
-
-		findSquares(crop, squares, (box.height - 4) * (box.width - 4));
-
-		Mat croprgb; 
-		cvtColor(crop, croprgb, CV_GRAY2RGB);
-
-		auto croprgbShow = [&croprgb]() {
-			double fx = 280.0 / croprgb.rows;
-			Mat image0 = croprgb.clone();
-			cv::resize(image0, croprgb = Mat(), cv::Size(0, 0), fx, fx, INTER_AREA);
-
-			cv::imshow("IMAGECalibr3", croprgb);
-			while(ProcessWinMessages());
-		};
-
-		if(squares.size() > 0) {
-			for(auto& square : squares) {
-				for(int j = 0; j < 4; ++j) {
-					cv::line(croprgb, square[j], square[(j + 1) % 4], Scalar(255, 0, 0));
-				}
-			}
-
-
-			vector<Point> combinedpoints(squares[0]);
-			for(int j = 1; j < squares.size(); ++j) {
-				combinedpoints.insert(combinedpoints.end(), squares[j].begin(), squares[j].end());
-			}
-
-
-			for(int k = 0; k < combinedpoints.size(); ++k) {
-				circle(croprgb, combinedpoints[k], 1, Scalar(0, 0, 255), -1);
-			}
-
-
-			//std::vector<int> ylevels(combinedpoints.size(), -1);
-			std::vector<int> ylevels;
-			partitionEx(combinedpoints, ylevels, [dist](const Point &one, const Point &another) -> bool {
-				return (pow(one.y - another.y, 2) + pow(one.x - another.x, 2)) < std::max((double)17/*4 pixels*/, std::pow(dist / 60.0, 2)); 
-			});
-
-			std::vector<std::vector<Point>> clusters;
-
-			std::vector<int>::iterator it_lbl = ylevels.begin();
-			for(auto& point : combinedpoints) {
-				int cluster = *(it_lbl++);
-				if((int)clusters.size() < (cluster + 1)) {
-					clusters.resize(cluster + 1);
-				}
-				clusters[cluster].push_back(point);
-			}
-
-			std::vector<Point2f> centers; 
-			int min_size = 1; 
-			do {
-				++min_size;
-				centers.resize(0);
-
-				for(auto& cluster : clusters) {
-					Point2f center(0, 0);
-					for(auto &point : cluster) {
-						center.x += point.x;
-						center.y += point.y;
-					}
-					center.x /= (float)cluster.size();
-					center.y /= (float)cluster.size();
-
-					if(cluster.size() >= min_size) {
-						centers.push_back(center);
-					}
-				}
-			} while(centers.size() > 4);
-
-
-			for(int k = 0; k < centers.size(); ++k) {
-				circle(croprgb, centers[k], 1, Scalar(0, 255, 0), -1);
-			}
-
-			croprgbShow();
-
-			if(centers.size() != 4) {
-				SleepEx(2000, TRUE);
-				return false; 
-			}
-
-			Size winSize = Size(5, 5);
-			Size zeroZone = Size(-1, -1);
-			TermCriteria criteria = TermCriteria(CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, 40, 0.001);
-
-			try {
-				cornerSubPix(crop, centers, winSize, zeroZone, criteria);
-			}
-			catch(Exception& ex) {
-				std::cout << "DetectRectangularGridOfRectangles:" << ' ' << ex.msg << std::endl;
-			}
-			for(auto &center : centers) {
-				center.x += box.x;
-				center.y += box.y;
-			}
-
-			std::vector<Point2f> hull;
-			convexHull(centers, hull, false/*will be clockwise because Y is pointing down*/, true/*do return points*/);
-
-			vector<Point2f> hullMapped;
-			perspectiveTransform(hull, hullMapped, H);
-
-			//ylevels.resize(hullMapped.size(), -1);
-			ylevels.resize(0);
-			partitionEx(hullMapped, ylevels, [dist](const Point2f &one, const Point2f &another) -> bool {
-				return std::abs(one.y - another.y) < (dist / 6);
-			});
-
-			int firstPoint = -1;
-			int ylevel = -1;
-			double ylevel_min = std::numeric_limits<double>::max();
-			double xlevel_min = std::numeric_limits<double>::max();
-			for(int k = 0; k < hullMapped.size(); ++k) {
-				if(ylevel == ylevels[k]) {
-					if(hullMapped[k].x < xlevel_min) {
-						xlevel_min = hullMapped[k].x;
-						firstPoint = k;
-					}
-				}
-				else
-				if(hullMapped[k].y < ylevel_min) {
-					ylevel = ylevels[k];
-					ylevel_min = hullMapped[k].y;
-					xlevel_min = hullMapped[k].x;
-					firstPoint = k;
-				}
-			}
-			if(firstPoint > 0) {
-				std::rotate(hull.begin(), hull.begin() + firstPoint, hull.end());
-			}
-
-			if(hull.size() == 4) {
-				int c = g_boardSize.width * 2;
-
-				int k = currentRw * 2;
-				int j = currentCl * 2;
-
-				cornersBuf[k * c + j] = hull[0];
-				cornersBuf[k * c + j + 1] = hull[1];
-				cornersBuf[(k + 1) * c + j + 1] = hull[2];
-				cornersBuf[(k + 1) * c + j] = hull[3];
-			}
-		}
-		else {
-			croprgbShow();
-			SleepEx(2000, TRUE);
-		}
-	}
-
-	// verify the order of corners. it has to be a reqular grid. 
-
-	vector<Point2f> cornersMapped;
-	perspectiveTransform(cornersBuf, cornersMapped, H);
-
-	std::vector<int> ylevels(cornersMapped.size(), -1);
-	partitionEx(cornersMapped, ylevels, [dist](const Point2f &one, const Point2f &another) -> bool {
-		return std::abs(one.y - another.y) < (dist / 6);
-	});
-
-	std::vector<int>::iterator it_lbl = ylevels.begin();
-
-	for(int k = 0; k < g_boardQuadSize.height; ++k) {
-		for(int j = 0; j < g_boardQuadSize.width; ++j) {
-			int cluster = *(it_lbl++);
-			if(cluster != k) {
-				return false; 
-			}
-		}
-	}
-
-	return true; 
-}
 
 
 return_t __stdcall DetectBlackSquaresVia_HSV_Likeness(LPVOID lp) {
@@ -881,9 +550,10 @@ return_t __stdcall DetectBlackSquaresVia_HSV_Likeness(LPVOID lp) {
 
 return_t __stdcall DetectBlackSquaresVia_ColorDistribution(LPVOID lp) {
 	SFeatureDetectorCtl* ctl = (SFeatureDetectorCtl*)lp;
-	cv::Mat& image = ctl->_image;
+	cv::Mat image = ctl->_image.clone();
 
 	std::vector<KeyPoint> keyPoints;
+	vector<Point2f> pointBuf;
 
 	ctl->_status = 2;
 	try {
@@ -911,70 +581,7 @@ return_t __stdcall DetectBlackSquaresVia_ColorDistribution(LPVOID lp) {
 	catch (...) {
 	}
 
-	ctl->_gate.lock();
-	ctl->_keyPoints.swap(keyPoints);
-	ctl->_gate.unlock();
-
-	ctl->_status = 0;
-
-	return 0;
-}
-
-
-bool ExtractCornersOfChessPattern(Mat& imageInp, vector<Point2f>& pointBuf, ClassBlobDetector& blobDetector) {
-	vector<Point2f> edgesBuf;
-
-	vector<Point2f> approx2fminQuad; // Qaudrilateral delimiting the area of the image that contains corners. 
-	Mat H; // Homography that transforms quadrilateral to rectangle (not rotated), enabling therefore the sorting of corners. 
-	vector<Point2f> approx2fminRectMapped(4); // Qadrilateral tranformed to rectangle.
-	Rect approxBoundingRectMapped;
-
-	SFeatureDetectorCtl controls[2];
-	for (auto& ctl : controls) {
-		ctl._detector = new ClassBlobDetector(blobDetector, &ctl);
-		ctl._image = imageInp.clone();
-		ctl._status = 1;
-	}
-
-	controls[0]._outputWindow = "IMAGECalibr1";
-	controls[1]._outputWindow = "IMAGECalibr2";
-
-
-	QueueWorkItem(DetectBlackSquaresVia_ColorDistribution, &controls[0]);
-	QueueWorkItem(DetectBlackSquaresVia_HSV_Likeness, &controls[1]);
-
-	do {
-		for (auto& ctl : controls) {
-			if (ctl._image_isvalid) {
-
-				ctl._gate.lock();
-				cv::Mat image0 = ctl._image2visualize;
-				ctl._image2visualize = Mat();
-				int64_t image_timestamp = ctl._last_image_timestamp;
-				ctl._image_isvalid = false;
-				ctl._gate.unlock();
-
-
-				double fx = 280.0 / image0.rows;
-				cv::Mat image1;
-				cv::resize(image0, image1, cv::Size(0, 0), fx, fx, INTER_AREA);
-
-				cv::imshow(ctl._outputWindow, image1);
-			}
-
-			while (ProcessWinMessages(10));
-		}
-	} while (controls[0]._status != 0 || controls[1]._status != 0);
-
-	const int targetNumberOfKeyPoints = g_boardChessSize.width * g_boardChessSize.height; 
-	std::vector<KeyPoint> keyPoints;
-
-	for (auto& ctl : controls) {
-		if (ctl._keyPoints.size() == targetNumberOfKeyPoints) {
-			keyPoints = ctl._keyPoints;
-			break;
-		}
-	}
+	const int targetNumberOfKeyPoints = g_boardChessSize.width * g_boardChessSize.height;
 
 	pointBuf.reserve(keyPoints.size());
 	pointBuf.resize(0);
@@ -983,642 +590,583 @@ bool ExtractCornersOfChessPattern(Mat& imageInp, vector<Point2f>& pointBuf, Clas
 		pointBuf.push_back(keyPoint.pt);
 	}
 
+	ctl->_gate.lock();
+	ctl->_keyPoints.swap(keyPoints);
+	ctl->_pointBuf.swap(pointBuf);
+	ctl->_gate.unlock();
+
+	ctl->_status = 0;
+
+	return 0;
+}
+
+return_t __stdcall BuildChessMinEnclosingQuadrilateral(LPVOID lp) {
+	SFeatureDetectorCtl* ctl = (SFeatureDetectorCtl*)lp;
+	cv::Mat& imageInp = ctl->_image;
+
+	std::vector<cv::Point2f> pointBuf = ctl->_pointBuf;
+
+	std::vector<cv::Point2f> approx2fminQuad; // Qaudrilateral delimiting the area of the image that contains corners. 
+	Rect approxBoundingRectMapped;
+	cv::Mat H; // Homography that transforms quadrilateral to rectangle (not rotated), enabling therefore the sorting of corners. 
+
+	ctl->_status = 2;
+	try {
+		vector<Point2f> approx2fminRectMapped(4); // Qadrilateral tranformed to rectangle.
 
 
-	double fy = 1.0;
+		const int targetNumberOfKeyPoints = g_boardChessSize.width * g_boardChessSize.height;
 
 
-	bool found = pointBuf.size() == targetNumberOfKeyPoints;
+		bool found = pointBuf.size() == targetNumberOfKeyPoints;
 
-	// build min. enclosing quadrilateral
-	if(found) {
-		Mat image = imageInp.clone();
+		// build min. enclosing quadrilateral
+		if (found) {
+			Mat image = imageInp.clone();
 
-		std::vector<Point> blobs(pointBuf.size());
-		for(int k = 0; k < pointBuf.size(); ++k) {
-			blobs[k] = Point2i((int)(pointBuf[k].x + 0.5), (int)(pointBuf[k].y + 0.5));
+			std::vector<Point> blobs(pointBuf.size());
+			for (int k = 0; k < pointBuf.size(); ++k) {
+				blobs[k] = Point2i((int)(pointBuf[k].x + 0.5), (int)(pointBuf[k].y + 0.5));
+			}
+
+			std::vector<Point> hull;
+			cv::convexHull(blobs, hull, true/*will be counter-clockwise because Y is pointing down*/, true/*do return points*/);
+
+			vector<Point> approx;
+			cv::approxPolyDP(Mat(hull), approx, arcLength(Mat(hull), true) * 0.02, true);
+
+			if (approx.size() >= 6) {
+				// Approximate the outer hull with min. enclosing quadrilateral. 
+
+				// 1. Order the hull counterclockwise starting with the most remote point, because
+				// that is how the pattern of ideal points is preset. 
+				// 2. Use ideal points to build homography. 
+				// 3. Use homography to build the min. enclosing rectangle. 
+				// 4. Transform back to create the min. enclosing quadrilateral. 
+
+				// 1. The first point must be the most remote point. 
+				// Remove (in iterations) two most proximate points until two or one is left. 
+				vector<int> approx_idx(approx.size());
+				for (int j = 0; j < approx_idx.size(); ++j) {
+					approx_idx[j] = j;
+				}
+				while (approx_idx.size() > 2) {
+					double min_dist = std::numeric_limits<double>::max();
+					int min_idx[2] = { 0, 1 };
+					for (int j = 0, k = 1; j < approx_idx.size(); ++j, ++k) {
+						if (k >= approx_idx.size()) {
+							k = 0;
+						}
+						double dist = cv::norm(approx[approx_idx[j]] - approx[approx_idx[k]]);
+						if (dist < min_dist) {
+							min_dist = dist;
+							min_idx[0] = approx_idx[j];
+							min_idx[1] = approx_idx[k];
+						}
+					}
+					approx_idx.erase(std::remove_if(approx_idx.begin(), approx_idx.end(), [&min_idx](const int idx) -> bool {
+						return idx == min_idx[0] || idx == min_idx[1];
+					}), approx_idx.end());
+				}
+				if (approx_idx.size() == 2) {
+					if (approx[approx_idx[0]].y > approx[approx_idx[1]].y) {
+						approx_idx[0] = approx_idx[1];
+					}
+				}
+
+				int idx = approx_idx[0];
+
+				// points need to be reversed if the next point is also a remote point. 
+
+				if (cv::norm(approx[(idx + 1) % approx.size()] - approx[(idx + 2) % approx.size()]) > cv::norm(approx[(idx - 1) % approx.size()] - approx[(idx - 2) % approx.size()])) {
+					std::reverse(approx.begin(), approx.end());
+					idx = (int)approx.size() - 1 - idx;
+				}
+
+				if (idx > 0) {
+					std::rotate(approx.begin(), approx.begin() + idx, approx.end());
+				}
+
+
+
+
+				vector<Point2f> approx2f(approx.size());
+				for (int j = 0; j < 6; ++j) {
+					approx2f[j] = Point2f((float)approx[j].x, (float)approx[j].y);
+				}
+
+
+
+				// 2. Use ideal points to build homography. 
+
+				const int rows = image.rows;
+				const float unitinpx = (float)0.4 * rows / (float)(g_boardChessSize.height);
+
+				std::vector<Point2f> ideal_approx2f(6); // counterclockwise starting from top right.
+				if (g_boardChessSize.height == 7) {
+					ideal_approx2f[0] = Point2f((0 + 5) * unitinpx, (0 + 5) * unitinpx);
+					ideal_approx2f[1] = Point2f((6 + 5) * unitinpx, (0 + 5) * unitinpx);
+					ideal_approx2f[2] = Point2f((7 + 5) * unitinpx, (1 + 5) * unitinpx);
+					ideal_approx2f[3] = Point2f((7 + 5) * unitinpx, (6 + 5) * unitinpx);
+					ideal_approx2f[4] = Point2f((6 + 5) * unitinpx, (6 + 5) * unitinpx);
+					ideal_approx2f[5] = Point2f((0 + 5) * unitinpx, (6 + 5) * unitinpx);
+				}
+				else {
+					ideal_approx2f[0] = Point2f((0 + 5) * unitinpx, (0 + 5) * unitinpx);
+					ideal_approx2f[1] = Point2f((6 + 5) * unitinpx, (0 + 5) * unitinpx);
+					ideal_approx2f[2] = Point2f((7 + 5) * unitinpx, (1 + 5) * unitinpx);
+					ideal_approx2f[3] = Point2f((7 + 5) * unitinpx, (7 + 5) * unitinpx);
+					ideal_approx2f[4] = Point2f((1 + 5) * unitinpx, (7 + 5) * unitinpx);
+					ideal_approx2f[5] = Point2f((0 + 5) * unitinpx, (6 + 5) * unitinpx);
+				}
+				if (approx2f[0].x > approx2f[1].x) {
+					float max_x = 0;
+					for_each(ideal_approx2f.begin(), ideal_approx2f.end(), [&max_x](Point2f& point) {
+						if (point.x > max_x) {
+							max_x = point.x;
+						}
+					});
+					for_each(ideal_approx2f.begin(), ideal_approx2f.end(), [max_x](Point2f& point) {
+						point.x = max_x + 5 - point.x;
+					});
+				}
+
+
+				try {
+					H = findHomography(approx2f, ideal_approx2f, 0/*LMEDS*//*RANSAC*/, 4);
+				}
+				catch (Exception& ex) {
+					std::cout << "ExtractCornersOfChessPattern:" << ' ' << ex.msg << std::endl;
+				}
+
+
+				// 3. Use homography to build the min. enclosing rectangle. 
+
+				vector<Point2f> approx2fMapped;
+				cv::perspectiveTransform(approx2f, approx2fMapped, H);
+
+				RotatedRect minRect = minAreaRect(Mat(approx2fMapped));
+				minRect.points(&approx2fminRectMapped[0]);
+
+				approxBoundingRectMapped = cv::boundingRect(Mat(approx2fMapped));
+
+
+				// 4. Transform back to create the min. enclosing quadrilateral. 
+
+				approx2fminQuad.resize(4);
+				perspectiveTransform(approx2fminRectMapped, approx2fminQuad, H.inv());
+
+
+				// 5. Visualize the centers and quadrilateral. 
+
+				Mat image0;
+				Mat image1;
+				if (image.type() == CV_16UC1) {
+					normalize(image, image0, 0, 255 * 256, NORM_MINMAX);
+					cvtColor(image0, image1, COLOR_GRAY2RGB);
+				}
+				else {
+					image1 = image.clone();
+				}
+
+				for (int j = 0; j < 4; ++j) {
+					cv::line(image1, approx2fminQuad[j], approx2fminQuad[(j + 1) % 4], Scalar(255 * 256, 0, 0));
+				}
+				for (int k = 0; k < blobs.size(); ++k) {
+					circle(image1, blobs[k], 3, Scalar(0, 0, 255 * 256), -1);
+				}
+				const Point* p = &approx[0];
+				int n = (int)approx.size();
+				cv::polylines(image1, &p, &n, 1, true, Scalar(0, 255 * 256, 0), 1, LINE_AA);
+
+				double fx = 280.0 / image1.rows;
+				cv::resize(image1, image0 = Mat(), cv::Size(0, 0), fx, fx, INTER_AREA);
+
+
+				ctl->_gate.lock();
+				ctl->_image2visualize = image0.clone();
+				ctl->_image_isvalid = true;
+				ctl->_last_image_timestamp = OSDayTimeInMilliseconds();
+				ctl->_gate.unlock();
+
+
+				vector<int> compression_params;
+				compression_params.push_back(IMWRITE_PNG_COMPRESSION); // Mar.4 2015.
+				compression_params.push_back(0);
+
+
+				cv::imwrite(std::string(g_path_calib_images_dir) + "ST1-ChessPattern-enclose.png", image1, compression_params);
+			}
 		}
-
-		std::vector<Point> hull;
-		convexHull(blobs, hull, true/*will be counter-clockwise because Y is pointing down*/, true/*do return points*/);
-
-		vector<Point> approx;
-		approxPolyDP(Mat(hull), approx, arcLength(Mat(hull), true)*0.02, true);
-
-		if(approx.size() >= 6) {
-			// Approximate the outer hull with min. enclosing quadrilateral. 
-
-			// 1. Order the hull counterclockwise starting with the most remote point, because
-			// that is how the pattern of ideal points is preset. 
-			// 2. Use ideal points to build homography. 
-			// 3. Use homography to build the min. enclosing rectangle. 
-			// 4. Transform back to create the min. enclosing quadrilateral. 
-
-			// 1. The first point must be the most remote point. 
-			// Remove (in iterations) two most proximate points until two or one is left. 
-			vector<int> approx_idx(approx.size());
-			for(int j = 0; j < approx_idx.size(); ++j) {
-				approx_idx[j] = j;
-			}
-			while(approx_idx.size() > 2) {
-				double min_dist = std::numeric_limits<double>::max();
-				int min_idx[2] = {0, 1};
-				for(int j = 0, k = 1; j < approx_idx.size(); ++j, ++k) {
-					if(k >= approx_idx.size()) {
-						k = 0;
-					}
-					double dist = cv::norm(approx[approx_idx[j]] - approx[approx_idx[k]]);
-					if(dist < min_dist) {
-						min_dist = dist;
-						min_idx[0] = approx_idx[j];
-						min_idx[1] = approx_idx[k];
-					}
-				}
-				approx_idx.erase(std::remove_if(approx_idx.begin(), approx_idx.end(), [&min_idx](const int idx) -> bool {
-					return idx == min_idx[0] || idx == min_idx[1];
-				}), approx_idx.end());
-			}
-			if(approx_idx.size() == 2) {
-				if(approx[approx_idx[0]].y > approx[approx_idx[1]].y) {
-					approx_idx[0] = approx_idx[1];
-				}
-			}
-
-			int idx = approx_idx[0];
-
-			// points need to be reversed if the next point is also a remote point. 
-
-			if(cv::norm(approx[(idx + 1) % approx.size()] - approx[(idx + 2) % approx.size()]) > cv::norm(approx[(idx - 1) % approx.size()] - approx[(idx - 2) % approx.size()])) {
-				std::reverse(approx.begin(), approx.end());
-				idx = (int)approx.size() - 1 - idx;
-			}
-
-			if(idx > 0) {
-				std::rotate(approx.begin(), approx.begin() + idx, approx.end());
-			}
-
-
-
-
-			vector<Point2f> approx2f(approx.size());
-			for(int j = 0; j < 6; ++j) {
-				approx2f[j] = Point2f((float)approx[j].x, (float)approx[j].y);
-			}
-
-
-
-			// 2. Use ideal points to build homography. 
-
-			const int rows = image.rows;
-			const float unitinpx = (float)0.4 * rows / (float)(g_boardChessSize.height);
-
-			std::vector<Point2f> ideal_approx2f(6); // counterclockwise starting from top right.
-			if (g_boardChessSize.height == 7) {
-				ideal_approx2f[0] = Point2f((0 + 5) * unitinpx, (0 + 5) * unitinpx);
-				ideal_approx2f[1] = Point2f((6 + 5) * unitinpx, (0 + 5) * unitinpx);
-				ideal_approx2f[2] = Point2f((7 + 5) * unitinpx, (1 + 5) * unitinpx);
-				ideal_approx2f[3] = Point2f((7 + 5) * unitinpx, (6 + 5) * unitinpx);
-				ideal_approx2f[4] = Point2f((6 + 5) * unitinpx, (6 + 5) * unitinpx);
-				ideal_approx2f[5] = Point2f((0 + 5) * unitinpx, (6 + 5) * unitinpx);
-			}
-			else {
-				ideal_approx2f[0] = Point2f((0 + 5) * unitinpx, (0 + 5) * unitinpx);
-				ideal_approx2f[1] = Point2f((6 + 5) * unitinpx, (0 + 5) * unitinpx);
-				ideal_approx2f[2] = Point2f((7 + 5) * unitinpx, (1 + 5) * unitinpx);
-				ideal_approx2f[3] = Point2f((7 + 5) * unitinpx, (7 + 5) * unitinpx);
-				ideal_approx2f[4] = Point2f((1 + 5) * unitinpx, (7 + 5) * unitinpx);
-				ideal_approx2f[5] = Point2f((0 + 5) * unitinpx, (6 + 5) * unitinpx);
-			}
-			if(approx2f[0].x > approx2f[1].x) {
-				float max_x = 0;
-				for_each(ideal_approx2f.begin(), ideal_approx2f.end(), [&max_x](Point2f& point) {
-					if(point.x > max_x) {
-						max_x = point.x;
-					}
-				});
-				for_each(ideal_approx2f.begin(), ideal_approx2f.end(), [max_x](Point2f& point) {
-					point.x = max_x + 5 - point.x;
-				});
-			}
-
-
-			try {
-				H = findHomography(approx2f, ideal_approx2f, 0/*LMEDS*//*RANSAC*/, 4);
-			}
-			catch(Exception& ex) {
-				std::cout << "ExtractCornersOfChessPattern:" << ' ' << ex.msg << std::endl;
-			}
-
-
-			// 3. Use homography to build the min. enclosing rectangle. 
-
-			vector<Point2f> approx2fMapped;
-			perspectiveTransform(approx2f, approx2fMapped, H);
-
-			RotatedRect minRect = minAreaRect(Mat(approx2fMapped));
-			minRect.points(&approx2fminRectMapped[0]);
-
-			approxBoundingRectMapped = boundingRect(Mat(approx2fMapped));
-
-
-			// 4. Transform back to create the min. enclosing quadrilateral. 
-
-			approx2fminQuad.resize(4);
-			perspectiveTransform(approx2fminRectMapped, approx2fminQuad, H.inv());
-
-
-			// 5. Visualize the centers and quadrilateral. 
-
-			Mat image0;
-			Mat image1;
-			if (image.type() == CV_16UC1) {
-				normalize(image, image0, 0, 255 * 256, NORM_MINMAX);
-				cvtColor(image0, image1, COLOR_GRAY2RGB);
-			}
-			else {
-				image1 = image.clone();
-			}
-
-			for(int j = 0; j < 4; ++j) {
-				cv::line(image1, approx2fminQuad[j], approx2fminQuad[(j + 1) % 4], Scalar(255 * 256, 0, 0));
-			}
-			for(int k = 0; k < blobs.size(); ++k) {
-				circle(image1, blobs[k], 3, Scalar(0, 0, 255 * 256), -1);
-			}
-			const Point *p = &approx[0];
-			int n = (int)approx.size();
-			cv::polylines(image1, &p, &n, 1, true, Scalar(0, 255 * 256, 0), 1, LINE_AA);
-
-			double fx = 280.0 / image1.rows;
-			cv::resize(image1, image0 = Mat(), cv::Size(0, 0), fx, fx, INTER_AREA);
-
-			cv::imshow("IMAGECalibr3", image0);
-			while(ProcessWinMessages());
-
-			vector<int> compression_params;
-			compression_params.push_back(IMWRITE_PNG_COMPRESSION); // Mar.4 2015.
-			compression_params.push_back(0);
-
-			cv::imwrite(std::string(g_path_calib_images_dir) + "ST1-ChessPattern-enclose.png", image1, compression_params);
-			while (ProcessWinMessages());
+		else {
+			ctl->_gate.lock();
+			ctl->_image2visualize = imread(IMG_DELETEDOCUMENT_H, cv::IMREAD_ANYCOLOR);
+			ctl->_image_isvalid = true;
+			ctl->_last_image_timestamp = OSDayTimeInMilliseconds();
+			ctl->_gate.unlock();
 		}
 	}
-	else {
-		cv::imshow("IMAGECalibr3", imread(IMG_DELETEDOCUMENT_H, cv::IMREAD_ANYCOLOR));
-		while(ProcessWinMessages());
+	catch (...) {
 	}
 
-	if(approx2fminQuad.size()) {
-		Mat image = imageInp.clone();
-		//imageInp.convertTo(image, CV_16UC1);
 
-		double color2gray[3] = { 0.299, 0.587, 0.114 };
-		//double color2gray[3] = { 0.114, 0.587, 0.299 };
-		ConvertColoredImage2Mono(image, color2gray, [](double ch) {
-			return std::min(ch * 256, 256.0 * 256.0);
-		});
-		Mat imageMapped;
-		warpPerspective(image, imageMapped, H, image.size()/*, INTER_CUBIC*/);
-		Mat crop(imageMapped, approxBoundingRectMapped);
-		Mat grayscale;
-		normalize(crop, grayscale, 0, 255, NORM_MINMAX, CV_8UC1, Mat());
-		while (ProcessWinMessages());
+	ctl->_gate.lock();
+	ctl->_approx2fminQuad.swap(approx2fminQuad);
+	ctl->_H = H;
+	ctl->_approxBoundingRectMapped = approxBoundingRectMapped;
+	ctl->_gate.unlock();
+
+	ctl->_status = 0;
+
+	return 0;
+}
 
 
-		vector<vector<Point2f>> edgesMappedBuf;
-		int ylevel_maxwidth = 0;
 
-		for(int level = 120; level < 200; level += 10) {
 
-			Mat binImage;
-			threshold(grayscale, binImage, level, 255, THRESH_BINARY);
-			Mat erodedImage;
-			cv::erode(binImage, erodedImage, getStructuringElement(MORPH_ELLIPSE, Size(5 * 1 + 1, 5 * 1 + 1)));
-			Mat corners;
-			int blockSize = grayscale.cols / 50;
-			cornerHarris(erodedImage/*grayscale*/, corners, std::max(blockSize, 3), 3/*5*/, 0.1/*0.17*/, BORDER_DEFAULT);
-			Mat normalizedCorners;
-			normalize(corners, normalizedCorners, 0, 255, NORM_MINMAX, CV_8UC1, Mat());
-			vector<Point2f> cornersBufMapped;
-			for(int k = 0; k < normalizedCorners.rows; ++k) {
-				for(int j = 0; j < normalizedCorners.cols; ++j) {
-					auto p = normalizedCorners.at<unsigned char>(k, j);
-					if(p > 180) {
-						cornersBufMapped.push_back(Point2f((float)j, (float)k));
+return_t __stdcall BuildChessGridCorners(LPVOID lp) {
+	SFeatureDetectorCtl* ctl = (SFeatureDetectorCtl*)lp;
+	cv::Mat& imageInp = ctl->_image;
+
+	vector<Point2f> approx2fminQuad = ctl->_approx2fminQuad;
+	Rect approxBoundingRectMapped = ctl->_approxBoundingRectMapped;
+
+	vector<Point2f> edgesBuf;
+
+	ctl->_status = 2;
+	try {
+		double fy = 1.0;
+
+		Mat& H = ctl->_H; // Homography that transforms quadrilateral to rectangle (not rotated). 
+
+		if (approx2fminQuad.size()) {
+			Mat image = imageInp.clone();
+
+			double color2gray[3] = { 0.299, 0.587, 0.114 };
+			ConvertColoredImage2Mono(image, color2gray, [](double ch) {
+				return std::min(ch * 256, 256.0 * 256.0);
+			});
+
+			Mat imageMapped;
+			warpPerspective(image, imageMapped, H, image.size()/*, INTER_CUBIC*/);
+			Mat crop(imageMapped, approxBoundingRectMapped);
+			Mat grayscale;
+			normalize(crop, grayscale, 0, 255, NORM_MINMAX, CV_8UC1, Mat());
+
+
+			vector<vector<Point2f>> edgesMappedBuf;
+			int ylevel_maxwidth = 0;
+
+			for (int level = 120; level < 200; level += 10) {
+
+				Mat binImage;
+				threshold(grayscale, binImage, level, 255, THRESH_BINARY);
+				Mat erodedImage;
+				cv::erode(binImage, erodedImage, getStructuringElement(MORPH_ELLIPSE, Size(5 * 1 + 1, 5 * 1 + 1)));
+				Mat corners;
+				int blockSize = grayscale.cols / 50;
+				cornerHarris(erodedImage/*grayscale*/, corners, std::max(blockSize, 3), 3/*5*/, 0.1/*0.17*/, BORDER_DEFAULT);
+				Mat normalizedCorners;
+				normalize(corners, normalizedCorners, 0, 255, NORM_MINMAX, CV_8UC1, Mat());
+				vector<Point2f> cornersBufMapped;
+				for (int k = 0; k < normalizedCorners.rows; ++k) {
+					for (int j = 0; j < normalizedCorners.cols; ++j) {
+						auto p = normalizedCorners.at<unsigned char>(k, j);
+						if (p > 180) {
+							cornersBufMapped.push_back(Point2f((float)j, (float)k));
+						}
 					}
 				}
+
+
+				std::vector<int> dist_levels(cornersBufMapped.size(), -1);
+				int	clusters_count = std::numeric_limits<int>::max();
+				const int centroids_count = g_boardChessCornersSize.width * g_boardChessCornersSize.height;
+				int dist = grayscale.cols / (g_boardChessCornersSize.width * 2);
+				while (clusters_count > centroids_count) {
+					const int squared_dist = dist * dist + 1;
+					partitionEx(cornersBufMapped, dist_levels, [squared_dist](const Point2f& one, const Point2f& another) -> bool {
+						return (pow(one.y - another.y, 2) + pow(one.x - another.x, 2)) < squared_dist;
+					});
+					clusters_count = *(std::max_element(dist_levels.begin(), dist_levels.end())) + 1;
+					dist += 2;
+				}
+				if (clusters_count != centroids_count) {
+					continue;
+				}
+				if (ylevel_maxwidth < dist) {
+					ylevel_maxwidth = dist;
+				}
+
+
+				vector<Point2f> edgesMapped;
+
+				Mat kmeans_centers;
+				Mat cornersMat;
+				try {
+					for (auto& corner : cornersBufMapped) {
+						cornersMat.push_back(corner);
+					}
+					kmeans(cornersMat, centroids_count, dist_levels,
+						TermCriteria(TermCriteria::EPS + TermCriteria::COUNT, 50, 0.1), 3/*random number generator state*/, KMEANS_USE_INITIAL_LABELS, kmeans_centers);
+
+					for (int k = 0; k < kmeans_centers.rows; ++k) {
+						edgesMapped.push_back(Point2f(kmeans_centers.at<float>(k, 0), kmeans_centers.at<float>(k, 1)));
+					}
+
+					dist_levels.resize(cornersBufMapped.size(), -1);
+					const int squared_dist = dist * dist;
+					partitionEx(edgesMapped, dist_levels, [squared_dist](const Point2f& one, const Point2f& another) -> bool {
+						return (pow(one.y - another.y, 2) + pow(one.x - another.x, 2)) < squared_dist;
+					});
+					clusters_count = *(std::max_element(dist_levels.begin(), dist_levels.end())) + 1;
+
+					if (clusters_count == centroids_count) {
+						edgesMappedBuf.push_back(edgesMapped);
+					}
+				}
+				catch (Exception& ex) {
+					std::cout << "ExtractCornersOfChessPattern:" << ' ' << ex.msg << std::endl;
+				}
+
+
+
+				Mat image1;
+				cvtColor(/*binImage*/grayscale, image1, COLOR_GRAY2RGB);
+				for (auto& point : cornersBufMapped) {
+					circle(image1, Point2i((int)point.x, (int)point.y), 1, Scalar(0, 0, 255), -1);
+				}
+				for (int k = 0; k < edgesMapped.size(); ++k) {
+					circle(image1, Point2i((int)edgesMapped[k].x, (int)edgesMapped[k].y), 3, Scalar(0, 255, 0), -1);
+				}
+
+
+
+				ctl->_gate.lock();
+				ctl->_image2visualize = image1.clone();
+				ctl->_image_isvalid = true;
+				ctl->_last_image_timestamp = OSDayTimeInMilliseconds();
+				ctl->_gate.unlock();
+
+
+
+				vector<int> compression_params;
+				compression_params.push_back(IMWRITE_PNG_COMPRESSION); // Mar.4 2015.
+				compression_params.push_back(0);
+
+				std::string name = std::string(g_path_calib_images_dir) + "ST2-ChessPattern-edgesbylevel" + std::to_string(level) + ".png";
+				cv::imwrite(name, image1, compression_params);
 			}
 
-
-			std::vector<int> dist_levels(cornersBufMapped.size(), -1);
-			int	clusters_count = std::numeric_limits<int>::max();
-			const int centroids_count = g_boardChessCornersSize.width * g_boardChessCornersSize.height; 
-			int dist = grayscale.cols / (g_boardChessCornersSize.width * 2);
-			while(clusters_count > centroids_count) {
-				const int squared_dist = dist * dist + 1;
-				partitionEx(cornersBufMapped, dist_levels, [squared_dist](const Point2f &one, const Point2f &another) -> bool {
-					return (pow(one.y - another.y, 2) + pow(one.x - another.x, 2)) < squared_dist;
+			vector<Point2f> edgesMapped(edgesMappedBuf.size() ? g_boardChessCornersSize.width * g_boardChessCornersSize.height : 0);
+			for (auto& edges : edgesMappedBuf) {
+				std::sort(edges.begin(), edges.end(), [ylevel_maxwidth](const Point2f& one, const Point2f& another) -> bool {
+					return one.y < (another.y - ylevel_maxwidth) || (std::abs(one.y - another.y) < ylevel_maxwidth && one.x < another.x);
 				});
-				clusters_count = *(std::max_element(dist_levels.begin(), dist_levels.end())) + 1;
-				dist += 2;
+				vector<Point2f>::iterator it = edgesMapped.begin();
+				for_each(edges.begin(), edges.end(), [&it](const Point2f& point) -> void {
+					(*it).x += point.x;
+				(*it).y += point.y;
+				++it;
+				});
 			}
-			if(clusters_count != centroids_count) {
-				continue;
-			}
-			if(ylevel_maxwidth < dist) {
-				ylevel_maxwidth = dist;
+			for (auto& point : edgesMapped) {
+				point *= 1.0 / (double)edgesMappedBuf.size();
 			}
 
-
-			vector<Point2f> edgesMapped;
-
-			Mat kmeans_centers;
-			Mat cornersMat;
 			try {
-				for(auto& corner : cornersBufMapped) {
-					cornersMat.push_back(corner);
-				}
-				kmeans(cornersMat, centroids_count, dist_levels,
-					TermCriteria(TermCriteria::EPS + TermCriteria::COUNT, 50, 0.1), 3/*random number generator state*/, KMEANS_USE_INITIAL_LABELS, kmeans_centers);
-
-				for(int k = 0; k < kmeans_centers.rows; ++k) {
-					edgesMapped.push_back(Point2f(kmeans_centers.at<float>(k, 0), kmeans_centers.at<float>(k, 1)));
-				}
-
-				dist_levels.resize(cornersBufMapped.size(), -1);
-				const int squared_dist = dist * dist;
-				partitionEx(edgesMapped, dist_levels, [squared_dist](const Point2f &one, const Point2f &another) -> bool {
-					return (pow(one.y - another.y, 2) + pow(one.x - another.x, 2)) < squared_dist;
-				});
-				clusters_count = *(std::max_element(dist_levels.begin(), dist_levels.end())) + 1;
-
-				if(clusters_count == centroids_count) {
-					edgesMappedBuf.push_back(edgesMapped);
+				if (edgesMapped.size() && ylevel_maxwidth) {
+					cornerSubPix(grayscale, edgesMapped, Size(ylevel_maxwidth / 3, ylevel_maxwidth / 3)/*window size*/, Size(-1, -1)/*no zero zone*/, TermCriteria(TermCriteria::EPS + TermCriteria::COUNT, 40, 0.001));
 				}
 			}
-			catch(Exception& ex) {
+			catch (Exception& ex) {
 				std::cout << "ExtractCornersOfChessPattern:" << ' ' << ex.msg << std::endl;
+				edgesMapped.resize(0);
 			}
-
 
 
 			Mat image1;
 			cvtColor(/*binImage*/grayscale, image1, COLOR_GRAY2RGB);
-			for(auto& point : cornersBufMapped) {
-				circle(image1, Point2i((int)point.x, (int)point.y), 1, Scalar(0, 0, 255), -1);
+			for (int k = 0; k < edgesMapped.size(); ++k) {
+				circle(image1, Point2i((int)edgesMapped[k].x, (int)edgesMapped[k].y), 3, Scalar(0, 0, 255), -1);
 			}
-			for(int k = 0; k < edgesMapped.size(); ++k) {
-				circle(image1, Point2i((int)edgesMapped[k].x, (int)edgesMapped[k].y), 3, Scalar(0, 255, 0), -1);
-			}
+			
 
-			cv::imshow("IMAGECalibr3", image1);
-			while(ProcessWinMessages());
+
+			ctl->_gate.lock();
+			ctl->_image2visualize = image1.clone();
+			ctl->_image_isvalid = true;
+			ctl->_last_image_timestamp = OSDayTimeInMilliseconds();
+			ctl->_gate.unlock();
+
+
 
 			vector<int> compression_params;
 			compression_params.push_back(IMWRITE_PNG_COMPRESSION); // Mar.4 2015.
 			compression_params.push_back(0);
 
-			std::string name = std::string(g_path_calib_images_dir) + "ST2-ChessPattern-edgesbylevel" + std::to_string(level) + ".png"; 
-			cv::imwrite(name, image1, compression_params);
-		}
+			cv::imwrite(std::string(g_path_calib_images_dir) + "ST3-ChessPattern-edgesMapped.png", image1, compression_params);
 
-		vector<Point2f> edgesMapped(edgesMappedBuf.size()? g_boardChessCornersSize.width * g_boardChessCornersSize.height: 0);
-		for(auto& edges : edgesMappedBuf) {
-			std::sort(edges.begin(), edges.end(), [ylevel_maxwidth](const Point2f &one, const Point2f &another) -> bool {
-				return one.y < (another.y - ylevel_maxwidth) || (std::abs(one.y - another.y) < ylevel_maxwidth && one.x < another.x);
-			});
-			vector<Point2f>::iterator it = edgesMapped.begin();
-			for_each(edges.begin(), edges.end(), [&it](const Point2f &point) -> void {
-				(*it).x += point.x;
-				(*it).y += point.y;
-				++it;
-			});
-		}
-		for(auto& point : edgesMapped) {
-			point *= 1.0 / (double)edgesMappedBuf.size();
-		}
 
-		try {
-			if(edgesMapped.size() && ylevel_maxwidth) {
-				cornerSubPix(grayscale, edgesMapped, Size(ylevel_maxwidth / 3, ylevel_maxwidth / 3)/*window size*/, Size(-1, -1)/*no zero zone*/, TermCriteria(TermCriteria::EPS + TermCriteria::COUNT, 40, 0.001));
+			if (edgesMapped.size() == (g_boardChessCornersSize.width * g_boardChessCornersSize.height)) {
+				for (auto& point : edgesMapped) {
+					point.x += approxBoundingRectMapped.x;
+					point.y += approxBoundingRectMapped.y;
+				}
+				edgesBuf.resize(edgesMapped.size());
+				perspectiveTransform(edgesMapped, edgesBuf, H.inv());
+			}
+			else {
+				static int x = 0;
+				++x;
 			}
 		}
-		catch(Exception& ex) {
-			std::cout << "ExtractCornersOfChessPattern:" << ' ' << ex.msg << std::endl;
-			edgesMapped.resize(0); 
-		}
 
 
-		Mat image1;
-		cvtColor(/*binImage*/grayscale, image1, COLOR_GRAY2RGB);
-		for(int k = 0; k < edgesMapped.size(); ++k) {
-			circle(image1, Point2i((int)edgesMapped[k].x, (int)edgesMapped[k].y), 3, Scalar(0, 0, 255), -1);
-		}
-
-		cv::imshow("IMAGECalibr3", image1);
-		while(ProcessWinMessages());
-
-		vector<int> compression_params;
-		compression_params.push_back(IMWRITE_PNG_COMPRESSION); // Mar.4 2015.
-		compression_params.push_back(0);
-
-		cv::imwrite(std::string(g_path_calib_images_dir) + "ST3-ChessPattern-edgesMapped.png", image1, compression_params);
-
-		//double fx = 270.0 / image1.rows;
-		//cv::resize(image1, image1, cv::Size(0, 0), fx, fx, INTER_AREA);
-
-		//cv::imshow("IMAGECalibr3", image1);
-		//while(ProcessWinMessages());
-
-
-
-		if(edgesMapped.size() == (g_boardChessCornersSize.width * g_boardChessCornersSize.height)) {
-			for(auto& point : edgesMapped) {
-				point.x += approxBoundingRectMapped.x;
-				point.y += approxBoundingRectMapped.y;
+		if (fy > 1) {
+			for (auto& point : edgesBuf) {
+				point *= fy;
 			}
-			edgesBuf.resize(edgesMapped.size());
-			perspectiveTransform(edgesMapped, edgesBuf, H.inv());
 		}
-		else {
-			static int x = 0; 
-			++x; 
-		}
+
+
+	}
+	catch (Exception& ex) {
+		std::cout << "ExtractCornersOfChessPattern:" << ' ' << ex.msg << std::endl;
 	}
 
-	if(edgesBuf.size()) {
-		Mat grayscale;
-		if (imageInp.type() == CV_16UC1) {
-			cv::normalize(imageInp, grayscale, 0, 255, NORM_MINMAX, CV_8UC1, Mat());
-		}
-		else {
-			cvtColor(imageInp, grayscale, COLOR_BGR2GRAY);
-		}
 
-		try {
-			cv::cornerSubPix(grayscale, edgesBuf, Size(5, 5)/*window size*/, Size(-1, -1)/*no zero zone*/, TermCriteria(CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, 40, 0.001));
-		}
-		catch(Exception& ex) {
-			std::cout << "ExtractCornersOfChessPattern:" << ' ' << ex.msg << std::endl;
-			edgesBuf.resize(0); 
-		}
-	}
+	ctl->_gate.lock();
+	ctl->_edgesBuf.swap(edgesBuf);
+	ctl->_gate.unlock();
 
-	if(fy > 1) {
-		for(auto& point : edgesBuf) {
-			point *= fy;
-		}
-	}
+	ctl->_status = 0;
 
-	pointBuf.swap(edgesBuf); 
-
-	return pointBuf.size() == (g_boardChessCornersSize.width * g_boardChessCornersSize.height); 
+	return 0;
 }
 
-bool DetectGrid(Mat& image, vector<Point2f>& pointBuf, ClassBlobDetector& blobDetector, int gridType/*0 - circles, 1 - regular grid squares, 2 - chess grid of squares*/) {
-	pointBuf.clear();
-	bool found = false;
-	if(image.data) {
-		if(gridType == 2) {
-			found = ExtractCornersOfChessPattern(image, pointBuf, blobDetector);
-		}
-		else {
-			found = findCirclesGridEx(image, pointBuf, blobDetector);
-		}
-		if(gridType == 1) { // regular grid squares
-			if(found) {
-				vector<Point2f> cornersBuf;
-				found = ExtractCornersOfRectangles(image/*in*/, pointBuf/*in*/, cornersBuf/*out*/);
-				if(found) {
-					pointBuf.swap(cornersBuf);
+
+
+
+bool ExtractCornersOfChessPattern(Mat *imagesInp, vector<Point2f> *pointBufs, const size_t N, ClassBlobDetector& blobDetector) {
+
+	SFeatureDetectorCtl controls[3] = { SFeatureDetectorCtl(imagesInp[0].clone()), SFeatureDetectorCtl(N > 1? imagesInp[1].clone(): Mat()), SFeatureDetectorCtl(N > 2 ? imagesInp[2].clone() : Mat()) };
+	for (auto& ctl : controls) {
+		ctl._detector = new ClassBlobDetector(blobDetector, &ctl);
+		ctl._status = 0;
+	}
+
+
+
+	std::function<void()> runMessagePipe = [&]() {
+		int status = 0;
+		do {
+			for (auto& ctl : controls) {
+				if (ctl._image_isvalid) {
+
+					ctl._gate.lock();
+					cv::Mat image0 = ctl._image2visualize;
+					ctl._image2visualize = Mat();
+					int64_t image_timestamp = ctl._last_image_timestamp;
+					ctl._image_isvalid = false;
+					ctl._gate.unlock();
+
+					double fx = 280.0 / image0.rows;
+
+					HWND hwnd = (HWND)cvGetWindowHandle(ctl._outputWindow.c_str());
+					RECT clrect;
+					if (GetWindowRect(GetParent(hwnd), &clrect)) {
+						fx = (double)(clrect.bottom - clrect.top) / (double)image0.rows;
+					}
+
+					cv::Mat image1;
+					cv::resize(image0, image1, cv::Size(0, 0), fx, fx, INTER_AREA);
+
+					cv::imshow(ctl._outputWindow, image1);
 				}
+
+				while (ProcessWinMessages());
 			}
+
+			while (ProcessWinMessages(10));
+
+			status = 0;
+			for (auto& ctl : controls) status += ctl._status;
+
+		} while (status != 0);
+	};
+
+
+
+	controls[0]._outputWindow = "IMAGECalibr1";
+	controls[1]._outputWindow = "IMAGECalibr2";
+	controls[2]._outputWindow = "IMAGECalibr3";
+
+	for (int j = 0; j < N; ++j) {
+		controls[j]._status = 1;
+		QueueWorkItem(DetectBlackSquaresVia_ColorDistribution, &controls[j]);
+	}
+
+
+	runMessagePipe();
+
+
+	controls[0]._outputWindow = "IMAGECalibr4";
+	controls[1]._outputWindow = "IMAGECalibr5";
+	controls[2]._outputWindow = "IMAGECalibr6";
+
+	for (int j = 0; j < N; ++j) {
+		controls[j]._status = 1;
+		QueueWorkItem(BuildChessMinEnclosingQuadrilateral, &controls[j]);
+	}
+
+
+	runMessagePipe();
+
+
+	controls[0]._outputWindow = "Calibr1";
+	controls[1]._outputWindow = "Calibr2";
+	controls[2]._outputWindow = "Calibr3";
+
+	for (int j = 0; j < N; ++j) { 
+		controls[j]._status = 1;
+		QueueWorkItem(BuildChessGridCorners, &controls[j]);
+	}
+
+
+
+	runMessagePipe();
+
+
+
+	for (int j = 0; j < ARRAY_NUM_ELEMENTS(controls); ++j) {
+		if (!controls[j]._edgesBuf.empty()) {
+			pointBufs[j] = controls[j]._edgesBuf;
 		}
 	}
+
+
+
+	const int tartgetNumberOfCorners = g_boardChessCornersSize.width * g_boardChessCornersSize.height;
+	int okCount = 0;
+	for (int j = 0; j < ARRAY_NUM_ELEMENTS(controls); ++j) okCount += (pointBufs[j].size() == tartgetNumberOfCorners? 1: 0);
+
+	return okCount > 0;
+}
+
+bool DetectChessGrid(Mat *images, vector<Point2f> *pointBufs, const size_t N, ClassBlobDetector& blobDetector) {
+	for (size_t x = 0; x < N; ++x) pointBufs[x].clear();
+	bool found = ExtractCornersOfChessPattern(images, pointBufs, N, blobDetector);
 	return found;
 }
 
 
-
-void ProjectIdeal(vector<Point2f>& pointBuf, vector<Point2f>& idealMapped, const cv::Size &boardSize, bool byrow) { 
-	int nrows = byrow? boardSize.height: boardSize.width; 
-	int iters = byrow? boardSize.width: boardSize.height; 
-	int kstep = byrow? iters: 1;
-	int jstep = byrow? 1: nrows;
-
-	vector<Point2f> P(idealMapped.size());
-
-	Mat_<double> A(nrows, 4);
-	Mat_<double> X(nrows, 1);
-	Mat_<double> Y(nrows, 1);
-
-	for(int j = 0; j < iters; ++j) { 
-		for(int k = 0; k < nrows; ++k) {
-			A(k, 0) = 1; 
-			A(k, 1) = pointBuf[j * jstep + k * kstep].x;
-			A(k, 2) = pointBuf[j * jstep + k * kstep].y;
-			A(k, 3) = std::sqrt(A(k, 1) * A(k, 2)); // 2016-05-12
-			X(k, 0) = idealMapped[j * jstep + k * kstep].x;
-			Y(k, 0) = idealMapped[j * jstep + k * kstep].y;
-		}
-
-		Mat_<double> AT(4, nrows);
-		transpose(A, AT);
-
-		Mat_<double> AI(A.cols, A.rows);
-		invert(AT * A, AI); 
-
-		Mat_<double> X_Hat = A * AI * AT * X;
-		Mat_<double> Y_Hat = A * AI * AT * Y;
-
-		for(int k = 0; k < nrows; ++k) {
-			idealMapped[j * jstep + k * kstep].x = (float)X_Hat(k, 0);
-			idealMapped[j * jstep + k * kstep].y = (float)Y_Hat(k, 0);
-		}
-	}
-} 
-
-//findHomography
-//transform the image to coord.system of the pattern. 
-//evaluate the circl.centers in the transformed image and transform them back to the original system. 
-bool optimizePointsFromImage(Mat& image, vector<Point2f>& pointBuf, ClassBlobDetector& blobDetector, int warped_iterations = 0, bool use_idealMapped = true) {
-	const static int warped_threshold = 140;
-
-	int gridTtype = 0; /*0 - circles, 1 - regular grid squares, 2 - chess grid of squares*/
-
-	double pattern_distance = g_pattern_distance;
-	cv::Size boardSize; 
-	if(pointBuf.size() == (g_boardSize.height * g_boardSize.width)) { 
-		boardSize = g_boardSize; 
-		gridTtype = 0; 
-	}
-	else
-	if(pointBuf.size() == (g_boardQuadSize.height * g_boardQuadSize.width)) {
-		boardSize = g_boardQuadSize;
-		pattern_distance /= 2.0;
-		gridTtype = 1; 
-	}
-	else 
-	if(pointBuf.size() == (g_boardChessCornersSize.height * g_boardChessCornersSize.width)) {
-		boardSize = g_boardChessCornersSize;
-		pattern_distance = pattern_distance /= 2.0; //3.0 + 2.5 / 8.0;
-		gridTtype = 2;
-	}
-
-	bool useWarped = warped_iterations > 0;
-	size_t number_of_iterations = useWarped? warped_iterations: 1;
-
-	std::vector<Point2f> idealPoints;
-	const int rows = image.rows;
-	const float unitinpx = (float)0.5 * rows / (float)(boardSize.height + 1);
-	for(int i = 0; i < boardSize.height; ++i) {
-		for(int j = 0; j < boardSize.width; ++j) {
-			idealPoints.push_back(Point2f((float(j*pattern_distance) + 1) * unitinpx, (float(i*pattern_distance) + 1) * unitinpx));
-		}
-	}
-
-	Mat warped_image;
-	for(size_t j = 0; j < number_of_iterations; ++j) {
-		Mat H;
-		try {
-			H = findHomography(pointBuf, idealPoints, 0/*LMEDS*//*RANSAC*/, 4);
-		}
-		catch(Exception& ex) {
-			std::cout << "optimizePointsFromImage:" << ' ' << ex.msg << std::endl;
-			return false;
-		}
-		try {
-			warpPerspective(image, warped_image = Mat(), H, image.size()/*, INTER_CUBIC*/);
-		}
-		catch(Exception& ex) {
-			std::cout << "optimizePointsFromImage:" << ' ' << ex.msg << std::endl;
-			return false;
-		}
-
-
-		if(j == (number_of_iterations - 1)) { // last iteration
-			vector<Point2f> idealMapped;
-			perspectiveTransform(idealPoints, idealMapped, H.inv());
-			double err_sum[2] = {0, 0};
-			double err_sum_sqr[2] = {0, 0};
-			double err_sum_cube[2] = {0, 0};
-			double err_sum_quad[2] = {0, 0};
-			vector<Point2f>::const_iterator it = pointBuf.begin();
-			for(auto& idealPoint : idealMapped) {
-				double err[2] = {idealPoint.x - (*it).x, idealPoint.y - (*it).y};
-				for(int k = 0; k < 2; ++k) {
-					err_sum[k] += err[k];
-				}
-				if(g_configuration._file_log == 2) {
-					std::ostringstream ostr;
-					if(it != pointBuf.begin()) {
-						ostr << ',';
-					}
-					ostr << idealPoint.x << ',' << (*it).x << ',' << idealPoint.y << ',' << (*it).y;
-					VS_FileLog(ostr.str());
-				}
-				++it;
-			}
-			double mean[2] = {0, 0};
-			for(int k = 0; k < 2; ++k) {
-				mean[k] = err_sum[k] / (int)idealMapped.size();
-			}
-			it = pointBuf.begin();
-			for(auto& idealPoint : idealMapped) {
-				double err[2] = {idealPoint.x - (*it).x, idealPoint.y - (*it).y};
-				for(int k = 0; k < 2; ++k) {
-					err[k] -= mean[k];
-					err_sum_sqr[k] += pow(err[k], 2);
-					err_sum_cube[k] += pow(err[k], 3);
-					err_sum_quad[k] += pow(err[k], 4);
-				}
-				++it;
-			}
-			double sd[2] = {0, 0};
-			double skewness[2] = {0, 0};
-			double kurtosis[2] = {0, 0};
-			for(int k = 0; k < 2; ++k) {
-				int n = (int)idealMapped.size();
-				sd[k] = sqrt(err_sum_sqr[k] / (n - 1));
-				skewness[k] = (err_sum_cube[k] / pow(sd[k], 3)) * (n) / ((n - 1) * (n - 2));
-				kurtosis[k] = (err_sum_quad[k] / pow(sd[k], 4)) * (n * (n + 1)) / ((n - 1) * (n - 2) * (n - 3)) - 3;
-				if(g_configuration._file_log == 2) {
-					std::ostringstream ostr;
-					ostr << ',' << mean[k] << ',' << sd[k] << ',' << kurtosis[k] << ',' << skewness[k];
-					VS_FileLog(ostr.str());
-				}
-			}
-			bool is_normal = false;
-			if(std::max(abs(kurtosis[0]), abs(kurtosis[1])) < 1) {
-				if(std::max(abs(skewness[0]), abs(skewness[1])) < 1) {
-					if(abs(mean[0]) < (0.7 * sd[0]) && abs(mean[1]) < (0.7 * sd[1])) {
-						is_normal = true;
-					}
-				}
-			}
-			if(g_configuration._file_log == 2) {
-				VS_FileLog("\r\n");
-			}
-			std::cout << std::fixed << std::setw(7) << std::setprecision(4) << (char)(is_normal? 'N': '?') << ' ' << "err {" << abs(mean[0]) << ',' << abs(mean[1]) << '}' << "; sd {" << sd[0] << ',' << sd[1] << '}' << "; kurt {" << abs(kurtosis[0]) << ',' << abs(kurtosis[1]) << '}' << "; skew {" << abs(skewness[0]) << ',' << abs(skewness[1]) << '}' << std::endl;
-			if(j > 2 && use_idealMapped) {
-				if(is_normal) {
-					ProjectIdeal(pointBuf, idealMapped, boardSize, false);
-					ProjectIdeal(pointBuf, idealMapped, boardSize, true);
-					pointBuf.swap(idealMapped);
-				}
-			}
-		}
-		else 
-		if(useWarped) {
-			try {
-				vector<Point2f> warped_points;
-				if(DetectGrid(warped_image, warped_points, blobDetector, gridTtype)) {
-					perspectiveTransform(warped_points, pointBuf, H.inv());
-				}
-				else {
-					break;
-				}
-			}
-			catch(Exception& ex) {
-				std::cout << "optimizePointsFromImage:" << ' ' << ex.msg << std::endl;
-				return false;
-			}
-		}
-	}
-	//
-	// Previously there was an issue with displaying the image of the homography because of built-in height auto-alignment by KFrame::AlignChildRectangles().
-	// It has been fixed by using isAbsolute=1 on the definition of Canvas, so KFrame::AlignChildRectangles() is not auto-aligning. 
-	//
-	if(useWarped) {
-		unsigned short *val = (unsigned short*)warped_image.data;
-		for(int j = 0, N = warped_image.cols * warped_image.rows; j < N; ++j, ++val) {
-			if(*val < ((warped_threshold + 60) * g_bytedepth_scalefactor)) {
-				*val = 0;
-			}
-		}
-	}
-	try {
-		cv::imshow("IMAGECalibr3", warped_image *= g_bytedepth_scalefactor); // Mar.4 2015.
-	}
-	catch(Exception& ex) {
-		std::cout << "optimizePointsFromImage:" << ' ' << ex.msg << std::endl;
-	}
-	return true; 
-}
-
-bool buildPointsFromImage(Mat& image, vector<Point2f>& pointBuf, SImageAcquisitionCtl& ctl, double min_confidence = 0.0, size_t min_repeatability = 3, int warped_iterations = 0, bool use_idealMapped = false) {
+bool buildPointsFromImages(Mat* images, vector<Point2f>* pointBufs, const size_t N, SImageAcquisitionCtl& ctl, double min_confidence, size_t min_repeatability) {
 	ClassBlobDetector blobDetector = ClassBlobDetector(min_confidence, min_repeatability, 40, ctl._pattern_is_whiteOnBlack, ctl._pattern_is_chessBoard);
-	pointBuf.clear();
 	bool found = false;
-	if(image.data) { 
-		g_imageSize = image.size();
-
-		found = DetectGrid(image, pointBuf, blobDetector, ctl._pattern_is_chessBoard? 2: ctl._pattern_is_gridOfSquares? 1: 0);
-		if(found) {
-			if(warped_iterations || use_idealMapped) {
-				optimizePointsFromImage(image, pointBuf, blobDetector, ctl._pattern_is_gridOfSquares? 0: warped_iterations, use_idealMapped);
-			}
-		}
+	if (images[0].data) {
+		g_imageSize = images[0].size();
+		found = DetectChessGrid(images, pointBufs, N, blobDetector);
 	}
 
 	return found;
@@ -1647,17 +1195,27 @@ double calc_betweenimages_rmse(vector<Point2f>& image1, vector<Point2f>& image2)
 
 
 
-bool EvaluateImagePoints(Mat& cv_image, vector<vector<Point2f>>& imagePoints, SImageAcquisitionCtl& ctl, double min_confidence = 0.4, size_t min_repeatability = 3) {
-	bool is_ok = false;
+std::vector<bool> EvaluateImagePoints(cv::Mat cv_images[2], std::vector<std::vector<cv::Point2f>> imagePoints[2], SImageAcquisitionCtl& ctl, double min_confidence = 0.4, size_t min_repeatability = 3) {
+	constexpr int N = 2;
 
-	int x = (int)imagePoints.size() - 1;
-	if(buildPointsFromImage(cv_image, imagePoints[x], ctl, min_confidence, min_repeatability)) {
-		is_ok = true;
-		if(x > 0) {
-			for(int k = x - 1; k >= 0 && is_ok; --k) {
-				double rmse = calc_betweenimages_rmse(imagePoints[k], imagePoints[x]);
-				if(rmse < g_aposteriory_minsdistance) {
-					is_ok = false;
+	std::vector<bool> is_ok(N, false);
+
+	std::vector<cv::Point2f> points[N];
+
+	if(buildPointsFromImages(cv_images, points, N, ctl, min_confidence, min_repeatability)) {
+		for (int j = 0; j < N; ++j) {
+			is_ok[j] = points[j].size() == g_boardChessCornersSize.width * g_boardChessCornersSize.height;
+
+			int x = (int)imagePoints[j].size() - 1;
+
+			imagePoints[j][x].swap(points[j]);
+
+			if (x > 0) {
+				for (int k = x - 1; k >= 0 && is_ok[j]; --k) {
+					double rmse = calc_betweenimages_rmse(imagePoints[j][k], imagePoints[j][x]);
+					if (rmse < g_aposteriory_minsdistance) {
+						is_ok[j] = false;
+					}
 				}
 			}
 		}
@@ -1726,23 +1284,17 @@ bool ReEvaluateUndistortImagePoints(vector<Mat>& imageRaw, vector<vector<Point2f
 		while(ProcessWinMessages());
 	}
 	for(int j = 0; j < imagePoints.size(); ++j) {
-		while(ProcessWinMessages());
-
-		if(!g_configuration._calib_use_homography || !buildPointsFromImage(imageRaw[j], imagePoints[j], ctl, g_configuration._calib_min_confidence, 5, 2, true)) {
-			while(ProcessWinMessages());
-
-			if(!buildPointsFromImage(imageRaw[j], imagePoints[j], ctl, g_configuration._calib_min_confidence, 5)) {
-				std::cout << "image number " << j << " has failed" << std::endl;
-				imagePoints.erase(imagePoints.begin() + j);
-				imageRaw.erase(imageRaw.begin() + j);
-				if(imagePoints_paired) {
-					imagePoints_paired->erase(imagePoints_paired->begin() + j);
-				}
-				if(imageRaw_paired) {
-					imageRaw_paired->erase(imageRaw_paired->begin() + j);
-				}
-				--j;
+		if(!g_configuration._calib_use_homography || !buildPointsFromImages(&imageRaw[j], &imagePoints[j], 1, ctl, g_configuration._calib_min_confidence, 3)) {
+			std::cout << "image number " << j << " has failed" << std::endl;
+			imagePoints.erase(imagePoints.begin() + j);
+			imageRaw.erase(imageRaw.begin() + j);
+			if (imagePoints_paired) {
+				imagePoints_paired->erase(imagePoints_paired->begin() + j);
 			}
+			if (imageRaw_paired) {
+				imageRaw_paired->erase(imageRaw_paired->begin() + j);
+			}
+			--j;
 		}
 		else {
 			DrawImageAndBoard(std::to_string(j + 1), cv_window, imageRaw[j], imagePoints[j]);
@@ -1906,7 +1458,7 @@ void VisualizeCapturedImages(cv::Mat& left_image, cv::Mat& right_image) {
 	for (int c = 0; c < ARRAY_NUM_ELEMENTS(cv_image); ++c) {
 		double fx = 700.0 / cv_image[c].cols;
 		double fy = fx;
-		HWND hwnd = (HWND)cvGetWindowHandle(cv_windows[c + 3].c_str());
+		HWND hwnd = (HWND)cvGetWindowHandle(cv_windows[c + 4].c_str());
 		RECT clrect;
 		if (GetWindowRect(GetParent(hwnd), &clrect)) {
 			fx = (double)(clrect.right - clrect.left) / (double)cv_image[c].cols;
@@ -1914,7 +1466,7 @@ void VisualizeCapturedImages(cv::Mat& left_image, cv::Mat& right_image) {
 			fx = fy = std::min(fx, fy);
 		}
 		cv::resize(cv_image[c], cv_image[c], cv::Size(0, 0), fx, fy, INTER_AREA);
-		cv::imshow(cv_windows[c + 3], cv_image[c]);
+		cv::imshow(cv_windows[c + 4], cv_image[c]);
 	}
 }
 
@@ -1972,13 +1524,15 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 
 	size_t max_images = g_min_images * 3; 
 
-	imagePoints_left.reserve(2 * max_images);
-	imagePoints_right.reserve(2 * max_images);
 	stereoImagePoints_left.reserve(max_images + 1);
 	stereoImagePoints_right.reserve(max_images + 1);
 
-	imagePoints_left.resize(1);
-	imagePoints_right.resize(1);
+	vector<vector<Point2f>> imagePoints[2];
+	for (auto& p : imagePoints) {
+		p.reserve(2 * max_images);
+		p.resize(1);
+	}
+
 
 	while (ProcessWinMessages());
 
@@ -2001,8 +1555,10 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 
 		int64 image_localtime = 0;
 
-		Mat left_image;
-		Mat right_image;
+		Mat images[2];
+
+		Mat& left_image = images[0];
+		Mat& right_image = images[1];
 
 		if(ctl->_calib_images_from_files) {
 			if(!GetImagesFromFile(left_image, right_image, std::to_string(current_N))) {
@@ -2020,73 +1576,56 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 			std::cout << "Images Ok" << std::endl;
 		}
 		else
-		if(!GetImagesEx(left_image, right_image, &image_localtime, 1/*(int)g_rotating_buf_size - 1*/)) {
+		if(!GetImagesEx(left_image, right_image, &image_localtime, 1)) {
 			continue;
 		}
 
 		VisualizeCapturedImages(left_image, right_image);
 
-		int nl = -1;
-		int nr = -1;
+		std::vector<bool> image_ok = EvaluateImagePoints(images, imagePoints, *ctl, g_configuration._calib_min_confidence, min_repeatability);
 
-		// It is very likely that the pattern is recognizable in one image, but not in the other. 
-		// The images need to be also of good quality. 
-		// The strategy is to run first the detection with elevated constraint on quality, 
-		// and then if one of the images has been recognized, but the other has been not, then run one more time with lowered constraint. 
+		
+		int nl = image_ok [0]? imagePoints [0].size() : -1;
+		int nr = image_ok [1]? imagePoints [1].size() : -1;
 
-		double min_confidence[2] = {g_configuration._calib_min_confidence, g_configuration._calib_min_confidence / 2}; // 2015-09-15 It is very difficult to capture images in certain environments.
-		for(int j = 0; j < 1/*2*/; ++j) {
-			while (ProcessWinMessages());
-			std::cout << "EvaluateImagePoints(left)" << std::endl;
-			if(nl == -1 && EvaluateImagePoints(left_image, imagePoints_left, *ctl, min_confidence[j], min_repeatability)) {
-				nl = (int)imagePoints_left.size();
-			}
-			while(ProcessWinMessages());
-			std::cout << "EvaluateImagePoints(right)" << std::endl;
-			if(nr == -1 && EvaluateImagePoints(right_image, imagePoints_right, *ctl, min_confidence[j], min_repeatability)) {
-				nr = (int)imagePoints_right.size();
-			}
-			while(ProcessWinMessages());
-
-			if(nl > 0 && nr > 0) { 
-				break; 
-			}
-			if(min_confidence[j] == 0) {
-				break; 
-			}
-		}
 
 		if(nl > 0 && nr > 0) {
-			stereoImagePoints_left.push_back(imagePoints_left[nl - 1]);
-			stereoImagePoints_right.push_back(imagePoints_right[nr - 1]);
+			size_t l = (size_t)nl - 1;
+			size_t r = (size_t)nr - 1;
+			stereoImagePoints_left.push_back(imagePoints[0][l]);
+			stereoImagePoints_right.push_back(imagePoints[1][r]);
 		}
+
+
 		if(nl > 0 && nl < (stereoImagePoints_left.size() + 5)) {
-			imagePoints_left.resize(nl + 1);
-			DrawImageAndBoard(std::to_string(nl) + '(' + std::to_string(stereoImagePoints_left.size()) + ')', cv_windows[0], left_image, imagePoints_left[nl - 1]);
+			size_t x = (size_t)nl + 1;
+			imagePoints[0].resize(x);
+			DrawImageAndBoard(std::to_string(nl) + '(' + std::to_string(stereoImagePoints_left.size()) + ')', cv_windows[0], images[0], imagePoints[0][x - 1]);
 		}
 		if(nr > 0 && nr < (stereoImagePoints_right.size() + 5)) {
-			imagePoints_right.resize(nr + 1);
-			DrawImageAndBoard(std::to_string(nr) + '(' + std::to_string(stereoImagePoints_right.size()) + ')', cv_windows[1], right_image, imagePoints_right[nr - 1]);
+			size_t x = (size_t)nr + 1;
+			imagePoints[1].resize(x);
+			DrawImageAndBoard(std::to_string(nr) + '(' + std::to_string(stereoImagePoints_right.size()) + ')', cv_windows[1], images[1], imagePoints[1][x - 1]);
 		}
 
 
-		auto lambda_Save_Images = [&left_image, &right_image, current_N](size_t N, int nl, int nr) {
+		auto lambda_Save_Images = [&imagePoints, &images, current_N](size_t N, int nl, int nr) {
 			MyCreateDirectory(g_path_calib_images_dir, "AcquireImagepointsEx");
 			while (ProcessWinMessages());
 			if(current_N == 1) {
 				Delete_FilesInDirectory(g_path_calib_images_dir);
 				while (ProcessWinMessages());
 			}
-			Save_Images(left_image, imagePoints_left, nl, std::to_string(N) + 'l');
+			Save_Images(images[0], imagePoints[0], nl, std::to_string(N) + 'l');
 			while (ProcessWinMessages());
-			Save_Images(right_image, imagePoints_right, nr, std::to_string(N) + 'r');
+			Save_Images(images[1], imagePoints[1], nr, std::to_string(N) + 'r');
 			while (ProcessWinMessages());
 
 			std::string xml_name = std::string(g_path_calib_images_dir) + std::to_string(N) + ".xml";
 			std::cout << "Saving xml" << ' ' << xml_name << std::endl;
 			FileStorage fw(xml_name, FileStorage::WRITE);
-			fw << "left_image" << left_image;
-			fw << "right_image" << right_image;
+			fw << "left_image" << images[0];
+			fw << "right_image" << images[1];
 			fw.release();
 		};
 
@@ -2127,6 +1666,15 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 	}
 	while(ProcessWinMessages());
 
+
+	imagePoints_left.swap(imagePoints[0]);
+	imagePoints_right.swap(imagePoints[1]);
+
+
+	imagePoints_left.resize(imagePoints_left.size() - 1);
+	imagePoints_right.resize(imagePoints_right.size() - 1);
+
+
 	return 0;
 }
 
@@ -2135,9 +1683,6 @@ return_t __stdcall ConductCalibration(LPVOID lp) {
 
 
 	g_aposteriory_minsdistance /= (ctl->_calib_images_from_files ? 1 : 1.01);
-
-	imagePoints_left.resize(imagePoints_left.size() - 1);
-	imagePoints_right.resize(imagePoints_right.size() - 1);
 
 	srand((unsigned)time(NULL));
 
@@ -2485,8 +2030,8 @@ void CalibrateCameras(StereoConfiguration& configuration, SImageAcquisitionCtl& 
 	IPCSetLogHandler(_g_calibrationimages_frame->_hwnd);
 
 	while (ProcessWinMessages());
-	rootCVWindows(_g_calibrationimages_frame, 3, 0, cv_windows);
-	rootCVWindows(_g_calibrationimages_frame, 2, 3, &cv_windows[3]);
+	rootCVWindows(_g_calibrationimages_frame, 4, 0, cv_windows);
+	rootCVWindows(_g_calibrationimages_frame, 2, 4, &cv_windows[4]);
 
 
 
