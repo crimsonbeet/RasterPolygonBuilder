@@ -826,7 +826,7 @@ struct ReconstructedPoint: public Matx41d {
 
 void BlobDetector(std::vector<ABox>& boxes, Mat& image, const unsigned int min_intensity, cv::Rect roi, const unsigned int max_intensity = 255 * g_bytedepth_scalefactor, int max_boxsize_pixels = g_max_boxsize_pixels, const double circularity_ratio = 3.0 / 5.0);
 
-int BlobCentersLoG(std::vector<ABox>& boxes, std::vector<ClusteredPoint>& points, Mat& image, unsigned int& threshold_intensity, cv::Rect roi, Mat_<double>& kmat, bool arff_file_requested = false, ushort* intensity_avg_ptr = 0);
+int BlobCentersLoG(std::vector<ABox>& boxes, std::vector<ClusteredPoint>& points, Mat& image, unsigned int& threshold_intensity, cv::Rect roi, Mat_<double>& kmat, bool arff_file_requested = false, ushort* intensity_avg_ptr = 0, double max_LoG_factor = 21.0);
 
 template<typename T1, typename T2>
 void CopyVector(std::vector<T1>& dst, std::vector<T2>& src) {
@@ -836,7 +836,12 @@ void CopyVector(std::vector<T1>& dst, std::vector<T2>& src) {
 
 
 
-
+size_t ConductOverlapEliminationEx(const std::vector<std::vector<cv::Point2d>>& contours, std::vector<std::vector<cv::Point2d>>& final_contours,
+	bool preserve_scale_factor, // causes to bypass back-scaling and return the used scale_factor
+	long& scale_factor, // in/out. specifies what power of 2 to use to get coordinates in integers
+	bool conduct_size = false,
+	int size_increment = -1,
+	bool log_graph = false);
 
 
 
@@ -976,7 +981,7 @@ int64_t BlobLoG(std::vector<ABoxedblob>& blobs, // it returns counter for time s
 	const int row_limits[2],
 	const int col_limits[2],
 	ATLSMatrixvar<signed short>& tracker,
-	ATLSMatrixvar<double>& tracker_value
+	ATLSMatrixvar<double>& tracker_value, const double max_LoG_factor = 21.0
 ); 
 
 int BlobsLoG(std::vector<ABoxedblob>& blobs, 
@@ -984,7 +989,7 @@ int BlobsLoG(std::vector<ABoxedblob>& blobs,
 	unsigned int& threshold_intensity, 
 	cv::Rect roi, 
 	Mat_<double>& kmat, 
-	unsigned short *intensity_avg_ptr = 0
+	unsigned short *intensity_avg_ptr = 0, const double max_LoG_factor = 21.0
 ); 
 
 extern double g_otsu_threshold; 

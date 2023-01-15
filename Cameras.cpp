@@ -155,6 +155,8 @@ void OpenCameras(SImageAcquisitionCtl& ctl) {
 			cameras[j].BlackLevelSelector.SetValue(Basler_UsbCameraParams::BlackLevelSelector_All);
 			cameras[j].BlackLevel.SetValue(1);
 
+			cameras[j].BalanceWhiteAuto.SetValue(Basler_UsbCameraParams::BalanceWhiteAuto_Continuous);
+
 			cameras[j].AcquisitionBurstFrameCount = 1;
 
 			int framesRate = 60;

@@ -141,7 +141,41 @@ bool CalibrationFileExists() {
 
 
 
-void ClassBlobDetector::findBlobs(const Mat& image, Mat& binaryImage, std::vector<Center>& centers, std::vector<vector<Point>>& contours) const {
+
+// approximate contour with accuracy proportional to the contour perimeter
+bool approximateContourWithQuadrilateral(const std::vector<Point>& contour, std::vector<Point>& approx, double minArea, double maxArea) {
+	double epsilon = 0.025;
+	approxPolyDP((contour), approx, arcLength((contour), false) * epsilon, false);
+	while (approx.size() > 4) {
+		epsilon += 0.01;
+		approxPolyDP((approx), approx, arcLength((approx), true) * epsilon, true);
+	}
+	bool rc = false;
+
+	// square-like contours should have
+	// - 4 vertices after approximation
+	// - relatively large area (to filter out noisy contours)
+	// - and be convex.
+	// Note: absolute value of an area is used because
+	// area may be positive or negative - in accordance with the contour orientation
+	if (approx.size() == 4) {
+		double area = std::fabs(contourArea((approx)));
+		if (area > (minArea) && area < (maxArea)) {
+			if (isContourConvex((approx))) {
+				rc = true;
+			}
+		}
+	}
+	else {
+		rc = false;
+	}
+	return rc;
+}
+
+
+
+
+void ClassBlobDetector::findBlobs(const Mat& image, Mat& binaryImage, std::vector<Center>& centers, std::vector<std::vector<cv::Point>>& contours) const {
 	(void)image;
 	centers.clear();
 	contours.clear();
@@ -170,25 +204,34 @@ void ClassBlobDetector::findBlobs(const Mat& image, Mat& binaryImage, std::vecto
 	
 	unsigned int threshold_intensity = 250 * g_bytedepth_scalefactor;
 
-	BlobCentersLoG(boxes, points, binaryImage, threshold_intensity, cv::Rect(), kmat);
+	BlobCentersLoG(boxes, points, binaryImage, threshold_intensity, cv::Rect(), kmat, /*arff_file_requested*/false, /*intensity_avg_ptr*/nullptr, /*max_LoG_factor*/31.0);
 
 	double desired_min_inertia = sqrt(_min_confidence);
-	double ratio_threshold = desired_min_inertia * params.minCircularity * 0.8;
+	double ratio_threshold = desired_min_inertia * params.minCircularity;// *0.8;
 
 	for (size_t boxIdx = 0; boxIdx < boxes.size(); boxIdx++) {
-		auto& contour = boxes[boxIdx].contour;
-		if (contour.size() == 0) {
+		auto& contourOrig = boxes[boxIdx].contour;
+		if (contourOrig.size() == 0) {
+			continue;
+		}
+
+		double area = contourArea(Mat(contourOrig));
+
+		std::vector<cv::Point> contour;
+
+		if (!approximateContourWithQuadrilateral(contourOrig, contour, area / 2, area * 2)) {
 			continue;
 		}
 
 		contours.push_back(contour);
 
+		Moments moms = moments(Mat(contour));
+		area = moms.m00;
+
 		Center center;
 		center.confidence = 1;
-		Moments moms = moments(Mat(contour));
 		if (params.filterByArea)
 		{
-			double area = moms.m00;
 			if (area < params.minArea || area >= params.maxArea) {
 				continue;
 			}
@@ -226,7 +269,6 @@ void ClassBlobDetector::findBlobs(const Mat& image, Mat& binaryImage, std::vecto
 
 		if (params.filterByCircularity)
 		{
-			double area = moms.m00;
 			double perimeter = arcLength(Mat(contour), true);
 			ratio *= 4 * CV_PI * area / (perimeter * perimeter);
 		}
@@ -340,7 +382,7 @@ void ClassBlobDetector::detectImpl(const cv::Mat& image, std::vector<cv::KeyPoin
 			{
 				int n = (int)points.size();
 				const Point* p = &points[0];
-				cv::polylines(image0, &p, &n, 1, true, Scalar(0, 255 * 256, 0), 1, LINE_AA);
+				cv::polylines(image0, &p, &n, 1, true, Scalar(0, 255 * 256, 0), 2, LINE_AA);
 			}
 			for each (auto & center in curCenters) {
 				circle(image0, center.location, 3, Scalar(0, 0, 255 * 256), -1);
@@ -423,9 +465,9 @@ void ClassBlobDetector::detectImpl(const cv::Mat& image, std::vector<cv::KeyPoin
 				}
 			}
 
-			if(count != expectedCount) {
-				continue;
-			}
+			//if(count != expectedCount) {
+			//	continue;
+			//}
 		}
 
 		try {
@@ -436,8 +478,11 @@ void ClassBlobDetector::detectImpl(const cv::Mat& image, std::vector<cv::KeyPoin
 				}
 				bool isNew = true;
 				for(size_t j = 0; j < centers.size(); j++) {
+					double minDist = std::max((double)params.minDistBetweenBlobs, curCenters[i].radius / 10.0);
+
 					double dist = norm(centers[j][centers[j].size() / 2].location - curCenters[i].location);
-					isNew = dist >= params.minDistBetweenBlobs && dist >= centers[j][centers[j].size() / 2].radius && dist >= curCenters[i].radius;
+
+					isNew = dist >= minDist && dist >= centers[j][centers[j].size() / 2].radius && dist >= curCenters[i].radius;
 					if(!isNew) {
 						centers[j].push_back(curCenters[i]);
 
@@ -477,40 +522,6 @@ void ClassBlobDetector::detectImpl(const cv::Mat& image, std::vector<cv::KeyPoin
 		KeyPoint kpt(sumPoint, (float)(centers[i][centers[i].size() / 2].radius));
 		keypoints.push_back(kpt);
 	}
-}
-
-
-
-
-
-// approximate contour with accuracy proportional to the contour perimeter
-bool approximateContourWithQuadrilateral(const std::vector<Point>& contour, std::vector<Point>& approx, double minArea, double maxArea) {
-	double epsilon = 0.025;
-	approxPolyDP((contour), approx, arcLength((contour), false) * epsilon, false);
-	while(approx.size() > 4) {
-		epsilon += 0.01;
-		approxPolyDP((approx), approx, arcLength((approx), true) * epsilon, true);
-	}
-	bool rc = false; 
-
-	// square-like contours should have 
-	// - 4 vertices after approximation
-	// - relatively large area (to filter out noisy contours)
-	// - and be convex.
-	// Note: absolute value of an area is used because
-	// area may be positive or negative - in accordance with the contour orientation
-	if(approx.size() == 4) {
-		double area = std::fabs(contourArea((approx)));
-		if(area > (minArea) && area < (maxArea)) {
-			if(isContourConvex((approx))) {
-				rc = true;
-			}
-		}
-	}
-	else {
-		rc = false; 
-	}
-	return rc; 
 }
 
 
@@ -1149,7 +1160,8 @@ bool ExtractCornersOfChessPattern(Mat *imagesInp, vector<Point2f> *pointBufs, co
 
 	const int tartgetNumberOfCorners = g_boardChessCornersSize.width * g_boardChessCornersSize.height;
 	int okCount = 0;
-	for (int j = 0; j < ARRAY_NUM_ELEMENTS(controls); ++j) okCount += (pointBufs[j].size() == tartgetNumberOfCorners? 1: 0);
+	for (int j = 0; j < ARRAY_NUM_ELEMENTS(controls); ++j) 
+		if(pointBufs[j].size() == tartgetNumberOfCorners) ++okCount;
 
 	return okCount > 0;
 }
@@ -1518,6 +1530,13 @@ bool GetImagesEx(Mat& left, Mat& right, int64_t* time_spread, const int N/*min_f
 
 
 
+std::function<void()> g_imageSaveLambda = nullptr;
+return_t __stdcall SaveImagesWorkItem(LPVOID lp) {
+	g_imageSaveLambda();
+	return 0;
+}
+
+
 
 return_t __stdcall AcquireImagepoints(LPVOID lp) {
 	SImageAcquisitionCtl *ctl = (SImageAcquisitionCtl*)lp;
@@ -1630,40 +1649,52 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 		};
 
 
-		if(nl > 0 || nr > 0) {
-			if(!ctl->_calib_images_from_files) {
-				lambda_Save_Images(std::max(current_N, size_t(std::max(nl, nr))), nl, nr);
-			}
 
-			++current_N;
+		g_imageSaveLambda = [&]() {
+			if (nl > 0 || nr > 0) {
+				if (!ctl->_calib_images_from_files) {
+					lambda_Save_Images(std::max(current_N, size_t(std::max(nl, nr))), nl, nr);
+				}
 
-			if(nl > 0) {
-				imageRaw_left.push_back(left_image);
-			}
-			if(nr > 0) {
-				imageRaw_right.push_back(right_image);
-			}
-			if(nl > 0 && nr > 0) {
-				stereoImageRaw_left.push_back(left_image);
-				stereoImageRaw_right.push_back(right_image);
+				++current_N;
 
-				if(stereoImagePoints_left.size() == g_min_images) {
-					_g_calibrationimages_frame->_toolbar->SetButtonStateByindex(TBSTATE_ENABLED, 0/*btn - save document*/, false/*set enabled*/);
+				if (nl > 0) {
+					imageRaw_left.push_back(left_image);
+				}
+				if (nr > 0) {
+					imageRaw_right.push_back(right_image);
+				}
+				if (nl > 0 && nr > 0) {
+					stereoImageRaw_left.push_back(left_image);
+					stereoImageRaw_right.push_back(right_image);
+
+					if (stereoImagePoints_left.size() == g_min_images) {
+						_g_calibrationimages_frame->_toolbar->SetButtonStateByindex(TBSTATE_ENABLED, 0/*btn - save document*/, false/*set enabled*/);
+					}
 				}
 			}
-			while(ProcessWinMessages());
-		}
-		else
-		if(ctl->_calib_images_from_files) {
-			++current_N;
-		}
-		else
-		if(ctl->_save_all_calibration_images) {
-			lambda_Save_Images(current_N, 0, 0);
+			else
+			if (ctl->_calib_images_from_files) {
+				++current_N;
+			}
+			else
+			if (ctl->_save_all_calibration_images) {
+				lambda_Save_Images(current_N, 0, 0);
 
-			++current_N;
+				++current_N;
+			}
+
+			g_imageSaveLambda = nullptr;
+		};
+
+		QueueWorkItem(SaveImagesWorkItem);
+
+		while (g_imageSaveLambda != nullptr) {
+			ProcessWinMessages(10);
 		}
+
 	}
+
 	while(ProcessWinMessages());
 
 

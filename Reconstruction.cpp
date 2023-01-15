@@ -1031,7 +1031,8 @@ int64_t BlobLoG(std::vector<ABoxedblob>& blobs,
 	const int row_limits[2], 
 	const int col_limits[2],
 	ATLSMatrixvar<signed short>& tracker, 
-	ATLSMatrixvar<double>& tracker_value) {
+	ATLSMatrixvar<double>& tracker_value,
+	const double max_LoG_factor) {
 
 	blobs.resize(blobs.size() + 1);
 	ABoxedblob& aBlob = blobs[blobs.size() - 1];
@@ -1064,7 +1065,7 @@ int64_t BlobLoG(std::vector<ABoxedblob>& blobs,
 	//const double min_LoG_value = (7.0 / kncols) * (121.0 / 255.0) * image.at<unsigned short>((int)aSeed.y, (int)aSeed.x);
 	//const double max_LoG_value = (23.0 / kncols) * (121.0 / 255.0) * image.at<unsigned short>((int)aSeed.y, (int)aSeed.x);
 	const double min_LoG_value = (9.0 / kncols) * (121.0 / 255.0) * image.at<unsigned short>((int)aSeed.y, (int)aSeed.x);
-	const double max_LoG_value = (21.0 / kncols) * (121.0 / 255.0) * image.at<unsigned short>((int)aSeed.y, (int)aSeed.x);
+	const double max_LoG_value = (max_LoG_factor / kncols) * (121.0 / 255.0) * image.at<unsigned short>((int)aSeed.y, (int)aSeed.x);
 
 	int min_max_rows[2] = {200, 200/*g_max_boxsize_pixels, g_max_boxsize_pixels*/};
 
@@ -2654,7 +2655,7 @@ double CalculateSkewness(Mat_<double>& vectorized_crop/*prebuilt intensities*/, 
 	return skewness; 
 }
 
-int BlobsLoG(std::vector<ABoxedblob>& blobs, Mat& image, unsigned int& threshold_intensity, cv::Rect roi, Mat_<double>& kmat, unsigned short *intensity_avg_ptr) {
+int BlobsLoG(std::vector<ABoxedblob>& blobs, Mat& image, unsigned int& threshold_intensity, cv::Rect roi, Mat_<double>& kmat, unsigned short *intensity_avg_ptr, const double max_LoG_factor) {
 	const int imcols = image.cols;
 	const int imrows = image.rows;
 	if((roi.x + roi.width) > imcols || (roi.y + roi.height) > imrows) {
@@ -2713,7 +2714,7 @@ int BlobsLoG(std::vector<ABoxedblob>& blobs, Mat& image, unsigned int& threshold
 				int rlims[2] = { std::max(y1 - g_max_boxsize_pixels, blob_row_lim[0]), std::min(y1 + g_max_boxsize_pixels, blob_row_lim[1]) };
 				int clims[2] = { std::max(x1 - g_max_boxsize_pixels, blob_col_lim[0]), std::min(x1 + g_max_boxsize_pixels, blob_col_lim[1]) };
 
-				qcounter_convolve += BlobLoG(blobs, Point2d(x1, y1), image, kmat, rlims, clims, tracker, tracker_value);
+				qcounter_convolve += BlobLoG(blobs, Point2d(x1, y1), image, kmat, rlims, clims, tracker, tracker_value, max_LoG_factor);
 			}
 		}
 	}
@@ -2745,7 +2746,7 @@ int BlobsLoG(std::vector<ABoxedblob>& blobs, Mat& image, unsigned int& threshold
 	return cnt; 
 }
 
-int BlobCentersLoG(std::vector<ABox>& boxes, std::vector<ClusteredPoint>& points, Mat& image, unsigned int& threshold_intensity, cv::Rect roi, Mat_<double>& kmat, bool arff_file_requested, ushort *intensity_avg_ptr) {
+int BlobCentersLoG(std::vector<ABox>& boxes, std::vector<ClusteredPoint>& points, Mat& image, unsigned int& threshold_intensity, cv::Rect roi, Mat_<double>& kmat, bool arff_file_requested, ushort *intensity_avg_ptr, double max_LoG_factor) {
 	const int imcols = image.cols;
 	const int imrows = image.rows;
 
@@ -2754,7 +2755,7 @@ int BlobCentersLoG(std::vector<ABox>& boxes, std::vector<ClusteredPoint>& points
 	//std::cout << "BlobsLoG: threshold_intensity " << ' ' << threshold_intensity << std::endl;
 
 	std::vector<ABoxedblob> blobs;
-	BlobsLoG(blobs, image, threshold_intensity, roi, kmat, intensity_avg_ptr);
+	BlobsLoG(blobs, image, threshold_intensity, roi, kmat, intensity_avg_ptr, max_LoG_factor);
 
 	bool supervised_LoG = ((roi.height == 0) && (roi.width == 0)) || (roi.height == kmat.rows) || (roi.width == kmat.cols);
 
@@ -3934,9 +3935,9 @@ size_t ConductOverlapElimination(
 size_t ConductOverlapEliminationEx(const std::vector<std::vector<cv::Point2d>>& contours, std::vector<std::vector<cv::Point2d>>& final_contours, 
 	bool preserve_scale_factor, // causes to bypass back-scaling and return the used scale_factor
 	long& scale_factor, // in/out. specifies what power of 2 to use to get coordinates in integers
-	bool conduct_size = false, 
-	int size_increment = -1,
-	bool log_graph = false) {
+	bool conduct_size, // false
+	int size_increment, // -1
+	bool log_graph/*false*/) {
 
 	size_t count = ConductOverlapElimination(contours, final_contours, preserve_scale_factor, scale_factor, conduct_size, size_increment, log_graph);
 	if (count == 0) {
