@@ -202,8 +202,15 @@ void ClassBlobDetector::findBlobs(const Mat& image, Mat& binaryImage, std::vecto
 
 
 	
-	unsigned int threshold_intensity = 250 * g_bytedepth_scalefactor;
+	unsigned int threshold_intensity = 255 * g_bytedepth_scalefactor;
 
+	/*
+	* LoG generates too many boxes on binary images.
+	* Use Guassian blur.
+	* Use thershold 255 to start the generator from the inside of white area.
+	* Increase the max_LoG so the generator goes closer to the black/white boundary.
+	*/
+	cv::GaussianBlur(binaryImage, binaryImage, Size(kmatN, kmatN), 0.9, 0.9);
 	BlobCentersLoG(boxes, points, binaryImage, threshold_intensity, cv::Rect(), kmat, /*arff_file_requested*/false, /*intensity_avg_ptr*/nullptr, /*max_LoG_factor*/31.0);
 
 	double desired_min_inertia = sqrt(_min_confidence);
@@ -218,7 +225,6 @@ void ClassBlobDetector::findBlobs(const Mat& image, Mat& binaryImage, std::vecto
 		double area = contourArea(Mat(contourOrig));
 
 		std::vector<cv::Point> contour;
-
 		if (!approximateContourWithQuadrilateral(contourOrig, contour, area / 2, area * 2)) {
 			continue;
 		}
@@ -2064,10 +2070,6 @@ void CalibrateCameras(StereoConfiguration& configuration, SImageAcquisitionCtl& 
 	rootCVWindows(_g_calibrationimages_frame, 4, 0, cv_windows);
 	rootCVWindows(_g_calibrationimages_frame, 2, 4, &cv_windows[4]);
 
-
-
-
-	//launch_AcquireImages_calibration(image_acquisition_ctl, NULL);
 
 
 
