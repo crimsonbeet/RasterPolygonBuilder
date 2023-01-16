@@ -573,7 +573,7 @@ struct SFeatureDetectorCtl {
 	cv::Rect _approxBoundingRectMapped;
 	cv::Mat _H; // Homography that transforms quadrilateral to rectangle (not rotated).
 
-	std::vector<cv::Point2f> _edgesBuf;
+	std::vector<cv::Point2d> _edgesBuf;
 
 	cv::Rect _roi;
 
@@ -909,7 +909,7 @@ private:
 
 
 
-bool GetImagesFromFile(Mat& left_image, Mat& right_image, const std::string& current_N);
+bool GetImagesFromFile(Mat& left_image, Mat& right_image, std::vector<cv::Point2d>& pointsLeft, std::vector<cv::Point2d>& pointsRight, const std::string& current_N);
 
 
 

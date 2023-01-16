@@ -1,7 +1,7 @@
 
 ><$StereoConfiguration 
 
-PatternDistance=2.5 
+PatternDistance=3.875 
 MaxClusterDistance=4
 AxisesRatio=0.778
 MinImages=12

@@ -3651,7 +3651,7 @@ void OptimizeSelectionOfQuadrilaterals(int idx[2], std::vector<ClusteredPoint> c
 }
 
 
-bool GetFramesFromFilesWithSubdirectorySearch(Mat cv_image[2]/*out*/, bool& arff_file_requested/*out*/, std::string& file_name, std::string& path_name) {
+bool GetFramesFromFilesWithSubdirectorySearch(Mat cv_image[2]/*out*/, std::vector<cv::Point2d> points[2], bool& arff_file_requested/*out*/, std::string& file_name, std::string& path_name) {
 	bool image_isok = false; 
 
 	static int s_arff_file_requested = 0;
@@ -3665,7 +3665,7 @@ bool GetFramesFromFilesWithSubdirectorySearch(Mat cv_image[2]/*out*/, bool& arff
 	if(s_file_number > -1) {
 		file_name = "raw-" + (s_file_number < 0 ? std::string() : std::to_string(++s_file_number));
 		path_name = s_sub_dir + file_name;
-		image_isok = GetImagesFromFile(cv_image[0], cv_image[1], path_name);
+		image_isok = GetImagesFromFile(cv_image[0], cv_image[1], points[0], points[1], path_name);
 		if (!image_isok) {
 			std::ostringstream ostr;
 			if (s_file_number >= 0) {
@@ -3673,7 +3673,7 @@ bool GetFramesFromFilesWithSubdirectorySearch(Mat cv_image[2]/*out*/, bool& arff
 				ostr << setfill('0') << setw(3) << s_file_number;
 			}
 			path_name = s_sub_dir + (file_name = "lake_" + ostr.str());
-			image_isok = GetImagesFromFile(cv_image[0], cv_image[1], path_name);
+			image_isok = GetImagesFromFile(cv_image[0], cv_image[1], points[0], points[1], path_name);
 		}
 		std::cout << path_name << ' ' << (image_isok? "Ok": "NOk") << std::endl;
 	}
@@ -3990,6 +3990,7 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 	Mat cv_image[4];
 	std::vector<ABox> boxes[2];
 	std::vector<ClusteredPoint> cv_points[2];
+	std::vector<cv::Point2d> in_points[2];
 
 	Mat unchangedImage;
 	Mat finalContoursImage;
@@ -4011,7 +4012,7 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 		if (g_configuration._frames_acquisition_mode > 0) {
 			if (!image_isok) {
-				image_isok = GetFramesFromFilesWithSubdirectorySearch(cv_image/*out*/, arff_file_requested/*out*/, file_name, path_name);
+				image_isok = GetFramesFromFilesWithSubdirectorySearch(cv_image/*out*/, in_points, arff_file_requested/*out*/, file_name, path_name);
 				Sleep(20);
 			}
 		}

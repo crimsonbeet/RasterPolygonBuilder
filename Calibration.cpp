@@ -35,16 +35,16 @@ Size g_imageSize = Size(1280, 1024);
 
 
 
-double g_pattern_distance = 2.5; // 3 for grid of squares, 6.625 for chess board
+double g_pattern_distance = 2.5; // 3 for grid of squares, 3.875 for chess board
 
 size_t g_min_images = 12;
 double g_aposteriory_minsdistance = 100;
 
 
-vector<vector<Point2f>> imagePoints_left;
-vector<vector<Point2f>> imagePoints_right;
-vector<vector<Point2f>> stereoImagePoints_left;
-vector<vector<Point2f>> stereoImagePoints_right;
+vector<vector<Point2d>> imagePoints_left;
+vector<vector<Point2d>> imagePoints_right;
+vector<vector<Point2d>> stereoImagePoints_left;
+vector<vector<Point2d>> stereoImagePoints_right;
 vector<Mat> imageRaw_left;
 vector<Mat> imageRaw_right;
 vector<Mat> stereoImageRaw_left;
@@ -58,7 +58,7 @@ std::string cv_windows[6];
 
 
 
-void DrawImageAndBoard(const std::string& aname, const std::string& window_name, Mat& cv_image, const vector<Point2f>& board) {
+void DrawImageAndBoard(const std::string& aname, const std::string& window_name, Mat& cv_image, const vector<Point2d>& board) {
 	Mat cv_image1;
 
 	while (ProcessWinMessages());
@@ -68,26 +68,14 @@ void DrawImageAndBoard(const std::string& aname, const std::string& window_name,
 	}
 	else {
 		cv_image1 = cv_image.clone();
-		//cv::cvtColor(cv_image, cv_image1, COLOR_GRAY2RGB);
 	}
 
-	cv::Size boardSize;
-	if (board.size() == (g_boardSize.height * g_boardSize.width)) {
-		boardSize = g_boardSize;
-	}
-	else
-		if (board.size() == (g_boardQuadSize.height * g_boardQuadSize.width)) {
-			boardSize = g_boardQuadSize;
-		}
 	if (board.size()) {
-		int red = 0;
-		int green = 255;
+		int red = 255;
+		int green = 0;
 		for (auto& point : board) {
-			circle(cv_image1, Point2i((int)point.x, (int)point.y), 3, Scalar(0, green * 255, red * 255), -1);
-			red += 3;
-			green -= 3;
+			circle(cv_image1, Point2i((int)point.x, (int)point.y), 7, Scalar(0, green * 255, red * 255), -1);
 		}
-		//drawChessboardCorners(cv_image1, boardSize, Mat(board), true);
 	}
 
 	double fx = 161.0 / cv_image.rows; // Sep. 23
@@ -214,7 +202,7 @@ void ClassBlobDetector::findBlobs(const Mat& image, Mat& binaryImage, std::vecto
 	BlobCentersLoG(boxes, points, binaryImage, threshold_intensity, cv::Rect(), kmat, /*arff_file_requested*/false, /*intensity_avg_ptr*/nullptr, /*max_LoG_factor*/31.0);
 
 	double desired_min_inertia = sqrt(_min_confidence);
-	double ratio_threshold = desired_min_inertia * params.minCircularity;// *0.8;
+	double ratio_threshold = desired_min_inertia * params.minCircularity *0.8;
 
 	for (size_t boxIdx = 0; boxIdx < boxes.size(); boxIdx++) {
 		auto& contourOrig = boxes[boxIdx].contour;
@@ -224,6 +212,7 @@ void ClassBlobDetector::findBlobs(const Mat& image, Mat& binaryImage, std::vecto
 
 		double area = contourArea(Mat(contourOrig));
 
+		//std::vector<cv::Point>& contour = contourOrig;
 		std::vector<cv::Point> contour;
 		if (!approximateContourWithQuadrilateral(contourOrig, contour, area / 2, area * 2)) {
 			continue;
@@ -341,6 +330,7 @@ void ClassBlobDetector::detectImpl(const cv::Mat& image, std::vector<cv::KeyPoin
 
 	Mat aux = image.clone();
 	//cv::medianBlur(aux, aux, 3);
+	cv::GaussianBlur(aux, aux, Size(5, 5), 0.9, 0.9);
 	cv::normalize(aux, grayscaleImage, 0, 255 * g_bytedepth_scalefactor, NORM_MINMAX, CV_32FC1, Mat());
 
 	vector < vector<Center> > centers;
@@ -852,8 +842,6 @@ return_t __stdcall BuildChessGridCorners(LPVOID lp) {
 
 	ctl->_status = 2;
 	try {
-		double fy = 1.0;
-
 		Mat& H = ctl->_H; // Homography that transforms quadrilateral to rectangle (not rotated). 
 
 		if (approx2fminQuad.size()) {
@@ -993,7 +981,7 @@ return_t __stdcall BuildChessGridCorners(LPVOID lp) {
 
 			try {
 				if (edgesMapped.size() && ylevel_maxwidth) {
-					cornerSubPix(grayscale, edgesMapped, Size(ylevel_maxwidth / 3, ylevel_maxwidth / 3)/*window size*/, Size(-1, -1)/*no zero zone*/, TermCriteria(TermCriteria::EPS + TermCriteria::COUNT, 40, 0.001));
+					cv::cornerSubPix(grayscale, edgesMapped, Size(ylevel_maxwidth / 3, ylevel_maxwidth / 3)/*window size*/, Size(-1, -1)/*no zero zone*/, TermCriteria(TermCriteria::EPS + TermCriteria::COUNT, 40, 0.001));
 				}
 			}
 			catch (Exception& ex) {
@@ -1005,7 +993,7 @@ return_t __stdcall BuildChessGridCorners(LPVOID lp) {
 			Mat image1;
 			cvtColor(/*binImage*/grayscale, image1, COLOR_GRAY2RGB);
 			for (int k = 0; k < edgesMapped.size(); ++k) {
-				circle(image1, Point2i((int)edgesMapped[k].x, (int)edgesMapped[k].y), 3, Scalar(0, 0, 255), -1);
+				cv::circle(image1, Point2i((int)edgesMapped[k].x, (int)edgesMapped[k].y), 3, Scalar(0, 0, 255), -1);
 			}
 			
 
@@ -1030,23 +1018,25 @@ return_t __stdcall BuildChessGridCorners(LPVOID lp) {
 					point.x += approxBoundingRectMapped.x;
 					point.y += approxBoundingRectMapped.y;
 				}
+				std::sort(edgesMapped.begin(), edgesMapped.end(), [](const cv::Point2f& left, const cv::Point2f& right) ->bool {
+					if (left.y < (right.y - 5)) return true;
+					if (left.y > (right.y + 5)) return false;
+					if (left.x <= right.x) return true;
+					return false;
+				});
+
 				edgesBuf.resize(edgesMapped.size());
-				perspectiveTransform(edgesMapped, edgesBuf, H.inv());
+				cv::perspectiveTransform(edgesMapped, edgesBuf, H.inv());
+
+				Mat grayscale;
+				normalize(image, grayscale, 0, 255, NORM_MINMAX, CV_8UC1, Mat());
+				cv::cornerSubPix(grayscale, edgesBuf, Size(5, 5)/*window size*/, Size(-1, -1)/*no zero zone*/, TermCriteria(CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, 40, 0.001));
 			}
 			else {
 				static int x = 0;
 				++x;
 			}
 		}
-
-
-		if (fy > 1) {
-			for (auto& point : edgesBuf) {
-				point *= fy;
-			}
-		}
-
-
 	}
 	catch (Exception& ex) {
 		std::cout << "ExtractCornersOfChessPattern:" << ' ' << ex.msg << std::endl;
@@ -1054,7 +1044,11 @@ return_t __stdcall BuildChessGridCorners(LPVOID lp) {
 
 
 	ctl->_gate.lock();
-	ctl->_edgesBuf.swap(edgesBuf);
+	ctl->_edgesBuf.reserve(edgesBuf.size());
+	ctl->_edgesBuf.resize(0);
+	for (auto& point : edgesBuf) {
+		ctl->_edgesBuf.push_back(point);
+	}
 	ctl->_gate.unlock();
 
 	ctl->_status = 0;
@@ -1065,7 +1059,7 @@ return_t __stdcall BuildChessGridCorners(LPVOID lp) {
 
 
 
-bool ExtractCornersOfChessPattern(Mat *imagesInp, vector<Point2f> *pointBufs, const size_t N, ClassBlobDetector& blobDetector) {
+bool ExtractCornersOfChessPattern(Mat *imagesInp, vector<Point2d> *pointBufs, const size_t N, ClassBlobDetector& blobDetector) {
 
 	SFeatureDetectorCtl controls[3] = { SFeatureDetectorCtl(imagesInp[0].clone()), SFeatureDetectorCtl(N > 1? imagesInp[1].clone(): Mat()), SFeatureDetectorCtl(N > 2 ? imagesInp[2].clone() : Mat()) };
 	for (auto& ctl : controls) {
@@ -1097,7 +1091,7 @@ bool ExtractCornersOfChessPattern(Mat *imagesInp, vector<Point2f> *pointBufs, co
 					}
 
 					cv::Mat image1;
-					cv::resize(image0, image1, cv::Size(0, 0), fx, fx, INTER_AREA);
+					cv::resize(image0, image1, cv::Size(0, 0), fx, fx, INTER_LINEAR);
 
 					cv::imshow(ctl._outputWindow, image1);
 				}
@@ -1172,14 +1166,14 @@ bool ExtractCornersOfChessPattern(Mat *imagesInp, vector<Point2f> *pointBufs, co
 	return okCount > 0;
 }
 
-bool DetectChessGrid(Mat *images, vector<Point2f> *pointBufs, const size_t N, ClassBlobDetector& blobDetector) {
+bool DetectChessGrid(Mat *images, vector<Point2d> *pointBufs, const size_t N, ClassBlobDetector& blobDetector) {
 	for (size_t x = 0; x < N; ++x) pointBufs[x].clear();
 	bool found = ExtractCornersOfChessPattern(images, pointBufs, N, blobDetector);
 	return found;
 }
 
 
-bool buildPointsFromImages(Mat* images, vector<Point2f>* pointBufs, const size_t N, SImageAcquisitionCtl& ctl, double min_confidence, size_t min_repeatability) {
+bool buildPointsFromImages(Mat* images, vector<Point2d>* pointBufs, const size_t N, SImageAcquisitionCtl& ctl, double min_confidence, size_t min_repeatability) {
 	ClassBlobDetector blobDetector = ClassBlobDetector(min_confidence, min_repeatability, 40, ctl._pattern_is_whiteOnBlack, ctl._pattern_is_chessBoard);
 	bool found = false;
 	if (images[0].data) {
@@ -1191,7 +1185,7 @@ bool buildPointsFromImages(Mat* images, vector<Point2f>* pointBufs, const size_t
 }
 
 
-double calc_betweenimages_rmse(vector<Point2f>& image1, vector<Point2f>& image2) {
+double calc_betweenimages_rmse(vector<Point2d>& image1, vector<Point2d>& image2) {
 	double rmse = 0;
 	size_t min_size = std::min(image1.size(), image2.size());
 	bool strict = (imagePoints_left.size() + imagePoints_right.size()) < 5/*(g_min_images)*/;
@@ -1213,12 +1207,12 @@ double calc_betweenimages_rmse(vector<Point2f>& image1, vector<Point2f>& image2)
 
 
 
-std::vector<bool> EvaluateImagePoints(cv::Mat cv_images[2], std::vector<std::vector<cv::Point2f>> imagePoints[2], SImageAcquisitionCtl& ctl, double min_confidence = 0.4, size_t min_repeatability = 3) {
+std::vector<bool> EvaluateImagePoints(cv::Mat cv_images[2], std::vector<std::vector<cv::Point2d>> imagePoints[2], SImageAcquisitionCtl& ctl, double min_confidence = 0.4, size_t min_repeatability = 3) {
 	constexpr int N = 2;
 
 	std::vector<bool> is_ok(N, false);
 
-	std::vector<cv::Point2f> points[N];
+	std::vector<cv::Point2d> points[N];
 
 	if(buildPointsFromImages(cv_images, points, N, ctl, min_confidence, min_repeatability)) {
 		for (int j = 0; j < N; ++j) {
@@ -1279,9 +1273,9 @@ double CalibrateSingleCamera(vector<vector<Point2f>>& imagePoints, Mat& cameraMa
 
 	double rms = calibrateCamera(objectPoints, imagePoints, g_imageSize, cameraMatrix, distortionCoeffs, rvecs, tvecs, flag);
 
-	//for(size_t j = 0; j < objectPoints.size(); ++j) {
-	//	projectPoints(objectPoints[j], rvecs[j], tvecs[j], cameraMatrix, distortionCoeffs, imagePoints[j]); 
-	//}
+	for(size_t j = 0; j < objectPoints.size(); ++j) {
+		projectPoints(objectPoints[j], rvecs[j], tvecs[j], cameraMatrix, distortionCoeffs, imagePoints[j]); 
+	}
 
 	g_objectPoints = objectPoints;
 
@@ -1289,20 +1283,21 @@ double CalibrateSingleCamera(vector<vector<Point2f>>& imagePoints, Mat& cameraMa
 }
 
 
-bool ReEvaluateUndistortImagePoints(vector<Mat>& imageRaw, vector<vector<Point2f>>& imagePoints, Mat& cameraMatrix, Mat& distortionCoeffs, SImageAcquisitionCtl& ctl, std::string& cv_window, vector<vector<Point2f>> *imagePoints_paired = 0, vector<Mat> *imageRaw_paired = 0) {
+bool ReEvaluateUndistortImagePoints(vector<Mat>& imageRaw, vector<vector<Point2d>>& imagePoints, Mat& cameraMatrix, Mat& distortionCoeffs, SImageAcquisitionCtl& ctl, std::string& cv_window, vector<vector<Point2d>> *imagePoints_paired = 0, vector<Mat> *imageRaw_paired = 0) {
 	Mat map[2];
 
 	cv::initUndistortRectifyMap(cameraMatrix, distortionCoeffs, cv::Mat(), cv::getOptimalNewCameraMatrix(cameraMatrix, distortionCoeffs, g_imageSize, 0), g_imageSize, CV_32FC2, map[0], map[1]);
 
 	for(auto& image : imageRaw) {
 		Mat undistorted;
-		remap(image, undistorted, map[0], map[1], INTER_CUBIC/*INTER_LINEAR*/, BORDER_CONSTANT);
+		remap(image, undistorted, map[0], map[1], INTER_CUBIC/*INTER_LINEAR*//*INTER_NEAREST*/, BORDER_CONSTANT);
 		image = undistorted;
 
 		while(ProcessWinMessages());
 	}
 	for(int j = 0; j < imagePoints.size(); ++j) {
-		if(!g_configuration._calib_use_homography || !buildPointsFromImages(&imageRaw[j], &imagePoints[j], 1, ctl, g_configuration._calib_min_confidence, 3)) {
+		DrawImageAndBoard(std::to_string(j + 1), cv_window, imageRaw[j], imagePoints[j]);
+		if(!buildPointsFromImages(&imageRaw[j], &imagePoints[j], 1, ctl, g_configuration._calib_min_confidence, 3)) {
 			std::cout << "image number " << j << " has failed" << std::endl;
 			imagePoints.erase(imagePoints.begin() + j);
 			imageRaw.erase(imageRaw.begin() + j);
@@ -1314,126 +1309,160 @@ bool ReEvaluateUndistortImagePoints(vector<Mat>& imageRaw, vector<vector<Point2f
 			}
 			--j;
 		}
-		else {
-			DrawImageAndBoard(std::to_string(j + 1), cv_window, imageRaw[j], imagePoints[j]);
-		}
 	}
-
-	while(ProcessWinMessages());
 	return imagePoints.size() >= g_min_images;
 }
 
-void SampleImagepoints(vector<vector<Point2f>>& imagePoints_src, vector<vector<Point2f>>& imagePoints_dst, vector<vector<Point2f>> *imagePoints_src2 = 0, vector<vector<Point2f>> *imagePoints_dst2 = 0) {
+vector<Point2f> ImagePoints2d_To_ImagePoints2f(vector<Point2d>& imagePoints2d_src) {
+	vector<Point2f> imagePoints2f_dst;
+	for (const auto& point2d : imagePoints2d_src) {
+		imagePoints2f_dst.push_back(point2d);
+	}
+	return imagePoints2f_dst;
+}
+
+void SampleImagepoints(const size_t N, vector<vector<Point2d>>& imagePoints_src, vector<vector<Point2f>>& imagePoints_dst, vector<vector<Point2d>> *imagePoints_src2 = 0, vector<vector<Point2f>> *imagePoints_dst2 = 0) {
 	std::vector<size_t> x;
-	x.reserve(g_min_images);
-	for(size_t j = 0; j < g_min_images;) {
-		size_t pos = (size_t)(__int64)rand() % imagePoints_src.size();
-		if(std::find(x.begin(), x.end(), pos) == x.end()) {
-			x.push_back(pos);
+	x.reserve(N);
+	for(size_t j = 0; j < N;) {
+		if (N != imagePoints_src.size()) {
+			size_t pos = (size_t)(__int64)rand() % imagePoints_src.size();
+			if (std::find(x.begin(), x.end(), pos) == x.end()) {
+				x.push_back(pos);
+				++j;
+			}
+		}
+		else {
+			x.push_back(j);
 			++j;
 		}
 	}
-	imagePoints_dst.reserve(g_min_images);
+	imagePoints_dst.reserve(N);
 	imagePoints_dst.resize(0);
 	if(imagePoints_dst2) {
-		imagePoints_dst2->reserve(g_min_images);
+		imagePoints_dst2->reserve(N);
 		imagePoints_dst2->resize(0);
 	}
 	for(auto pos : x) {
-		imagePoints_dst.push_back(imagePoints_src[pos]);
+		imagePoints_dst.push_back(ImagePoints2d_To_ImagePoints2f(imagePoints_src[pos]));
 		if(imagePoints_src2 && imagePoints_dst2) { 
 			if(imagePoints_src2->size() > pos) {
-				imagePoints_dst2->push_back((*imagePoints_src2)[pos]);
+				imagePoints_dst2->push_back(ImagePoints2d_To_ImagePoints2f((*imagePoints_src2)[pos]));
 			}
 		}
 	}
 }
 
-void BoostCalibrate(size_t number_of_iterations, Mat& cameraMatrixL, Mat& cameraMatrixR, Mat& distortionCoeffsL, Mat& distortionCoeffsR, double rms[2]) {
-	std::vector<Mat> CMVec2(number_of_iterations * 2), DCVec2(number_of_iterations * 2);
-	if(number_of_iterations > 1) {
-		vector<vector<Point2f>> imagePoints_left1(g_min_images);
-		vector<vector<Point2f>> imagePoints_right1(g_min_images);
 
-		double iteration_rms[256];
-		memset(iteration_rms, 0, sizeof(iteration_rms));
 
-		double average_rms = 0; 
-		size_t rms_cnt = 0;
+std::function<void()> g_boostCalibrateLambda = nullptr;
+return_t __stdcall BoostCalibrateWorkItem(LPVOID lp) {
+	g_boostCalibrateLambda();
+	return 0;
+}
 
-		double max_rms = 0; 
+void BoostCalibrate(const std::string& msg, size_t number_of_iterations, Mat& cameraMatrixL, Mat& cameraMatrixR, Mat& distortionCoeffsL, Mat& distortionCoeffsR, double rms[2]) {
+	g_boostCalibrateLambda = [&]() {
+		std::cout << msg << std::endl;
 
-		size_t iter_num;
-		for(iter_num = 0; !g_bTerminated && iter_num < number_of_iterations; ++iter_num) {
-			SampleImagepoints(imagePoints_left, imagePoints_left1);
-			SampleImagepoints(imagePoints_right, imagePoints_right1);
+		std::vector<Mat> CMVec2(number_of_iterations * 2), DCVec2(number_of_iterations * 2);
+		if (number_of_iterations > 1) {
+			vector<vector<Point2f>> imagePoints_left1(g_min_images);
+			vector<vector<Point2f>> imagePoints_right1(g_min_images);
 
-			try {
-				rms[0] = CalibrateSingleCamera(imagePoints_left1, CMVec2[iter_num * 2], DCVec2[iter_num * 2]);
-				rms[1] = CalibrateSingleCamera(imagePoints_right1, CMVec2[iter_num * 2 + 1], DCVec2[iter_num * 2 + 1]);
+			double iteration_rms[256];
+			memset(iteration_rms, 0, sizeof(iteration_rms));
 
-				iteration_rms[iter_num] = std::max(rms[0], rms[1]);
-				if(max_rms < iteration_rms[iter_num]) {
-					max_rms = iteration_rms[iter_num];
+			double average_rms = 0;
+			size_t rms_cnt = 0;
+
+			double max_rms = 0;
+
+			size_t iter_num;
+			for (iter_num = 0; !g_bTerminated && iter_num < number_of_iterations; ++iter_num) {
+				SampleImagepoints(g_min_images, imagePoints_left, imagePoints_left1);
+				SampleImagepoints(g_min_images, imagePoints_right, imagePoints_right1);
+
+				try {
+					rms[0] = CalibrateSingleCamera(imagePoints_left1, CMVec2[iter_num * 2], DCVec2[iter_num * 2]);
+					rms[1] = CalibrateSingleCamera(imagePoints_right1, CMVec2[iter_num * 2 + 1], DCVec2[iter_num * 2 + 1]);
+
+					iteration_rms[iter_num] = std::max(rms[0], rms[1]);
+					if (max_rms < iteration_rms[iter_num]) {
+						max_rms = iteration_rms[iter_num];
+					}
+					average_rms += iteration_rms[iter_num];
+					++rms_cnt;
 				}
-				average_rms += iteration_rms[iter_num];
-				++rms_cnt;
+				catch (...) {
+					rms[0] = rms[1] = 100;
+				}
+
+				std::cout << iter_num << ' ' << "Pre-Re-projection error for left camera: " << rms[0] << std::endl;
+				std::cout << iter_num << ' ' << "Pre-Re-projection error for right camera: " << rms[1] << std::endl;
+
+				while (ProcessWinMessages());
 			}
-			catch(...) {
-				rms[0] = rms[1] = 100;
+			average_rms /= rms_cnt;
+			average_rms = (average_rms + max_rms) / 2;
+
+			const size_t max_iter = iter_num;
+
+			for (iter_num = 0; iter_num < max_iter; ++iter_num) {
+				if (iteration_rms[iter_num] <= average_rms) {
+					cameraMatrixL = CMVec2[iter_num * 2]; cameraMatrixR = CMVec2[iter_num * 2 + 1]; distortionCoeffsL = DCVec2[iter_num * 2]; distortionCoeffsR = DCVec2[iter_num * 2 + 1];
+					break;
+				}
+				else {
+					--number_of_iterations;
+				}
 			}
 
-			std::cout << iter_num << ' ' << "Pre-Re-projection error for left camera: " << rms[0] << std::endl;
-			std::cout << iter_num << ' ' << "Pre-Re-projection error for right camera: " << rms[1] << std::endl;
-
-			while(ProcessWinMessages());
+			for (++iter_num; iter_num < max_iter; ++iter_num) {
+				if (iteration_rms[iter_num] <= average_rms) {
+					cameraMatrixL = cameraMatrixL + CMVec2[iter_num * 2];
+					cameraMatrixR = cameraMatrixR + CMVec2[iter_num * 2 + 1];
+					distortionCoeffsL = distortionCoeffsL + DCVec2[iter_num * 2];
+					distortionCoeffsR = distortionCoeffsR + DCVec2[iter_num * 2 + 1];
+				}
+				else {
+					--number_of_iterations;
+				}
+			}
+			if (number_of_iterations > 0) {
+				cameraMatrixL = cameraMatrixL / (double)number_of_iterations;
+				cameraMatrixR = cameraMatrixR / (double)number_of_iterations;
+				distortionCoeffsL = distortionCoeffsL / (double)number_of_iterations;
+				distortionCoeffsR = distortionCoeffsR / (double)number_of_iterations;
+			}
 		}
-		average_rms /= rms_cnt;
-		average_rms = (average_rms + max_rms) / 2; 
 
-		const size_t max_iter = iter_num;
+		if (number_of_iterations <= 1 && !g_bTerminated) {
+			vector<vector<Point2f>> imagePoints_left1(imagePoints_left.size());
+			vector<vector<Point2f>> imagePoints_right1(imagePoints_right.size());
 
-		for(iter_num = 0; iter_num < max_iter; ++iter_num) {
-			if(iteration_rms[iter_num] <= average_rms) {
-				cameraMatrixL = CMVec2[iter_num * 2]; cameraMatrixR = CMVec2[iter_num * 2 + 1]; distortionCoeffsL = DCVec2[iter_num * 2]; distortionCoeffsR = DCVec2[iter_num * 2 + 1];
-				break; 
-			}
-			else { 
-				--number_of_iterations; 
-			}
+			SampleImagepoints(imagePoints_left.size(), imagePoints_left, imagePoints_left1);
+			SampleImagepoints(imagePoints_right.size(), imagePoints_right, imagePoints_right1);
+
+			rms[0] = CalibrateSingleCamera(imagePoints_left1, cameraMatrixL, distortionCoeffsL);
+			rms[1] = CalibrateSingleCamera(imagePoints_right1, cameraMatrixR, distortionCoeffsR);
+
+			std::cout << "Pre-Re-projection error for left camera: " << rms[0] << std::endl;
+			std::cout << "Pre-Re-projection error for right camera: " << rms[1] << std::endl;
 		}
 
-		for(++iter_num; iter_num < max_iter; ++iter_num) {
-			if(iteration_rms[iter_num] <= average_rms) {
-				cameraMatrixL = cameraMatrixL + CMVec2[iter_num * 2];
-				cameraMatrixR = cameraMatrixR + CMVec2[iter_num * 2 + 1];
-				distortionCoeffsL = distortionCoeffsL + DCVec2[iter_num * 2];
-				distortionCoeffsR = distortionCoeffsR + DCVec2[iter_num * 2 + 1];
-			}
-			else {
-				--number_of_iterations;
-			}
-		}
-		if(number_of_iterations > 0) {
-			cameraMatrixL = cameraMatrixL / (double)number_of_iterations;
-			cameraMatrixR = cameraMatrixR / (double)number_of_iterations;
-			distortionCoeffsL = distortionCoeffsL / (double)number_of_iterations;
-			distortionCoeffsR = distortionCoeffsR / (double)number_of_iterations;
-		}
+		g_boostCalibrateLambda = nullptr;
+	};
+
+	QueueWorkItem(BoostCalibrateWorkItem);
+
+	while (g_boostCalibrateLambda != nullptr) {
+		ProcessWinMessages(10);
 	}
 
-	if(number_of_iterations <= 1 && !g_bTerminated) {
-		rms[0] = CalibrateSingleCamera(imagePoints_left, cameraMatrixL, distortionCoeffsL);
-		rms[1] = CalibrateSingleCamera(imagePoints_right, cameraMatrixR, distortionCoeffsR);
-
-		std::cout << "Pre-Re-projection error for left camera: " << rms[0] << std::endl;
-		std::cout << "Pre-Re-projection error for right camera: " << rms[1] << std::endl;
-
-		while(ProcessWinMessages());
-	}
 }
 
-void Save_Images(Mat& image, vector<vector<Point2f>>& imagePoints, int points_idx, const std::string& name) {
+void Save_Images(Mat& image, vector<vector<Point2d>>& imagePoints, int points_idx, const std::string& name) {
 	vector<int> compression_params;
 	compression_params.push_back(IMWRITE_PNG_COMPRESSION); // Mar.4 2015.
 	compression_params.push_back(0);
@@ -1542,6 +1571,12 @@ return_t __stdcall SaveImagesWorkItem(LPVOID lp) {
 	return 0;
 }
 
+std::function<void()> g_imageGetFromFilesLambda = nullptr;
+return_t __stdcall GetImagesImagesWorkItem(LPVOID lp) {
+	g_imageGetFromFilesLambda();
+	return 0;
+}
+
 
 
 return_t __stdcall AcquireImagepoints(LPVOID lp) {
@@ -1552,7 +1587,7 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 	stereoImagePoints_left.reserve(max_images + 1);
 	stereoImagePoints_right.reserve(max_images + 1);
 
-	vector<vector<Point2f>> imagePoints[2];
+	vector<vector<Point2d>> imagePoints[2];
 	for (auto& p : imagePoints) {
 		p.reserve(2 * max_images);
 		p.resize(1);
@@ -1585,12 +1620,29 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 		Mat& left_image = images[0];
 		Mat& right_image = images[1];
 
+
+		int nl = imagePoints[0].size() - 1;
+		int nr = imagePoints[1].size() - 1;
+
+
 		if(ctl->_calib_images_from_files) {
-			if(!GetImagesFromFile(left_image, right_image, std::to_string(current_N))) {
+			bool isOk = false;
+			g_imageGetFromFilesLambda = [&]() {
+				isOk = GetImagesFromFile(left_image, right_image, imagePoints[0][nl], imagePoints[1][nr], std::to_string(current_N));
+				g_imageGetFromFilesLambda = nullptr;
+			};
+
+			QueueWorkItem(GetImagesImagesWorkItem);
+			while (g_imageGetFromFilesLambda != nullptr) {
+				ProcessWinMessages(10);
+			}
+
+			if (!isOk) {
 				break;
 			}
+
 			min_repeatability = 2; 
-			g_boardChessSize = Size(4/*points_per_row*/, 7/*points_per_colum*/); 
+			//g_boardChessSize = Size(4/*points_per_row*/, 7/*points_per_colum*/); 
 		}
 		else 
 		if(g_configuration._calib_auto_image_capture) {
@@ -1607,11 +1659,22 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 
 		VisualizeCapturedImages(left_image, right_image);
 
-		std::vector<bool> image_ok = EvaluateImagePoints(images, imagePoints, *ctl, g_configuration._calib_min_confidence, min_repeatability);
+		std::vector<bool> image_ok = { imagePoints[0][nl].size() != 0, imagePoints[1][nr].size() != 0 };
+		if (!image_ok[0] && !image_ok[1]) {
+			image_ok = EvaluateImagePoints(images, imagePoints, *ctl, g_configuration._calib_min_confidence, min_repeatability);
+		}
+		else {
+			g_imageSize = images[0].size();
+		}
 
 		
-		int nl = image_ok [0]? imagePoints [0].size() : -1;
-		int nr = image_ok [1]? imagePoints [1].size() : -1;
+
+
+		nl = image_ok [0]? imagePoints [0].size() : -1;
+		nr = image_ok [1]? imagePoints [1].size() : -1;
+
+
+
 
 
 		if(nl > 0 && nr > 0) {
@@ -1623,72 +1686,71 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 
 
 		if(nl > 0 && nl < (stereoImagePoints_left.size() + 5)) {
-			size_t x = (size_t)nl + 1;
-			imagePoints[0].resize(x);
-			DrawImageAndBoard(std::to_string(nl) + '(' + std::to_string(stereoImagePoints_left.size()) + ')', cv_windows[0], images[0], imagePoints[0][x - 1]);
+			imagePoints[0].resize((size_t)nl + 1);
+			size_t x = (size_t)nl - 1;
+			DrawImageAndBoard(std::to_string(nl) + '(' + std::to_string(stereoImagePoints_left.size()) + ')', cv_windows[0], images[0], imagePoints[0][x]);
 		}
 		if(nr > 0 && nr < (stereoImagePoints_right.size() + 5)) {
-			size_t x = (size_t)nr + 1;
-			imagePoints[1].resize(x);
-			DrawImageAndBoard(std::to_string(nr) + '(' + std::to_string(stereoImagePoints_right.size()) + ')', cv_windows[1], images[1], imagePoints[1][x - 1]);
+			imagePoints[1].resize((size_t)nr + 1);
+			size_t x = (size_t)nr - 1;
+			DrawImageAndBoard(std::to_string(nr) + '(' + std::to_string(stereoImagePoints_right.size()) + ')', cv_windows[1], images[1], imagePoints[1][x]);
 		}
 
 
-		auto lambda_Save_Images = [&imagePoints, &images, current_N](size_t N, int nl, int nr) {
+		auto lambda_Save_Images = [&ctl , &imagePoints, &images, current_N](size_t N, int nl, int nr) {
 			MyCreateDirectory(g_path_calib_images_dir, "AcquireImagepointsEx");
-			while (ProcessWinMessages());
-			if(current_N == 1) {
-				Delete_FilesInDirectory(g_path_calib_images_dir);
-				while (ProcessWinMessages());
+
+			if (ctl->_save_all_calibration_images && !ctl->_calib_images_from_files) {
+				if (current_N == 1) {
+					Delete_FilesInDirectory(g_path_calib_images_dir);
+					while (ProcessWinMessages());
+				}
+				Save_Images(images[0], imagePoints[0], nl, std::to_string(N) + 'l');
+				Save_Images(images[1], imagePoints[1], nr, std::to_string(N) + 'r');
 			}
-			Save_Images(images[0], imagePoints[0], nl, std::to_string(N) + 'l');
-			while (ProcessWinMessages());
-			Save_Images(images[1], imagePoints[1], nr, std::to_string(N) + 'r');
-			while (ProcessWinMessages());
+
+			if (nl < 0) {
+				nl = imagePoints[0].size();
+			}
+			if (nr < 0) {
+				nr = imagePoints[1].size();
+			}
 
 			std::string xml_name = std::string(g_path_calib_images_dir) + std::to_string(N) + ".xml";
 			std::cout << "Saving xml" << ' ' << xml_name << std::endl;
 			FileStorage fw(xml_name, FileStorage::WRITE);
-			fw << "left_image" << images[0];
-			fw << "right_image" << images[1];
+			fw << "left_points" << imagePoints[0][(size_t)nl - 1];
+			fw << "right_points" << imagePoints[1][(size_t)nr - 1];
 			fw.release();
 		};
 
 
 
 		g_imageSaveLambda = [&]() {
-			if (nl > 0 || nr > 0) {
-				if (!ctl->_calib_images_from_files) {
-					lambda_Save_Images(std::max(current_N, size_t(std::max(nl, nr))), nl, nr);
-				}
+			if (nl > 0) {
+				imageRaw_left.push_back(left_image);
+			}
+			else {
+				imagePoints[0][imagePoints[0].size() - 1].resize(0);
+			}
+			if (nr > 0) {
+				imageRaw_right.push_back(right_image);
+			}
+			else {
+				imagePoints[1][imagePoints[1].size() - 1].resize(0);
+			}
+			if (nl > 0 && nr > 0) {
+				stereoImageRaw_left.push_back(left_image);
+				stereoImageRaw_right.push_back(right_image);
 
-				++current_N;
-
-				if (nl > 0) {
-					imageRaw_left.push_back(left_image);
-				}
-				if (nr > 0) {
-					imageRaw_right.push_back(right_image);
-				}
-				if (nl > 0 && nr > 0) {
-					stereoImageRaw_left.push_back(left_image);
-					stereoImageRaw_right.push_back(right_image);
-
-					if (stereoImagePoints_left.size() == g_min_images) {
-						_g_calibrationimages_frame->_toolbar->SetButtonStateByindex(TBSTATE_ENABLED, 0/*btn - save document*/, false/*set enabled*/);
-					}
+				if (stereoImagePoints_left.size() == g_min_images) {
+					_g_calibrationimages_frame->_toolbar->SetButtonStateByindex(TBSTATE_ENABLED, 0/*btn - save document*/, false/*set enabled*/);
 				}
 			}
-			else
-			if (ctl->_calib_images_from_files) {
-				++current_N;
-			}
-			else
-			if (ctl->_save_all_calibration_images) {
-				lambda_Save_Images(current_N, 0, 0);
 
-				++current_N;
-			}
+			lambda_Save_Images(std::max((int)current_N, std::max(nl, nr)), nl, nr);
+
+			++current_N;
 
 			g_imageSaveLambda = nullptr;
 		};
@@ -1724,7 +1786,7 @@ return_t __stdcall ConductCalibration(LPVOID lp) {
 	srand((unsigned)time(NULL));
 
 	if (g_configuration._file_log == 2) {
-		VS_FileLog("", /*close*/true);
+		VS_FileLog("", true); // close
 	}
 
 	for (; stereoImagePoints_left.size() >= g_min_images && !g_bTerminated;) {
@@ -1741,60 +1803,35 @@ return_t __stdcall ConductCalibration(LPVOID lp) {
 			number_of_iterations = 64;
 		}
 
-		std::cout << "Calibrating cameras: iterations " << number_of_iterations << std::endl;
+		number_of_iterations = 1;
+		size_t min_images = number_of_iterations > 1 ? g_min_images : stereoImagePoints_left.size();
 
-		if (ctl->_two_step_calibration) {
-			std::cout << "Calibrating cameras: first undistort (because 2 step calibration is selected)" << std::endl;
+		//std::cout << "Calibrating cameras: iterations " << number_of_iterations << std::endl;
 
-			BoostCalibrate(number_of_iterations, cameraMatrix[2], cameraMatrix[3], distortionCoeffs[2], distortionCoeffs[3], rms);
-
-			std::cout << "Undistorting images" << std::endl;
-
-			vector<vector<Point2f>> imagePoints_left2 = imagePoints_left;
-			vector<vector<Point2f>> imagePoints_right2 = imagePoints_right;
-			vector<vector<Point2f>> stereoImagePoints_left2 = stereoImagePoints_left;
-			vector<vector<Point2f>> stereoImagePoints_right2 = stereoImagePoints_right;
-
-			bool ok = !g_bTerminated;
-
-			ok = ok ? ReEvaluateUndistortImagePoints(imageRaw_left, imagePoints_left, cameraMatrix[2], distortionCoeffs[2], *ctl, cv_windows[0]) : false;
-			ok = ok ? ReEvaluateUndistortImagePoints(imageRaw_right, imagePoints_right, cameraMatrix[3], distortionCoeffs[3], *ctl, cv_windows[1]) : false;
-			ok = ok ? ReEvaluateUndistortImagePoints(stereoImageRaw_left, stereoImagePoints_left, cameraMatrix[2], distortionCoeffs[2], *ctl, cv_windows[0], &stereoImagePoints_right, &stereoImageRaw_right) : false;
-			ok = ok ? ReEvaluateUndistortImagePoints(stereoImageRaw_right, stereoImagePoints_right, cameraMatrix[3], distortionCoeffs[3], *ctl, cv_windows[1], &stereoImagePoints_left, &stereoImageRaw_left) : false;
-
-			if (ok) {
-				if (stereoImagePoints_left.size() != stereoImagePoints_right.size() || stereoImagePoints_left.size() < g_min_images) {
-					ok = false;
-				}
-			}
-
-			if (!ok) {
-				imagePoints_left = imagePoints_left2;
-				imagePoints_right = imagePoints_right2;
-				stereoImagePoints_left = stereoImagePoints_left2;
-				stereoImagePoints_right = stereoImagePoints_right2;
-
-				ctl->_two_step_calibration = false;
-				std::cout << "two-step calibration has been canceled" << std::endl;
-			}
-
-			while (ProcessWinMessages());
-
-			if (g_configuration._file_log == 2) {
-				VS_FileLog("", /*close*/true);
-			}
-		}
-
-		std::cout << "Calibrating cameras: single cameras" << std::endl;
-		BoostCalibrate(number_of_iterations, cameraMatrix[0], cameraMatrix[1], distortionCoeffs[0], distortionCoeffs[1], rms);
-
+		//BoostCalibrate("Calibrating cameras: single cameras", 
+		//	number_of_iterations, 
+		//	cameraMatrix[0], cameraMatrix[1], 
+		//	distortionCoeffs[0], distortionCoeffs[1], 
+		//	rms);
 
 		std::cout << "Calibrating stereo camera" << std::endl;
 
 		std::vector<Mat> RVec(number_of_iterations), TVec(number_of_iterations), EVec(number_of_iterations), FVec(number_of_iterations);
+
 		std::vector<Mat> CMVec(number_of_iterations * 2), DCVec(number_of_iterations * 2);
 
-		g_objectPoints.resize(g_min_images, g_objectPoints[0]);
+
+
+		vector<Point3f> objectPoints;
+		for (int i = 0; i < g_boardChessCornersSize.height; ++i) {
+			for (int j = 0; j < g_boardChessCornersSize.width; ++j) {
+				objectPoints.push_back(Point3f(float(j * g_pattern_distance), float(i * g_pattern_distance), 0));
+			}
+		}
+
+		g_objectPoints.resize(min_images, objectPoints);
+
+
 
 		double iteration_rms[256];
 		memset(iteration_rms, 0, sizeof(iteration_rms));
@@ -1806,13 +1843,16 @@ return_t __stdcall ConductCalibration(LPVOID lp) {
 
 		size_t iter_num;
 		for (iter_num = 0; !g_bTerminated && iter_num < number_of_iterations; ++iter_num) {
-			vector<vector<Point2f>> stereoImagePoints_left1(g_min_images);
-			vector<vector<Point2f>> stereoImagePoints_right1(g_min_images);
 
-			SampleImagepoints(stereoImagePoints_left, stereoImagePoints_left1, &stereoImagePoints_right, &stereoImagePoints_right1);
+			vector<vector<Point2f>> stereoImagePoints_left1(min_images);
+			vector<vector<Point2f>> stereoImagePoints_right1(min_images);
+
+			SampleImagepoints(min_images, stereoImagePoints_left, stereoImagePoints_left1, &stereoImagePoints_right, &stereoImagePoints_right1);
 
 			bool fix_intrinsic = ctl->_two_step_calibration && !g_configuration._calib_use_homography;
 			fix_intrinsic = false;
+
+			int calibrateFlags = 0;// CALIB_FIX_INTRINSIC;// CALIB_USE_INTRINSIC_GUESS;
 
 			CMVec[2 * iter_num] = cameraMatrix[0].clone();
 			CMVec[2 * iter_num + 1] = cameraMatrix[1].clone();
@@ -1820,7 +1860,14 @@ return_t __stdcall ConductCalibration(LPVOID lp) {
 			DCVec[2 * iter_num + 1] = distortionCoeffs[1].clone();
 			//rms_s = stereoCalibrate(g_objectPoints, stereoImagePoints_left1, stereoImagePoints_right1, CMVec[2 * iter_num], DCVec[2 * iter_num], CMVec[2 * iter_num + 1], DCVec[2 * iter_num + 1], g_imageSize, RVec[iter_num], TVec[iter_num], EVec[iter_num], FVec[iter_num], CALIB_USE_INTRINSIC_GUESS | CALIB_FIX_K1 | CALIB_FIX_K2 | CALIB_FIX_K3 | CALIB_FIX_K4 | CALIB_FIX_K5 | CALIB_FIX_K6, TermCriteria(TermCriteria::COUNT + TermCriteria::EPS, 300, FLT_EPSILON/*DBL_EPSILON*/)); 
 			//rms_s = stereoCalibrate(g_objectPoints, stereoImagePoints_left1, stereoImagePoints_right1, CMVec[2 * iter_num], DCVec[2 * iter_num], CMVec[2 * iter_num + 1], DCVec[2 * iter_num + 1], g_imageSize, RVec[iter_num], TVec[iter_num], EVec[iter_num], FVec[iter_num], CALIB_USE_INTRINSIC_GUESS, TermCriteria(TermCriteria::COUNT + TermCriteria::EPS, 300, FLT_EPSILON/*DBL_EPSILON*/));
-			rms_s = stereoCalibrate(g_objectPoints, stereoImagePoints_left1, stereoImagePoints_right1, CMVec[2 * iter_num], DCVec[2 * iter_num], CMVec[2 * iter_num + 1], DCVec[2 * iter_num + 1], g_imageSize, RVec[iter_num], TVec[iter_num], EVec[iter_num], FVec[iter_num], fix_intrinsic ? CALIB_FIX_INTRINSIC : CALIB_USE_INTRINSIC_GUESS, TermCriteria(TermCriteria::COUNT + TermCriteria::EPS, 30, 1e-6));
+			rms_s = stereoCalibrate(g_objectPoints, 
+				stereoImagePoints_left1, stereoImagePoints_right1, 
+				CMVec[2 * iter_num], DCVec[2 * iter_num], 
+				CMVec[2 * iter_num + 1], DCVec[2 * iter_num + 1], 
+				g_imageSize, 
+				RVec[iter_num], TVec[iter_num], EVec[iter_num], FVec[iter_num], 
+				calibrateFlags,
+				TermCriteria(TermCriteria::COUNT + TermCriteria::EPS, 30, 1e-6));
 
 			iteration_rms[iter_num] = rms_s;
 			if (max_rms < rms_s) {
@@ -1885,61 +1932,11 @@ return_t __stdcall ConductCalibration(LPVOID lp) {
 		}
 
 
-		//if(ctl->_two_step_calibration) {
-		//	rms[0] = CalibrateSingleCamera(imagePoints_left, cameraMatrix[2], distortionCoeffs[2]);
-		//	rms[1] = CalibrateSingleCamera(imagePoints_right, cameraMatrix[3], distortionCoeffs[3]);
-
-		//	while(ProcessWinMessages());
-
-		//	vector<vector<Point2f>> imagePoints_left2 = imagePoints_left;
-		//	vector<vector<Point2f>> imagePoints_right2 = imagePoints_right;
-		//	vector<vector<Point2f>> stereoImagePoints_left2 = stereoImagePoints_left;
-		//	vector<vector<Point2f>> stereoImagePoints_right2 = stereoImagePoints_right;
-
-		//	bool ok = true; 
-
-		//	ok = ok? ReEvaluateUndistortImagePoints(imageRaw_left, imagePoints_left, cameraMatrix[2], distortionCoeffs[2], *ctl, cv_windows[0]): false;
-		//	ok = ok? ReEvaluateUndistortImagePoints(imageRaw_right, imagePoints_right, cameraMatrix[3], distortionCoeffs[3], *ctl, cv_windows[1]): false;
-		//	ok = ok? ReEvaluateUndistortImagePoints(stereoImageRaw_left, stereoImagePoints_left, cameraMatrix[2], distortionCoeffs[2], *ctl, cv_windows[0]): false;
-		//	ok = ok? ReEvaluateUndistortImagePoints(stereoImageRaw_right, stereoImagePoints_right, cameraMatrix[3], distortionCoeffs[3], *ctl, cv_windows[1]): false;
-
-		//	if(!ok) {
-		//		imagePoints_left = imagePoints_left2;
-		//		imagePoints_right = imagePoints_right2;
-		//		stereoImagePoints_left = stereoImagePoints_left2;
-		//		stereoImagePoints_right = stereoImagePoints_right2;
-
-		//		ctl->_two_step_calibration = false; 
-		//		std::cout << "two-step calibration has been canceled" << std::endl;
-		//	}
-		//}
-
-		//rms[0] = CalibrateSingleCamera(imagePoints_left, cameraMatrix[0], distortionCoeffs[0]);
-		//rms[1] = CalibrateSingleCamera(imagePoints_right, cameraMatrix[1], distortionCoeffs[1]);
-
-		//while(ProcessWinMessages());
-
-		//g_objectPoints.resize(stereoImagePoints_left.size(), g_objectPoints[0]);
-
-		////rms_s = stereoCalibrate(g_objectPoints, stereoImagePoints_left, stereoImagePoints_right, cameraMatrix[0], distortionCoeffs[0], cameraMatrix[1], distortionCoeffs[1], g_imageSize, R, T, E, F);
-		//rms_s = stereoCalibrate(g_objectPoints, stereoImagePoints_left, stereoImagePoints_right, cameraMatrix[0], distortionCoeffs[0], cameraMatrix[1], distortionCoeffs[1], g_imageSize, R, T, E, F, TermCriteria(TermCriteria::COUNT + TermCriteria::EPS, 300, FLT_EPSILON/*8DBL_EPSILON*/), CALIB_USE_INTRINSIC_GUESS | CALIB_FIX_K1 | CALIB_FIX_K2 | CALIB_FIX_K3 | CALIB_FIX_K4 | CALIB_FIX_K5 | CALIB_FIX_K6);
-		////rms_s = stereoCalibrate(g_objectPoints, stereoImagePoints_left, stereoImagePoints_right, cameraMatrix[0], distortionCoeffs[0], cameraMatrix[1], distortionCoeffs[1], g_imageSize, R, T, E, F, TermCriteria(TermCriteria::COUNT + TermCriteria::EPS, 300, FLT_EPSILON/*8DBL_EPSILON*/), CALIB_USE_INTRINSIC_GUESS);
-
-		//while(ProcessWinMessages());
-
-		//std::cout << "Re-projection error for left camera: " << rms[0] << std::endl;
-		//std::cout << "Re-projection error for right camera: " << rms[1] << std::endl;
-		//std::cout << "Re-projection error for stereo camera: " << rms_s << std::endl;
-
-
-
-		cv::Size rectified_image_size(g_imageSize.width * 6 / 4, g_imageSize.height * 6 / 4);
-		rectified_image_size = g_imageSize;
+		cv::Size rectified_image_size = g_imageSize;
 
 		Mat Rl, Rr, Pl, Pr, Q;
 		//cv::stereoRectify(cameraMatrix[0], distortionCoeffs[0], cameraMatrix[1], distortionCoeffs[1], g_imageSize, R, T, Rl, Rr, Pl, Pr, Q, 0);
 
-		//rectified_image_size = g_imageSize; 
 		//cv::stereoRectify(cameraMatrix[0], distortionCoeffs[0], cameraMatrix[1], distortionCoeffs[1], g_imageSize, R, T, Rl, Rr, Pl, Pr, Q, 0, 0);
 
 		//cv::stereoRectify(cameraMatrix[0], distortionCoeffs[0], cameraMatrix[1], distortionCoeffs[1], g_imageSize, R, T, Rl, Rr, Pl, Pr, Q, 0, 0, rectified_image_size);
@@ -2014,40 +2011,6 @@ return_t __stdcall ConductCalibration(LPVOID lp) {
 	return 0;
 }
 
-
-return_t __stdcall AcquireImagepointsWorkItem(LPVOID lp) {
-	SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
-	try {
-		AcquireImagepoints(lp);
-	}
-	catch(Exception& ex) {
-		std::cout << "AcquireImagepoints:" << ' ' << ex.msg << std::endl;
-		((SImageAcquisitionCtl*)lp)->_imagepoints_status = 0;
-	}
-	SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_NORMAL);
-	return 0;
-}
-
-
-void launch_AcquireImages_calibration(SImageAcquisitionCtl& ctl, SPointsReconstructionCtl*) {
-	int exposure_times[2] = {ctl._exposure_times[0], ctl._exposure_times[1]};
-
-	if(g_bCamerasAreOk && !ctl._calib_images_from_files && !g_bTerminated) {
-		OpenCameras(ctl);
-	}
-
-	ctl._exposure_times[0] = exposure_times[0];
-	ctl._exposure_times[1] = exposure_times[1];
-
-	if((g_bCamerasAreOk || ctl._calib_images_from_files) && !g_bTerminated) {
-		ctl._imagepoints_status = -1;
-		ctl._terminated = 0;
-		if(g_bCamerasAreOk && !ctl._calib_images_from_files) {
-			ctl._status = -1;
-			QueueWorkItem(AcquireImages, &ctl);
-		}
-	}
-}
 
 
 void CalibrateCameras(StereoConfiguration& configuration, SImageAcquisitionCtl& image_acquisition_ctl) {

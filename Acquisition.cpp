@@ -556,7 +556,7 @@ void SquareImage_Likeness(Mat& image, uchar chIdeal[3]) {
 
 
 
-bool GetImagesFromFile(Mat& left_image, Mat& right_image, const std::string& current_N) {
+bool GetImagesFromFile(Mat& left_image, Mat& right_image, std::vector<cv::Point2d>& pointsLeft, std::vector<cv::Point2d>& pointsRight, const std::string& current_N) {
 	std::string nl = current_N;
 	std::string nr = current_N;
 
@@ -570,10 +570,28 @@ bool GetImagesFromFile(Mat& left_image, Mat& right_image, const std::string& cur
 	left_image.resize(0);
 	right_image.resize(0);
 
-	FileStorage fs(std::string(g_path_calib_images_dir) + current_N + ".xml", FileStorage::READ);
-	fs["left_image"] >> left_image;
-	fs["right_image"] >> right_image;
-	fs.release();
+	pointsLeft.resize(0);
+	pointsRight.resize(0);
+
+	std::string xmlFilename = std::string(g_path_calib_images_dir) + current_N + ".xml";
+
+	std::cout << "Getting content from " << xmlFilename << std::endl;
+
+	try {
+		FileStorage fs(xmlFilename, FileStorage::READ);
+		if (fs.state != 0) {
+			std::cout << "Got content" << std::endl;
+			fs["left_image"] >> left_image;
+			fs["right_image"] >> right_image;
+			fs["left_points"] >> pointsLeft;
+			fs["right_points"] >> pointsRight;
+			fs.release();
+			std::cout << "Got images" << std::endl;
+		}
+	}
+	catch (...) {
+
+	}
 
 	if (left_image.rows == 0 || left_image.cols == 0) {
 		left_image = imread(std::string(g_path_calib_images_dir) + nl + 'l' + "-chess.png", ImreadModes::IMREAD_ANYDEPTH); // Mar.4 2015.
@@ -583,10 +601,10 @@ bool GetImagesFromFile(Mat& left_image, Mat& right_image, const std::string& cur
 	}
 
 	if (left_image.rows == 0 || left_image.cols == 0) {
-		left_image = imread(std::string(g_path_calib_images_dir) + nl + 'l' + ".jpg", ImreadModes::IMREAD_ANYDEPTH); // Mar.4 2015.
+		left_image = imread(std::string(g_path_calib_images_dir) + nl + 'l' + ".png", ImreadModes::IMREAD_ANYDEPTH | ImreadModes::IMREAD_ANYCOLOR); // Mar.4 2015.
 	}
 	if (right_image.rows == 0 || right_image.cols == 0) {
-		right_image = imread(std::string(g_path_calib_images_dir) + nr + 'r' + ".jpg", ImreadModes::IMREAD_ANYDEPTH); // Mar.4 2015.
+		right_image = imread(std::string(g_path_calib_images_dir) + nr + 'r' + ".png", ImreadModes::IMREAD_ANYDEPTH | ImreadModes::IMREAD_ANYCOLOR); // Mar.4 2015.
 	}
 
 	if (left_image.rows == 0 || left_image.cols == 0) {
