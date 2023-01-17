@@ -561,6 +561,7 @@ struct SFeatureDetectorCtl {
 	bool volatile _image_isvalid;
 
 	cv::Ptr<cv::FeatureDetector> _detector;
+	double _saturationFactor;
 
 	cv::Mat _image; // input to FeatureDetector
 
@@ -580,7 +581,7 @@ struct SFeatureDetectorCtl {
 	long long _last_image_timestamp;
 
 
-	SFeatureDetectorCtl() : _status(1), _terminated(0), _data_isvalid(false), _image_isvalid(false), _last_image_timestamp(0) {
+	SFeatureDetectorCtl() : _status(1), _terminated(0), _data_isvalid(false), _image_isvalid(false), _last_image_timestamp(0), _saturationFactor(1.0) {
 	}
 
 	SFeatureDetectorCtl(cv::Mat& image) : SFeatureDetectorCtl() {

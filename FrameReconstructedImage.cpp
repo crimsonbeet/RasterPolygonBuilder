@@ -251,7 +251,9 @@ void FrameReconstructedImage::OnChangeFrameState(SReBar& rebar, int state) {
 
 void FrameReconstructedImage::OnPaint(SOnDrawParams& params) {
 	if(_g_images_frame->_ready) {
-		IPCSetLogHandler(_g_images_frame->_hwnd);
+		if (!g_bTerminated) {
+			IPCSetLogHandler(_g_images_frame->_hwnd);
+		}
 	}
 }
 

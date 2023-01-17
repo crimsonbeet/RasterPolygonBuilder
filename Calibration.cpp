@@ -576,6 +576,12 @@ return_t __stdcall DetectBlackSquaresVia_ColorDistribution(LPVOID lp) {
 			cv::Mat stdDev;
 			cv::Mat factorLoadings;
 
+			if (ctl->_saturationFactor != 0.0) {
+				for (auto& mean : mean_data) {
+					mean *= ctl->_saturationFactor; 
+				}
+			}
+
 			StandardizeImage_Likeness(image, mean, stdDev, factorLoadings, invCovar, invCholesky);
 
 			image = mat_loginvert2word(image);
@@ -887,7 +893,7 @@ return_t __stdcall BuildChessGridCorners(LPVOID lp) {
 				std::vector<int> dist_levels(cornersBufMapped.size(), -1);
 				int	clusters_count = std::numeric_limits<int>::max();
 				const int centroids_count = g_boardChessCornersSize.width * g_boardChessCornersSize.height;
-				int dist = grayscale.cols / (g_boardChessCornersSize.width * 2);
+				int dist = grayscale.cols / (g_boardChessCornersSize.width * 4);
 				while (clusters_count > centroids_count) {
 					const int squared_dist = dist * dist + 1;
 					partitionEx(cornersBufMapped, dist_levels, [squared_dist](const Point2f& one, const Point2f& another) -> bool {
@@ -902,7 +908,6 @@ return_t __stdcall BuildChessGridCorners(LPVOID lp) {
 				if (ylevel_maxwidth < dist) {
 					ylevel_maxwidth = dist;
 				}
-
 
 				vector<Point2f> edgesMapped;
 
@@ -963,25 +968,47 @@ return_t __stdcall BuildChessGridCorners(LPVOID lp) {
 				cv::imwrite(name, image1, compression_params);
 			}
 
+
+			vector<Point2f> edgesMax(edgesMappedBuf.size() ? g_boardChessCornersSize.width * g_boardChessCornersSize.height : 0);
+			vector<Point2f> edgesMin(edgesMappedBuf.size() ? g_boardChessCornersSize.width * g_boardChessCornersSize.height : 0, Point2f(std::numeric_limits<float>::max(), std::numeric_limits<float>::max()));
+			vector<Point2f> edgesDif(edgesMappedBuf.size() ? g_boardChessCornersSize.width * g_boardChessCornersSize.height : 0);
+
+
 			vector<Point2f> edgesMapped(edgesMappedBuf.size() ? g_boardChessCornersSize.width * g_boardChessCornersSize.height : 0);
 			for (auto& edges : edgesMappedBuf) {
 				std::sort(edges.begin(), edges.end(), [ylevel_maxwidth](const Point2f& one, const Point2f& another) -> bool {
-					return one.y < (another.y - ylevel_maxwidth) || (std::abs(one.y - another.y) < ylevel_maxwidth && one.x < another.x);
+					if (one.y < (another.y - ylevel_maxwidth)) return true;
+					if (one.y > (another.y + ylevel_maxwidth)) return false;
+					if (one.x < another.x) return true;
+					return false;
+					//return one.y < (another.y - ylevel_maxwidth) || (std::abs(one.y - another.y) < ylevel_maxwidth && one.x < another.x);
 				});
-				vector<Point2f>::iterator it = edgesMapped.begin();
-				for_each(edges.begin(), edges.end(), [&it](const Point2f& point) -> void {
-					(*it).x += point.x;
-				(*it).y += point.y;
-				++it;
-				});
+				for (size_t j = 0; j < edges.size(); ++j) {
+					auto& p = edges[j];
+					edgesMapped[j].x += p.x;
+					edgesMapped[j].y += p.y;
+					if (p.x > edgesMax[j].x) edgesMax[j].x = p.x;
+					if (p.y > edgesMax[j].y) edgesMax[j].y = p.y;
+					if (p.x < edgesMin[j].x) edgesMin[j].x = p.x;
+					if (p.y < edgesMin[j].y) edgesMin[j].y = p.y;
+				}
 			}
 			for (auto& point : edgesMapped) {
 				point *= 1.0 / (double)edgesMappedBuf.size();
 			}
 
+			
+			std::transform(edgesMax.begin(), edgesMax.end(), edgesMin.begin(), edgesDif.begin(), [](Point2f& a, Point2f& b) ->Point2f { return a - b; });
+			float maxDiff_x = std::max_element(edgesDif.begin(), edgesDif.end(), [](Point2f& a, Point2f& b) ->bool { return a.x < b.x; })->x * 2;
+			float maxDiff_y = std::max_element(edgesDif.begin(), edgesDif.end(), [](Point2f& a, Point2f& b) ->bool { return a.y < b.y; })->y * 2;
+
+			if (maxDiff_x < 2) maxDiff_x = 2;
+			if (maxDiff_y < 2) maxDiff_y = 2;
+
+
 			try {
 				if (edgesMapped.size() && ylevel_maxwidth) {
-					cv::cornerSubPix(grayscale, edgesMapped, Size(ylevel_maxwidth / 3, ylevel_maxwidth / 3)/*window size*/, Size(-1, -1)/*no zero zone*/, TermCriteria(TermCriteria::EPS + TermCriteria::COUNT, 40, 0.001));
+					cv::cornerSubPix(grayscale, edgesMapped, Size(maxDiff_x * 2, maxDiff_y * 2)/*window size*/, Size(-1, -1)/*no zero zone*/, TermCriteria(TermCriteria::EPS + TermCriteria::COUNT, 40, 0.001));
 				}
 			}
 			catch (Exception& ex) {
@@ -1018,10 +1045,10 @@ return_t __stdcall BuildChessGridCorners(LPVOID lp) {
 					point.x += approxBoundingRectMapped.x;
 					point.y += approxBoundingRectMapped.y;
 				}
-				std::sort(edgesMapped.begin(), edgesMapped.end(), [](const cv::Point2f& left, const cv::Point2f& right) ->bool {
-					if (left.y < (right.y - 5)) return true;
-					if (left.y > (right.y + 5)) return false;
-					if (left.x <= right.x) return true;
+				std::sort(edgesMapped.begin(), edgesMapped.end(), [&maxDiff_y, &maxDiff_x](const cv::Point2f& left, const cv::Point2f& right) ->bool {
+					if (left.y < (right.y - maxDiff_y)) return true;
+					if (left.y > (right.y + maxDiff_y)) return false;
+					if (left.x < (right.x - maxDiff_x)) return true;
 					return false;
 				});
 
@@ -1030,7 +1057,7 @@ return_t __stdcall BuildChessGridCorners(LPVOID lp) {
 
 				Mat grayscale;
 				normalize(image, grayscale, 0, 255, NORM_MINMAX, CV_8UC1, Mat());
-				cv::cornerSubPix(grayscale, edgesBuf, Size(5, 5)/*window size*/, Size(-1, -1)/*no zero zone*/, TermCriteria(CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, 40, 0.001));
+				cv::cornerSubPix(grayscale, edgesBuf, Size(10, 10)/*window size*/, Size(-1, -1)/*no zero zone*/, TermCriteria(CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, 40, 0.001));
 			}
 			else {
 				static int x = 0;
@@ -1059,10 +1086,11 @@ return_t __stdcall BuildChessGridCorners(LPVOID lp) {
 
 
 
-bool ExtractCornersOfChessPattern(Mat *imagesInp, vector<Point2d> *pointBufs, const size_t N, ClassBlobDetector& blobDetector) {
+bool ExtractCornersOfChessPattern(Mat *imagesInp, vector<Point2d> *pointBufs, const size_t N, double saturationFactor, ClassBlobDetector& blobDetector) {
 
 	SFeatureDetectorCtl controls[3] = { SFeatureDetectorCtl(imagesInp[0].clone()), SFeatureDetectorCtl(N > 1? imagesInp[1].clone(): Mat()), SFeatureDetectorCtl(N > 2 ? imagesInp[2].clone() : Mat()) };
 	for (auto& ctl : controls) {
+		ctl._saturationFactor = saturationFactor;
 		ctl._detector = new ClassBlobDetector(blobDetector, &ctl);
 		ctl._status = 0;
 	}
@@ -1072,6 +1100,8 @@ bool ExtractCornersOfChessPattern(Mat *imagesInp, vector<Point2d> *pointBufs, co
 	std::function<void()> runMessagePipe = [&]() {
 		int status = 0;
 		do {
+			while (ProcessWinMessages(10));
+
 			for (auto& ctl : controls) {
 				if (ctl._image_isvalid) {
 
@@ -1095,11 +1125,7 @@ bool ExtractCornersOfChessPattern(Mat *imagesInp, vector<Point2d> *pointBufs, co
 
 					cv::imshow(ctl._outputWindow, image1);
 				}
-
-				while (ProcessWinMessages());
 			}
-
-			while (ProcessWinMessages(10));
 
 			status = 0;
 			for (auto& ctl : controls) status += ctl._status;
@@ -1163,22 +1189,46 @@ bool ExtractCornersOfChessPattern(Mat *imagesInp, vector<Point2d> *pointBufs, co
 	for (int j = 0; j < ARRAY_NUM_ELEMENTS(controls); ++j) 
 		if(pointBufs[j].size() == tartgetNumberOfCorners) ++okCount;
 
-	return okCount > 0;
+	return okCount == N;
 }
 
-bool DetectChessGrid(Mat *images, vector<Point2d> *pointBufs, const size_t N, ClassBlobDetector& blobDetector) {
+bool DetectChessGrid(Mat *images, vector<Point2d> *pointBufs, const size_t N, double saturationFactor, ClassBlobDetector& blobDetector) {
 	for (size_t x = 0; x < N; ++x) pointBufs[x].clear();
-	bool found = ExtractCornersOfChessPattern(images, pointBufs, N, blobDetector);
+	bool found = ExtractCornersOfChessPattern(images, pointBufs, N, saturationFactor, blobDetector);
 	return found;
 }
 
 
 bool buildPointsFromImages(Mat* images, vector<Point2d>* pointBufs, const size_t N, SImageAcquisitionCtl& ctl, double min_confidence, size_t min_repeatability) {
+	const int tartgetNumberOfCorners = g_boardChessCornersSize.width * g_boardChessCornersSize.height;
 	ClassBlobDetector blobDetector = ClassBlobDetector(min_confidence, min_repeatability, 40, ctl._pattern_is_whiteOnBlack, ctl._pattern_is_chessBoard);
 	bool found = false;
 	if (images[0].data) {
 		g_imageSize = images[0].size();
-		found = DetectChessGrid(images, pointBufs, N, blobDetector);
+		double saturationFactors[6] = { 1.0, 1.1, 1.2, 1.3, 1.4, 1.5 };
+		std::vector<vector<Point2d>> foundBufs(N);
+		for (auto saturationFactor : saturationFactors) {
+			found = DetectChessGrid(images, pointBufs, N, saturationFactor, blobDetector);
+			if (found) {
+				break;
+			}
+
+			for (size_t j = 0; j < N; ++j) {
+				if (pointBufs[j].size() == tartgetNumberOfCorners) {
+					foundBufs[j] = pointBufs[j];
+				}
+			}
+			int okCount = 0;
+			for (size_t j = 0; j < N; ++j) {
+				if (foundBufs[j].size() == tartgetNumberOfCorners) {
+					++okCount;
+				}
+			}
+			found == okCount == N;
+			if (found) {
+				break;
+			}
+		}
 	}
 
 	return found;
@@ -1207,7 +1257,7 @@ double calc_betweenimages_rmse(vector<Point2d>& image1, vector<Point2d>& image2)
 
 
 
-std::vector<bool> EvaluateImagePoints(cv::Mat cv_images[2], std::vector<std::vector<cv::Point2d>> imagePoints[2], SImageAcquisitionCtl& ctl, double min_confidence = 0.4, size_t min_repeatability = 3) {
+std::vector<bool> EvaluateImagePoints(cv::Mat cv_images[2], std::vector<std::vector<cv::Point2d>> imagePoints[2], SImageAcquisitionCtl& ctl, double min_confidence = 0.4, size_t min_repeatability = 2) {
 	constexpr int N = 2;
 
 	std::vector<bool> is_ok(N, false);
@@ -1324,6 +1374,7 @@ vector<Point2f> ImagePoints2d_To_ImagePoints2f(vector<Point2d>& imagePoints2d_sr
 void SampleImagepoints(const size_t N, vector<vector<Point2d>>& imagePoints_src, vector<vector<Point2f>>& imagePoints_dst, vector<vector<Point2d>> *imagePoints_src2 = 0, vector<vector<Point2f>> *imagePoints_dst2 = 0) {
 	std::vector<size_t> x;
 	x.reserve(N);
+	//size_t researchPos[18] = { 1, 2, 3, 4, 6, 9, 14, 17, 18, 20, 21, 22, 23, 24, 11, 12, 8, 10 };// , 19};
 	for(size_t j = 0; j < N;) {
 		if (N != imagePoints_src.size()) {
 			size_t pos = (size_t)(__int64)rand() % imagePoints_src.size();
@@ -1331,6 +1382,11 @@ void SampleImagepoints(const size_t N, vector<vector<Point2d>>& imagePoints_src,
 				x.push_back(pos);
 				++j;
 			}
+			//size_t pos = (size_t)(__int64)rand() % ARRAY_NUM_ELEMENTS(researchPos);
+			//if (std::find(x.begin(), x.end(), researchPos[pos]) == x.end()) {
+			//	x.push_back(researchPos[pos]);
+			//	++j;
+			//}
 		}
 		else {
 			x.push_back(j);
@@ -1343,7 +1399,9 @@ void SampleImagepoints(const size_t N, vector<vector<Point2d>>& imagePoints_src,
 		imagePoints_dst2->reserve(N);
 		imagePoints_dst2->resize(0);
 	}
+	std::ostringstream ostr;
 	for(auto pos : x) {
+		ostr << pos << ' ';
 		imagePoints_dst.push_back(ImagePoints2d_To_ImagePoints2f(imagePoints_src[pos]));
 		if(imagePoints_src2 && imagePoints_dst2) { 
 			if(imagePoints_src2->size() > pos) {
@@ -1351,6 +1409,7 @@ void SampleImagepoints(const size_t N, vector<vector<Point2d>>& imagePoints_src,
 			}
 		}
 	}
+	std::cout << "sample: " << ostr.str() << std::endl;
 }
 
 
@@ -1597,7 +1656,6 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 	while (ProcessWinMessages());
 
 	size_t current_N = 1; 
-	size_t min_repeatability = 3; 
 
 	ctl->_imagepoints_status = 1;
 
@@ -1625,43 +1683,48 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 		int nr = imagePoints[1].size() - 1;
 
 
-		if(ctl->_calib_images_from_files) {
-			bool isOk = false;
-			g_imageGetFromFilesLambda = [&]() {
-				isOk = GetImagesFromFile(left_image, right_image, imagePoints[0][nl], imagePoints[1][nr], std::to_string(current_N));
-				g_imageGetFromFilesLambda = nullptr;
-			};
+		bool imagesFromFilesAreOk = false;
 
-			QueueWorkItem(GetImagesImagesWorkItem);
-			while (g_imageGetFromFilesLambda != nullptr) {
-				ProcessWinMessages(10);
-			}
+		g_imageGetFromFilesLambda = [&]() {
+			imagesFromFilesAreOk = GetImagesFromFile(left_image, right_image, imagePoints[0][nl], imagePoints[1][nr], std::to_string(current_N));
+			g_imageGetFromFilesLambda = nullptr;
+		};
 
-			if (!isOk) {
+		QueueWorkItem(GetImagesImagesWorkItem);
+		while (g_imageGetFromFilesLambda != nullptr) {
+			ProcessWinMessages(10);
+		}
+
+		if (ctl->_calib_images_from_files) {
+			if (!imagesFromFilesAreOk) {
 				break;
 			}
 
-			min_repeatability = 2; 
-			//g_boardChessSize = Size(4/*points_per_row*/, 7/*points_per_colum*/); 
 		}
 		else 
 		if(g_configuration._calib_auto_image_capture) {
-			std::cout << "Getting images" << std::endl;
-			if(!GetImages(left_image, right_image, &image_localtime, (int)g_rotating_buf_size - 1)) {
-				continue;
+			if (!imagesFromFilesAreOk) {
+				std::cout << "Getting images" << std::endl;
+				if (!GetImages(left_image, right_image, &image_localtime, (int)g_rotating_buf_size - 1)) {
+					continue;
+				}
+				std::cout << "Images Ok" << std::endl;
 			}
-			std::cout << "Images Ok" << std::endl;
+
 		}
 		else
-		if(!GetImagesEx(left_image, right_image, &image_localtime, 1)) {
-			continue;
+		if (!imagesFromFilesAreOk) {
+			if (!GetImagesEx(left_image, right_image, &image_localtime, 1)) {
+				continue;
+			}
+
 		}
 
 		VisualizeCapturedImages(left_image, right_image);
 
 		std::vector<bool> image_ok = { imagePoints[0][nl].size() != 0, imagePoints[1][nr].size() != 0 };
 		if (!image_ok[0] && !image_ok[1]) {
-			image_ok = EvaluateImagePoints(images, imagePoints, *ctl, g_configuration._calib_min_confidence, min_repeatability);
+			image_ok = EvaluateImagePoints(images, imagePoints, *ctl, g_configuration._calib_min_confidence);
 		}
 		else {
 			g_imageSize = images[0].size();
@@ -1697,10 +1760,10 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 		}
 
 
-		auto lambda_Save_Images = [&ctl , &imagePoints, &images, current_N](size_t N, int nl, int nr) {
+		auto lambda_Save_Images = [&](size_t N, int nl, int nr) {
 			MyCreateDirectory(g_path_calib_images_dir, "AcquireImagepointsEx");
 
-			if (ctl->_save_all_calibration_images && !ctl->_calib_images_from_files) {
+			if (ctl->_save_all_calibration_images && !imagesFromFilesAreOk) {
 				if (current_N == 1) {
 					Delete_FilesInDirectory(g_path_calib_images_dir);
 					while (ProcessWinMessages());
@@ -1747,10 +1810,10 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 					_g_calibrationimages_frame->_toolbar->SetButtonStateByindex(TBSTATE_ENABLED, 0/*btn - save document*/, false/*set enabled*/);
 				}
 			}
-
-			lambda_Save_Images(std::max((int)current_N, std::max(nl, nr)), nl, nr);
-
-			++current_N;
+			if (nl > 0 || nr > 0) {
+				lambda_Save_Images(std::max((int)current_N, std::max(nl, nr)), nl, nr);
+				++current_N;
+			}
 
 			g_imageSaveLambda = nullptr;
 		};
@@ -1793,7 +1856,7 @@ return_t __stdcall ConductCalibration(LPVOID lp) {
 		Mat cameraMatrix[4];
 		Mat distortionCoeffs[4];
 
-		double rms[2];
+		//double rms[2];
 		double rms_s = 0;
 
 		Mat R, T, E, F;
@@ -1803,10 +1866,13 @@ return_t __stdcall ConductCalibration(LPVOID lp) {
 			number_of_iterations = 64;
 		}
 
-		number_of_iterations = 1;
-		size_t min_images = number_of_iterations > 1 ? g_min_images : stereoImagePoints_left.size();
 
-		//std::cout << "Calibrating cameras: iterations " << number_of_iterations << std::endl;
+
+		std::cout << "Calibrating cameras: iterations " << number_of_iterations << std::endl;
+
+
+
+		size_t min_images = number_of_iterations > 1 ? g_min_images : stereoImagePoints_left.size();
 
 		//BoostCalibrate("Calibrating cameras: single cameras", 
 		//	number_of_iterations, 
@@ -1814,7 +1880,6 @@ return_t __stdcall ConductCalibration(LPVOID lp) {
 		//	distortionCoeffs[0], distortionCoeffs[1], 
 		//	rms);
 
-		std::cout << "Calibrating stereo camera" << std::endl;
 
 		std::vector<Mat> RVec(number_of_iterations), TVec(number_of_iterations), EVec(number_of_iterations), FVec(number_of_iterations);
 
@@ -1830,6 +1895,10 @@ return_t __stdcall ConductCalibration(LPVOID lp) {
 		}
 
 		g_objectPoints.resize(min_images, objectPoints);
+
+
+
+		std::cout << "Calibrating stereo camera" << std::endl;
 
 
 
@@ -1867,7 +1936,7 @@ return_t __stdcall ConductCalibration(LPVOID lp) {
 				g_imageSize, 
 				RVec[iter_num], TVec[iter_num], EVec[iter_num], FVec[iter_num], 
 				calibrateFlags,
-				TermCriteria(TermCriteria::COUNT + TermCriteria::EPS, 30, 1e-6));
+				TermCriteria(TermCriteria::COUNT + TermCriteria::EPS, 10, FLT_EPSILON));
 
 			iteration_rms[iter_num] = rms_s;
 			if (max_rms < rms_s) {
@@ -1960,10 +2029,10 @@ return_t __stdcall ConductCalibration(LPVOID lp) {
 		cv::initUndistortRectifyMap(cameraMatrix[0], distortionCoeffs[0], Rl, Pl, rectified_image_size, CV_16SC2/*CV_32F*/, map_l[0], map_l[1]);
 		cv::initUndistortRectifyMap(cameraMatrix[1], distortionCoeffs[1], Rr, Pr, rectified_image_size, CV_16SC2/*CV_32F*/, map_r[0], map_r[1]);
 
-		if (ctl->_two_step_calibration) {
-			cv::initUndistortRectifyMap(cameraMatrix[2], distortionCoeffs[2], cv::Mat(), cv::getOptimalNewCameraMatrix(cameraMatrix[2], distortionCoeffs[2], g_imageSize, 0), g_imageSize, CV_16SC2/*CV_32F*/, map_l[2], map_l[3]);
-			cv::initUndistortRectifyMap(cameraMatrix[3], distortionCoeffs[3], cv::Mat(), cv::getOptimalNewCameraMatrix(cameraMatrix[3], distortionCoeffs[3], g_imageSize, 0), g_imageSize, CV_16SC2/*CV_32F*/, map_r[2], map_r[3]);
-		}
+		//if (ctl->_two_step_calibration) {
+		//	cv::initUndistortRectifyMap(cameraMatrix[2], distortionCoeffs[2], cv::Mat(), cv::getOptimalNewCameraMatrix(cameraMatrix[2], distortionCoeffs[2], g_imageSize, 0), g_imageSize, CV_16SC2/*CV_32F*/, map_l[2], map_l[3]);
+		//	cv::initUndistortRectifyMap(cameraMatrix[3], distortionCoeffs[3], cv::Mat(), cv::getOptimalNewCameraMatrix(cameraMatrix[3], distortionCoeffs[3], g_imageSize, 0), g_imageSize, CV_16SC2/*CV_32F*/, map_r[2], map_r[3]);
+		//}
 
 		FileStorage fs(".\\stereo_calibrate.xml", FileStorage::WRITE);
 
