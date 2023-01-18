@@ -40,7 +40,7 @@ const char ESC_KEY = 27;
 const char* g_path_vsconfiguration = ".\\VSWorkConfiguration.txt";
 const char* g_path_defaultvsconfiguration = "VSConfiguration.txt";
 const char* g_path_connectconfiguration = ".\\connection.txt";
-const char* g_path_calib_images_dir = ".\\Calibimages-Development\\";
+const char* g_path_calib_images_dir = "G:\\Calibimages-Development\\";
 const char* g_path_nwpu_images_dir = ".\\nwpu_images\\";
 
 const char* g_path_calibrate_file = ".\\stereo_calibrate.xml";

@@ -58,7 +58,7 @@ std::string cv_windows[6];
 
 
 
-void DrawImageAndBoard(const std::string& aname, const std::string& window_name, Mat& cv_image, const vector<Point2d>& board) {
+void DrawImageAndBoard(const std::string& aName, const std::string& window_name, Mat& cv_image, const vector<Point2d>& board) {
 	Mat cv_image1;
 
 	while (ProcessWinMessages());
@@ -91,9 +91,9 @@ void DrawImageAndBoard(const std::string& aname, const std::string& window_name,
 	cv_image1 *= std::max(256 / (int)g_bytedepth_scalefactor, 1);
 
 	int baseLine = 0;
-	Size textSize = getTextSize(aname.c_str(), 1, 5, 5, &baseLine);
+	Size textSize = getTextSize(aName.c_str(), 1, 5, 5, &baseLine);
 	Point textOrigin(cv_image1.cols - textSize.width - 50, cv_image1.rows - 2 * baseLine - 10);
-	putText(cv_image1, aname.c_str(), textOrigin, FONT_HERSHEY_SCRIPT_SIMPLEX, 3, Scalar(0, 0, 255 * 255), 5);
+	putText(cv_image1, aName.c_str(), textOrigin, FONT_HERSHEY_SCRIPT_SIMPLEX, 3, Scalar(0, 0, 255 * 255), 5);
 
 	try {
 		cv::imshow(window_name.c_str(), cv_image1);
@@ -808,7 +808,7 @@ return_t __stdcall BuildChessMinEnclosingQuadrilateral(LPVOID lp) {
 				compression_params.push_back(0);
 
 
-				cv::imwrite(std::string(g_path_calib_images_dir) + "ST1-ChessPattern-enclose.png", image1, compression_params);
+				cv::imwrite(std::string(g_path_calib_images_dir) + "ST1-" + ctl->_outputWindow + "-ChessPattern-enclose.png", image1, compression_params);
 			}
 		}
 		else {
@@ -868,7 +868,7 @@ return_t __stdcall BuildChessGridCorners(LPVOID lp) {
 			vector<vector<Point2f>> edgesMappedBuf;
 			int ylevel_maxwidth = 0;
 
-			for (int level = 120; level < 200; level += 10) {
+			for (int level = 90; level < 180; level += 10) {
 
 				Mat binImage;
 				threshold(grayscale, binImage, level, 255, THRESH_BINARY);
@@ -893,11 +893,20 @@ return_t __stdcall BuildChessGridCorners(LPVOID lp) {
 				std::vector<int> dist_levels(cornersBufMapped.size(), -1);
 				int	clusters_count = std::numeric_limits<int>::max();
 				const int centroids_count = g_boardChessCornersSize.width * g_boardChessCornersSize.height;
-				int dist = grayscale.cols / (g_boardChessCornersSize.width * 4);
+				int dist = grayscale.cols / (g_boardChessCornersSize.width * 3);
 				while (clusters_count > centroids_count) {
-					const int squared_dist = dist * dist + 1;
-					partitionEx(cornersBufMapped, dist_levels, [squared_dist](const Point2f& one, const Point2f& another) -> bool {
-						return (pow(one.y - another.y, 2) + pow(one.x - another.x, 2)) < squared_dist;
+					//const int squared_dist = dist * dist + 1;
+					//partitionEx(cornersBufMapped, dist_levels, [squared_dist](const Point2f& one, const Point2f& another) -> bool {
+					//	return (pow(one.y - another.y, 2) + pow(one.x - another.x, 2)) < squared_dist;
+					//});
+					std::sort(cornersBufMapped.begin(), cornersBufMapped.end(), [dist](const Point2f& one, const Point2f& another) -> bool {
+						if (one.y < (another.y - dist)) return true;
+						if (one.y > (another.y + dist)) return false;
+						if (one.x < another.x) return true;
+						return false;
+					});
+					partitionEx(cornersBufMapped, dist_levels, [dist](const Point2f& one, const Point2f& another) -> bool {
+						return std::max(abs(one.y - another.y), abs(one.x - another.x)) < dist;
 					});
 					clusters_count = *(std::max_element(dist_levels.begin(), dist_levels.end())) + 1;
 					dist += 2;
@@ -925,11 +934,22 @@ return_t __stdcall BuildChessGridCorners(LPVOID lp) {
 					}
 
 					dist_levels.resize(cornersBufMapped.size(), -1);
-					const int squared_dist = dist * dist;
-					partitionEx(edgesMapped, dist_levels, [squared_dist](const Point2f& one, const Point2f& another) -> bool {
-						return (pow(one.y - another.y, 2) + pow(one.x - another.x, 2)) < squared_dist;
+					//const int squared_dist = dist * dist;
+					//partitionEx(edgesMapped, dist_levels, [squared_dist](const Point2f& one, const Point2f& another) -> bool {
+					//	return (pow(one.y - another.y, 2) + pow(one.x - another.x, 2)) < squared_dist;
+					//});
+					partitionEx(edgesMapped, dist_levels, [dist](const Point2f& one, const Point2f& another) -> bool {
+						return std::max(abs(one.y - another.y), abs(one.x - another.x)) < dist;
 					});
 					clusters_count = *(std::max_element(dist_levels.begin(), dist_levels.end())) + 1;
+
+					std::sort(edgesMapped.begin(), edgesMapped.end(), [ylevel_maxwidth](const Point2f& one, const Point2f& another) -> bool {
+						if (one.y < (another.y - ylevel_maxwidth)) return true;
+						if (one.y > (another.y + ylevel_maxwidth)) return false;
+						if (one.x < another.x) return true;
+						return false;
+						//return one.y < (another.y - ylevel_maxwidth) || (std::abs(one.y - another.y) < ylevel_maxwidth && one.x < another.x);
+					});
 
 					if (clusters_count == centroids_count) {
 						edgesMappedBuf.push_back(edgesMapped);
@@ -964,7 +984,10 @@ return_t __stdcall BuildChessGridCorners(LPVOID lp) {
 				compression_params.push_back(IMWRITE_PNG_COMPRESSION); // Mar.4 2015.
 				compression_params.push_back(0);
 
-				std::string name = std::string(g_path_calib_images_dir) + "ST2-ChessPattern-edgesbylevel" + std::to_string(level) + ".png";
+				for (int k = 0; k < edgesMapped.size(); ++k) {
+					putText(image1, std::to_string(k).c_str(), edgesMapped[k], FONT_HERSHEY_SCRIPT_SIMPLEX, 0.5, Scalar(255, 0, 0), 1);
+				}
+				std::string name = std::string(g_path_calib_images_dir) + "ST2-" + ctl->_outputWindow + "-ChessPattern-level" + std::to_string(level) + ".png";
 				cv::imwrite(name, image1, compression_params);
 			}
 
@@ -1022,7 +1045,10 @@ return_t __stdcall BuildChessGridCorners(LPVOID lp) {
 			for (int k = 0; k < edgesMapped.size(); ++k) {
 				cv::circle(image1, Point2i((int)edgesMapped[k].x, (int)edgesMapped[k].y), 3, Scalar(0, 0, 255), -1);
 			}
-			
+			for (int k = 0; k < edgesMapped.size(); ++k) {
+				putText(image1, std::to_string(k).c_str(), edgesMapped[k], FONT_HERSHEY_SCRIPT_SIMPLEX, 0.5, Scalar(255, 0, 0), 2);
+			}
+
 
 
 			ctl->_gate.lock();
@@ -1037,7 +1063,7 @@ return_t __stdcall BuildChessGridCorners(LPVOID lp) {
 			compression_params.push_back(IMWRITE_PNG_COMPRESSION); // Mar.4 2015.
 			compression_params.push_back(0);
 
-			cv::imwrite(std::string(g_path_calib_images_dir) + "ST3-ChessPattern-edgesMapped.png", image1, compression_params);
+			cv::imwrite(std::string(g_path_calib_images_dir) + "ST3-" + ctl->_outputWindow + "-ChessPattern-Mapped.png", image1, compression_params);
 
 
 			if (edgesMapped.size() == (g_boardChessCornersSize.width * g_boardChessCornersSize.height)) {
@@ -1058,6 +1084,11 @@ return_t __stdcall BuildChessGridCorners(LPVOID lp) {
 				Mat grayscale;
 				normalize(image, grayscale, 0, 255, NORM_MINMAX, CV_8UC1, Mat());
 				cv::cornerSubPix(grayscale, edgesBuf, Size(10, 10)/*window size*/, Size(-1, -1)/*no zero zone*/, TermCriteria(CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, 40, 0.001));
+
+				for (int k = 0; k < edgesMapped.size(); ++k) {
+					putText(image1, std::to_string(k).c_str(), edgesBuf[k], FONT_HERSHEY_SCRIPT_SIMPLEX, 1, Scalar(0, 0, 255 * 255), 2);
+				}
+				cv::imwrite(std::string(g_path_calib_images_dir) + "ST3-" + ctl->_outputWindow + "-ChessPattern-Labeled.png", image1, compression_params);
 			}
 			else {
 				static int x = 0;
@@ -1374,19 +1405,19 @@ vector<Point2f> ImagePoints2d_To_ImagePoints2f(vector<Point2d>& imagePoints2d_sr
 void SampleImagepoints(const size_t N, vector<vector<Point2d>>& imagePoints_src, vector<vector<Point2f>>& imagePoints_dst, vector<vector<Point2d>> *imagePoints_src2 = 0, vector<vector<Point2f>> *imagePoints_dst2 = 0) {
 	std::vector<size_t> x;
 	x.reserve(N);
-	//size_t researchPos[18] = { 1, 2, 3, 4, 6, 9, 14, 17, 18, 20, 21, 22, 23, 24, 11, 12, 8, 10 };// , 19};
+	size_t researchPos[18] = { 1, 2, 3, 4, 6, 9, 14, 17, 18, 20, 21, 22, 23, 24, 11, 12, 8, 10 };// , 19};
 	for(size_t j = 0; j < N;) {
 		if (N != imagePoints_src.size()) {
-			size_t pos = (size_t)(__int64)rand() % imagePoints_src.size();
-			if (std::find(x.begin(), x.end(), pos) == x.end()) {
-				x.push_back(pos);
-				++j;
-			}
-			//size_t pos = (size_t)(__int64)rand() % ARRAY_NUM_ELEMENTS(researchPos);
-			//if (std::find(x.begin(), x.end(), researchPos[pos]) == x.end()) {
-			//	x.push_back(researchPos[pos]);
+			//size_t pos = (size_t)(__int64)rand() % imagePoints_src.size();
+			//if (std::find(x.begin(), x.end(), pos) == x.end()) {
+			//	x.push_back(pos);
 			//	++j;
 			//}
+			size_t pos = (size_t)(__int64)rand() % ARRAY_NUM_ELEMENTS(researchPos);
+			if (std::find(x.begin(), x.end(), researchPos[pos]) == x.end()) {
+				x.push_back(researchPos[pos]);
+				++j;
+			}
 		}
 		else {
 			x.push_back(j);
