@@ -864,11 +864,12 @@ return_t __stdcall BuildChessGridCorners(LPVOID lp) {
 			Mat grayscale;
 			normalize(crop, grayscale, 0, 255, NORM_MINMAX, CV_8UC1, Mat());
 
+			float windowRatio = (float)imageMapped.cols / (float)grayscale.cols;
+
 
 			vector<vector<Point2f>> edgesMappedBuf;
-			int ylevel_maxwidth = 0;
 
-			for (int level = 90; level < 180; level += 10) {
+			for (int level = 90; level < 200; level += 10) {
 
 				Mat binImage;
 				threshold(grayscale, binImage, level, 255, THRESH_BINARY);
@@ -893,29 +894,19 @@ return_t __stdcall BuildChessGridCorners(LPVOID lp) {
 				std::vector<int> dist_levels(cornersBufMapped.size(), -1);
 				int	clusters_count = std::numeric_limits<int>::max();
 				const int centroids_count = g_boardChessCornersSize.width * g_boardChessCornersSize.height;
-				int dist = grayscale.cols / (g_boardChessCornersSize.width * 3);
-				while (clusters_count > centroids_count) {
-					//const int squared_dist = dist * dist + 1;
-					//partitionEx(cornersBufMapped, dist_levels, [squared_dist](const Point2f& one, const Point2f& another) -> bool {
-					//	return (pow(one.y - another.y, 2) + pow(one.x - another.x, 2)) < squared_dist;
-					//});
-					std::sort(cornersBufMapped.begin(), cornersBufMapped.end(), [dist](const Point2f& one, const Point2f& another) -> bool {
-						if (one.y < (another.y - dist)) return true;
-						if (one.y > (another.y + dist)) return false;
-						if (one.x < another.x) return true;
-						return false;
-					});
-					partitionEx(cornersBufMapped, dist_levels, [dist](const Point2f& one, const Point2f& another) -> bool {
-						return std::max(abs(one.y - another.y), abs(one.x - another.x)) < dist;
-					});
-					clusters_count = *(std::max_element(dist_levels.begin(), dist_levels.end())) + 1;
-					dist += 2;
-				}
+				int dist = grayscale.cols / ((g_boardChessCornersSize.width + 1) * 2);
+				std::sort(cornersBufMapped.begin(), cornersBufMapped.end(), [dist](const Point2f& one, const Point2f& another) -> bool {
+					if (one.y < (another.y - dist)) return true;
+					if (one.y > (another.y + dist)) return false;
+					if (one.x < another.x) return true;
+					return false;
+				});
+				partitionEx(cornersBufMapped, dist_levels, [dist](const Point2f& one, const Point2f& another) -> bool {
+					return std::max(abs(one.y - another.y), abs(one.x - another.x)) < dist;
+				});
+				clusters_count = *(std::max_element(dist_levels.begin(), dist_levels.end())) + 1;
 				if (clusters_count != centroids_count) {
 					continue;
-				}
-				if (ylevel_maxwidth < dist) {
-					ylevel_maxwidth = dist;
 				}
 
 				vector<Point2f> edgesMapped;
@@ -933,25 +924,21 @@ return_t __stdcall BuildChessGridCorners(LPVOID lp) {
 						edgesMapped.push_back(Point2f(kmeans_centers.at<float>(k, 0), kmeans_centers.at<float>(k, 1)));
 					}
 
-					dist_levels.resize(cornersBufMapped.size(), -1);
-					//const int squared_dist = dist * dist;
-					//partitionEx(edgesMapped, dist_levels, [squared_dist](const Point2f& one, const Point2f& another) -> bool {
-					//	return (pow(one.y - another.y, 2) + pow(one.x - another.x, 2)) < squared_dist;
-					//});
+					dist_levels.resize(0);
+					dist_levels.resize(edgesMapped.size(), -1);
 					partitionEx(edgesMapped, dist_levels, [dist](const Point2f& one, const Point2f& another) -> bool {
 						return std::max(abs(one.y - another.y), abs(one.x - another.x)) < dist;
 					});
 					clusters_count = *(std::max_element(dist_levels.begin(), dist_levels.end())) + 1;
 
-					std::sort(edgesMapped.begin(), edgesMapped.end(), [ylevel_maxwidth](const Point2f& one, const Point2f& another) -> bool {
-						if (one.y < (another.y - ylevel_maxwidth)) return true;
-						if (one.y > (another.y + ylevel_maxwidth)) return false;
-						if (one.x < another.x) return true;
-						return false;
-						//return one.y < (another.y - ylevel_maxwidth) || (std::abs(one.y - another.y) < ylevel_maxwidth && one.x < another.x);
-					});
-
 					if (clusters_count == centroids_count) {
+						std::sort(edgesMapped.begin(), edgesMapped.end(), [dist](const Point2f& one, const Point2f& another) -> bool {
+							if (one.y < (another.y - dist)) return true;
+							if (one.y > (another.y + dist)) return false;
+							if (one.x < another.x) return true;
+							return false;
+						});
+
 						edgesMappedBuf.push_back(edgesMapped);
 					}
 				}
@@ -999,13 +986,6 @@ return_t __stdcall BuildChessGridCorners(LPVOID lp) {
 
 			vector<Point2f> edgesMapped(edgesMappedBuf.size() ? g_boardChessCornersSize.width * g_boardChessCornersSize.height : 0);
 			for (auto& edges : edgesMappedBuf) {
-				std::sort(edges.begin(), edges.end(), [ylevel_maxwidth](const Point2f& one, const Point2f& another) -> bool {
-					if (one.y < (another.y - ylevel_maxwidth)) return true;
-					if (one.y > (another.y + ylevel_maxwidth)) return false;
-					if (one.x < another.x) return true;
-					return false;
-					//return one.y < (another.y - ylevel_maxwidth) || (std::abs(one.y - another.y) < ylevel_maxwidth && one.x < another.x);
-				});
 				for (size_t j = 0; j < edges.size(); ++j) {
 					auto& p = edges[j];
 					edgesMapped[j].x += p.x;
@@ -1025,13 +1005,13 @@ return_t __stdcall BuildChessGridCorners(LPVOID lp) {
 			float maxDiff_x = std::max_element(edgesDif.begin(), edgesDif.end(), [](Point2f& a, Point2f& b) ->bool { return a.x < b.x; })->x * 2;
 			float maxDiff_y = std::max_element(edgesDif.begin(), edgesDif.end(), [](Point2f& a, Point2f& b) ->bool { return a.y < b.y; })->y * 2;
 
-			if (maxDiff_x < 2) maxDiff_x = 2;
-			if (maxDiff_y < 2) maxDiff_y = 2;
+			if (maxDiff_x < 4) maxDiff_x = 4;
+			if (maxDiff_y < 4) maxDiff_y = 4;
 
 
 			try {
-				if (edgesMapped.size() && ylevel_maxwidth) {
-					cv::cornerSubPix(grayscale, edgesMapped, Size(maxDiff_x * 2, maxDiff_y * 2)/*window size*/, Size(-1, -1)/*no zero zone*/, TermCriteria(TermCriteria::EPS + TermCriteria::COUNT, 40, 0.001));
+				if (edgesMapped.size()) {
+					cv::cornerSubPix(grayscale, edgesMapped, Size(maxDiff_x, maxDiff_y)/*window size*/, Size(-1, -1)/*no zero zone*/, TermCriteria(TermCriteria::EPS + TermCriteria::COUNT, 40, 0.001));
 				}
 			}
 			catch (Exception& ex) {
@@ -1071,24 +1051,18 @@ return_t __stdcall BuildChessGridCorners(LPVOID lp) {
 					point.x += approxBoundingRectMapped.x;
 					point.y += approxBoundingRectMapped.y;
 				}
-				std::sort(edgesMapped.begin(), edgesMapped.end(), [&maxDiff_y, &maxDiff_x](const cv::Point2f& left, const cv::Point2f& right) ->bool {
-					if (left.y < (right.y - maxDiff_y)) return true;
-					if (left.y > (right.y + maxDiff_y)) return false;
-					if (left.x < (right.x - maxDiff_x)) return true;
-					return false;
-				});
 
 				edgesBuf.resize(edgesMapped.size());
 				cv::perspectiveTransform(edgesMapped, edgesBuf, H.inv());
 
 				Mat grayscale;
 				normalize(image, grayscale, 0, 255, NORM_MINMAX, CV_8UC1, Mat());
-				cv::cornerSubPix(grayscale, edgesBuf, Size(10, 10)/*window size*/, Size(-1, -1)/*no zero zone*/, TermCriteria(CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, 40, 0.001));
+				cv::cornerSubPix(grayscale, edgesBuf, Size(maxDiff_x * windowRatio, maxDiff_y * windowRatio)/*window size*/, Size(-1, -1)/*no zero zone*/, TermCriteria(CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, 100, 0.001));
 
-				for (int k = 0; k < edgesMapped.size(); ++k) {
-					putText(image1, std::to_string(k).c_str(), edgesBuf[k], FONT_HERSHEY_SCRIPT_SIMPLEX, 1, Scalar(0, 0, 255 * 255), 2);
+				for (int k = 0; k < edgesBuf.size(); ++k) {
+					putText(grayscale, std::to_string(k).c_str(), edgesBuf[k], FONT_HERSHEY_SCRIPT_SIMPLEX, 1, Scalar(0, 0, 255), 2);
 				}
-				cv::imwrite(std::string(g_path_calib_images_dir) + "ST3-" + ctl->_outputWindow + "-ChessPattern-Labeled.png", image1, compression_params);
+				cv::imwrite(std::string(g_path_calib_images_dir) + "ST3-" + ctl->_outputWindow + "-ChessPattern-Labeled.png", grayscale, compression_params);
 			}
 			else {
 				static int x = 0;
@@ -1405,7 +1379,7 @@ vector<Point2f> ImagePoints2d_To_ImagePoints2f(vector<Point2d>& imagePoints2d_sr
 void SampleImagepoints(const size_t N, vector<vector<Point2d>>& imagePoints_src, vector<vector<Point2f>>& imagePoints_dst, vector<vector<Point2d>> *imagePoints_src2 = 0, vector<vector<Point2f>> *imagePoints_dst2 = 0) {
 	std::vector<size_t> x;
 	x.reserve(N);
-	size_t researchPos[18] = { 1, 2, 3, 4, 6, 9, 14, 17, 18, 20, 21, 22, 23, 24, 11, 12, 8, 10 };// , 19};
+	size_t researchPos[18] = { 1, 2, 3, 4, 6, 9, 14, 17, 18, 20, 21, 22, 23, 24, 11, 12, 8, 10};// , 19};
 	for(size_t j = 0; j < N;) {
 		if (N != imagePoints_src.size()) {
 			//size_t pos = (size_t)(__int64)rand() % imagePoints_src.size();
@@ -1753,19 +1727,22 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 
 		VisualizeCapturedImages(left_image, right_image);
 
-		std::vector<bool> image_ok = { imagePoints[0][nl].size() != 0, imagePoints[1][nr].size() != 0 };
-		if (!image_ok[0] && !image_ok[1]) {
-			image_ok = EvaluateImagePoints(images, imagePoints, *ctl, g_configuration._calib_min_confidence);
+		bool pointsAreFromFile = false;
+
+		std::vector<bool> imagePoints_ok = { imagePoints[0][nl].size() != 0, imagePoints[1][nr].size() != 0 };
+		if (!imagePoints_ok[0] && !imagePoints_ok[1]) {
+			imagePoints_ok = EvaluateImagePoints(images, imagePoints, *ctl, g_configuration._calib_min_confidence);
 		}
 		else {
+			pointsAreFromFile = true;
 			g_imageSize = images[0].size();
 		}
 
 		
 
 
-		nl = image_ok [0]? imagePoints [0].size() : -1;
-		nr = image_ok [1]? imagePoints [1].size() : -1;
+		nl = imagePoints_ok[0]? imagePoints [0].size() : -1;
+		nr = imagePoints_ok[1]? imagePoints [1].size() : -1;
 
 
 
@@ -1788,6 +1765,12 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 			imagePoints[1].resize((size_t)nr + 1);
 			size_t x = (size_t)nr - 1;
 			DrawImageAndBoard(std::to_string(nr) + '(' + std::to_string(stereoImagePoints_right.size()) + ')', cv_windows[1], images[1], imagePoints[1][x]);
+		}
+
+
+		if (pointsAreFromFile) {
+			++current_N;
+			continue;
 		}
 
 
@@ -1887,7 +1870,6 @@ return_t __stdcall ConductCalibration(LPVOID lp) {
 		Mat cameraMatrix[4];
 		Mat distortionCoeffs[4];
 
-		//double rms[2];
 		double rms_s = 0;
 
 		Mat R, T, E, F;
@@ -1905,7 +1887,8 @@ return_t __stdcall ConductCalibration(LPVOID lp) {
 
 		size_t min_images = number_of_iterations > 1 ? g_min_images : stereoImagePoints_left.size();
 
-		//BoostCalibrate("Calibrating cameras: single cameras", 
+		//double rms[2];
+		//BoostCalibrate("Calibrating cameras: single cameras",
 		//	number_of_iterations, 
 		//	cameraMatrix[0], cameraMatrix[1], 
 		//	distortionCoeffs[0], distortionCoeffs[1], 
