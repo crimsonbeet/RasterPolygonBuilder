@@ -1,4 +1,4 @@
-## StereoConfiguration PatternDistance=3.875 MaxClusterDistance=4 AxisesRatio=0.778 MinImages=12 MinRMSEImages=60 
+## StereoConfiguration PatternDistance=3.875 MaxClusterDistance=4 AxisesRatio=0.778 MinImages=12 MinRMSEImages=100 
 CameraNames={DART1 DART2} PixelThreshold=40 
 SceneTranslate={-30 } 
 SceneTranslate@3={-20 } 

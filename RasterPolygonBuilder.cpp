@@ -193,23 +193,29 @@ bool ProcessWinMessages(DWORD dwMilliseconds) {
 	bool rc = true;
 	MSG msg;
 	try {
-		if (PeekMessage(&msg, NULL, 0, 0, PM_NOREMOVE)) {
-			while (PeekMessage(&msg, NULL, 0, 0, PM_NOREMOVE)/* == TRUE*/) {
-				if (GetMessage(&msg, NULL, 0, 0)) {
-					TranslateMessage(&msg);
-					DispatchMessage(&msg);
+		do {
+			if (PeekMessage(&msg, NULL, 0, 0, PM_NOREMOVE)) {
+				while (PeekMessage(&msg, NULL, 0, 0, PM_NOREMOVE)/* == TRUE*/) {
+					if (GetMessage(&msg, NULL, 0, 0)) {
+						TranslateMessage(&msg);
+						DispatchMessage(&msg);
+					}
+					else {
+						g_bTerminated = true;
+					}
+				}
+			}
+			else {
+				if (dwMilliseconds > 10) {
+					Sleep(10);
+					dwMilliseconds -= 10;
 				}
 				else {
-					g_bTerminated = true;
+					dwMilliseconds = 0;
 				}
+				rc = false;
 			}
-		}
-		else {
-			if (dwMilliseconds) {
-				Sleep(dwMilliseconds);
-			}
-			rc = false;
-		}
+		} while (dwMilliseconds > 0);
 	}
 	catch (...) {
 		rc = false;

@@ -1243,9 +1243,9 @@ bool buildPointsFromImages(Mat* images, vector<Point2d>* pointBufs, const size_t
 double calc_betweenimages_rmse(vector<Point2d>& image1, vector<Point2d>& image2) {
 	double rmse = 0;
 	size_t min_size = std::min(image1.size(), image2.size());
-	bool strict = (imagePoints_left.size() + imagePoints_right.size()) < 5/*(g_min_images)*/;
+	bool strict = true;
 	for(int j = 0; j < (int)min_size; ++j) {
-		double e = sqrt(pow(image1[j].x - image2[j].x, 2) + pow(image1[j].y - image2[j].y, 2));
+		double e = pow(image1[j].x - image2[j].x, 2) + pow(image1[j].y - image2[j].y, 2);
 		if(strict) {
 			rmse += e;
 		}
@@ -1257,7 +1257,7 @@ double calc_betweenimages_rmse(vector<Point2d>& image1, vector<Point2d>& image2)
 	if(strict) {
 		rmse /= min_size;
 	}
-	return rmse; 
+	return sqrt(rmse); 
 }
 
 
@@ -1265,7 +1265,10 @@ double calc_betweenimages_rmse(vector<Point2d>& image1, vector<Point2d>& image2)
 std::vector<bool> EvaluateImagePoints(cv::Mat cv_images[2], std::vector<std::vector<cv::Point2d>> imagePoints[2], SImageAcquisitionCtl& ctl, double min_confidence = 0.4, size_t min_repeatability = 2) {
 	constexpr int N = 2;
 
+	static double min_rmse = std::numeric_limits<double>::max();
+
 	std::vector<bool> is_ok(N, false);
+	std::vector<double> min_image_rmse(N, std::numeric_limits<double>::max());
 
 	std::vector<cv::Point2d> points[N];
 
@@ -1280,8 +1283,22 @@ std::vector<bool> EvaluateImagePoints(cv::Mat cv_images[2], std::vector<std::vec
 			if (x > 0) {
 				for (int k = x - 1; k >= 0 && is_ok[j]; --k) {
 					double rmse = calc_betweenimages_rmse(imagePoints[j][k], imagePoints[j][x]);
-					if (rmse < g_aposteriory_minsdistance) {
+					if (min_image_rmse[j] > rmse) {
+						min_image_rmse[j] = rmse;
+					}
+					if (min_rmse > rmse && rmse > g_aposteriory_minsdistance) {
+						min_rmse = rmse;
+						std::cout << "min_rmse " << min_rmse << std::endl;
+					}
+				}
+			}
+		}
+		for (int j = 0; j < N; ++j) {
+			if (min_image_rmse[j] < g_aposteriory_minsdistance) {
+				for (int k = j + 1; k < N; ++k) {
+					if (min_image_rmse[k] < g_aposteriory_minsdistance) {
 						is_ok[j] = false;
+						is_ok[k] = false;
 					}
 				}
 			}
@@ -1338,21 +1355,29 @@ double CalibrateSingleCamera(vector<vector<Point2f>>& imagePoints, Mat& cameraMa
 }
 
 
+
+
+Mat ShowUndistortedImageAndPoints(Mat& image, vector<Point2d>& imagePoints, Mat map[2], const std::string& cv_window, const std::string& text) {
+	Mat undistorted;
+	remap(image, undistorted, map[0], map[1], INTER_CUBIC/*INTER_LINEAR*//*INTER_NEAREST*/, BORDER_CONSTANT);
+
+	while (ProcessWinMessages());
+
+	DrawImageAndBoard(text, cv_window, undistorted, imagePoints);
+
+	return undistorted;
+}
+
 bool ReEvaluateUndistortImagePoints(vector<Mat>& imageRaw, vector<vector<Point2d>>& imagePoints, Mat& cameraMatrix, Mat& distortionCoeffs, SImageAcquisitionCtl& ctl, std::string& cv_window, vector<vector<Point2d>> *imagePoints_paired = 0, vector<Mat> *imageRaw_paired = 0) {
 	Mat map[2];
 
 	cv::initUndistortRectifyMap(cameraMatrix, distortionCoeffs, cv::Mat(), cv::getOptimalNewCameraMatrix(cameraMatrix, distortionCoeffs, g_imageSize, 0), g_imageSize, CV_32FC2, map[0], map[1]);
 
-	for(auto& image : imageRaw) {
-		Mat undistorted;
-		remap(image, undistorted, map[0], map[1], INTER_CUBIC/*INTER_LINEAR*//*INTER_NEAREST*/, BORDER_CONSTANT);
-		image = undistorted;
-
-		while(ProcessWinMessages());
-	}
 	for(int j = 0; j < imagePoints.size(); ++j) {
-		DrawImageAndBoard(std::to_string(j + 1), cv_window, imageRaw[j], imagePoints[j]);
-		if(!buildPointsFromImages(&imageRaw[j], &imagePoints[j], 1, ctl, g_configuration._calib_min_confidence, 3)) {
+		auto& image = imageRaw[j];
+		image = ShowUndistortedImageAndPoints(image, imagePoints[j], map, cv_window, std::to_string(j + 1));
+
+		if(!buildPointsFromImages(&image, &imagePoints[j], 1, ctl, g_configuration._calib_min_confidence, 3)) {
 			std::cout << "image number " << j << " has failed" << std::endl;
 			imagePoints.erase(imagePoints.begin() + j);
 			imageRaw.erase(imageRaw.begin() + j);
@@ -1368,6 +1393,9 @@ bool ReEvaluateUndistortImagePoints(vector<Mat>& imageRaw, vector<vector<Point2d
 	return imagePoints.size() >= g_min_images;
 }
 
+
+
+
 vector<Point2f> ImagePoints2d_To_ImagePoints2f(vector<Point2d>& imagePoints2d_src) {
 	vector<Point2f> imagePoints2f_dst;
 	for (const auto& point2d : imagePoints2d_src) {
@@ -1376,22 +1404,22 @@ vector<Point2f> ImagePoints2d_To_ImagePoints2f(vector<Point2d>& imagePoints2d_sr
 	return imagePoints2f_dst;
 }
 
-void SampleImagepoints(const size_t N, vector<vector<Point2d>>& imagePoints_src, vector<vector<Point2f>>& imagePoints_dst, vector<vector<Point2d>> *imagePoints_src2 = 0, vector<vector<Point2f>> *imagePoints_dst2 = 0) {
+void SampleImagepoints(const size_t N, vector<vector<Point2d>>& imagePoints_src, vector<vector<Point2f>>& imagePoints_dst, std::vector<size_t> *selection = 0, vector<vector<Point2d>> *imagePoints_src2 = 0, vector<vector<Point2f>> *imagePoints_dst2 = 0) {
 	std::vector<size_t> x;
 	x.reserve(N);
-	size_t researchPos[18] = { 1, 2, 3, 4, 6, 9, 14, 17, 18, 20, 21, 22, 23, 24, 11, 12, 8, 10};// , 19};
+	//size_t researchPos[18] = { 1, 2, 3, 4, 6, 9, 14, 17, 18, 20, 21, 22, 23, 24, 11, 12, 8, 10};// , 19};
 	for(size_t j = 0; j < N;) {
 		if (N != imagePoints_src.size()) {
-			//size_t pos = (size_t)(__int64)rand() % imagePoints_src.size();
-			//if (std::find(x.begin(), x.end(), pos) == x.end()) {
-			//	x.push_back(pos);
-			//	++j;
-			//}
-			size_t pos = (size_t)(__int64)rand() % ARRAY_NUM_ELEMENTS(researchPos);
-			if (std::find(x.begin(), x.end(), researchPos[pos]) == x.end()) {
-				x.push_back(researchPos[pos]);
+			size_t pos = (size_t)(__int64)rand() % imagePoints_src.size();
+			if (std::find(x.begin(), x.end(), pos) == x.end()) {
+				x.push_back(pos);
 				++j;
 			}
+			//size_t pos = (size_t)(__int64)rand() % ARRAY_NUM_ELEMENTS(researchPos);
+			//if (std::find(x.begin(), x.end(), researchPos[pos]) == x.end()) {
+			//	x.push_back(researchPos[pos]);
+			//	++j;
+			//}
 		}
 		else {
 			x.push_back(j);
@@ -1415,6 +1443,10 @@ void SampleImagepoints(const size_t N, vector<vector<Point2d>>& imagePoints_src,
 		}
 	}
 	std::cout << "sample: " << ostr.str() << std::endl;
+
+	if (selection != nullptr) {
+		selection->swap(x);
+	}
 }
 
 
@@ -1725,6 +1757,10 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 
 		}
 
+		if (_g_calibrationimages_frame->_stop_capturing) {
+			continue;
+		}
+
 		VisualizeCapturedImages(left_image, right_image);
 
 		bool pointsAreFromFile = false;
@@ -1753,6 +1789,10 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 			size_t r = (size_t)nr - 1;
 			stereoImagePoints_left.push_back(imagePoints[0][l]);
 			stereoImagePoints_right.push_back(imagePoints[1][r]);
+
+			if (stereoImagePoints_left.size() == g_min_images) {
+				_g_calibrationimages_frame->_toolbar->SetButtonStateByindex(TBSTATE_ENABLED, 0/*btn - save document*/, false/*set enabled*/);
+			}
 		}
 
 
@@ -1768,10 +1808,6 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 		}
 
 
-		if (pointsAreFromFile) {
-			++current_N;
-			continue;
-		}
 
 
 		auto lambda_Save_Images = [&](size_t N, int nl, int nr) {
@@ -1803,6 +1839,7 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 
 
 
+
 		g_imageSaveLambda = [&]() {
 			if (nl > 0) {
 				imageRaw_left.push_back(left_image);
@@ -1819,13 +1856,11 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 			if (nl > 0 && nr > 0) {
 				stereoImageRaw_left.push_back(left_image);
 				stereoImageRaw_right.push_back(right_image);
-
-				if (stereoImagePoints_left.size() == g_min_images) {
-					_g_calibrationimages_frame->_toolbar->SetButtonStateByindex(TBSTATE_ENABLED, 0/*btn - save document*/, false/*set enabled*/);
-				}
 			}
 			if (nl > 0 || nr > 0) {
-				lambda_Save_Images(std::max((int)current_N, std::max(nl, nr)), nl, nr);
+				if (!pointsAreFromFile) {
+					lambda_Save_Images(std::max((int)current_N, std::max(nl, nr)), nl, nr);
+				}
 				++current_N;
 			}
 
@@ -1908,12 +1943,113 @@ return_t __stdcall ConductCalibration(LPVOID lp) {
 			}
 		}
 
-		g_objectPoints.resize(min_images, objectPoints);
+
+		std::cout << "Building a good batch of points" << std::endl;
+
+
+
+
+
+		vector<vector<Point2f>> seedPoints_left(3);
+		vector<vector<Point2f>> seedPoints_right(3);
+		std::vector<size_t> seedSelection;
+
+
+		auto sampleCalibrate = [&]() {
+			Mat RVec, TVec, EVec, FVec;
+			std::vector<Mat> CMVec(2), DCVec(2);
+
+			int calibrateFlags = 0;// CALIB_FIX_INTRINSIC;// CALIB_USE_INTRINSIC_GUESS;
+
+			g_objectPoints.resize(seedPoints_left.size(), objectPoints);
+
+			CMVec[0] = cameraMatrix[0].clone();
+			CMVec[1] = cameraMatrix[1].clone();
+			DCVec[0] = distortionCoeffs[0].clone();
+			DCVec[1] = distortionCoeffs[1].clone();
+			rms_s = stereoCalibrate(g_objectPoints, seedPoints_left, seedPoints_right,
+				CMVec[0], DCVec[0],
+				CMVec[1], DCVec[1],
+				g_imageSize,
+				RVec, TVec, EVec, FVec,
+				calibrateFlags,
+				TermCriteria(TermCriteria::COUNT + TermCriteria::EPS, 10, FLT_EPSILON));
+		};
+
+
+
+		for (int j = 0; !g_bTerminated && j < 100; ++j) {
+
+			SampleImagepoints(3, stereoImagePoints_left, seedPoints_left, &seedSelection, &stereoImagePoints_right, &seedPoints_right);
+
+			sampleCalibrate();
+
+			std::cout << j << ' ' << "Re-projection error: " << rms_s << std::endl;
+
+			if (rms_s < 1) {
+				break;
+			}
+
+			while (ProcessWinMessages());
+		}
+
+		if (rms_s >= 1) {
+			std::cout << "A minimal set of image points cannot be determined; terminating" << std::endl;
+			return 0;
+		}
+
+		std::cout << "Building calibration set " << std::endl;
+
+		std::vector<size_t> finalPointsSelection = seedSelection;
+		std::ostringstream ostrSelection;
+
+		for (auto pos : seedSelection) {
+			ostrSelection << pos << ' ';
+		}
+
+
+		for (size_t pos = 0; pos < stereoImagePoints_left.size(); ++pos) {
+			if (std::find(seedSelection.begin(), seedSelection.end(), pos) != seedSelection.end()) {
+				continue;
+			}
+
+			seedPoints_left.push_back(ImagePoints2d_To_ImagePoints2f(stereoImagePoints_left[pos]));
+			seedPoints_right.push_back(ImagePoints2d_To_ImagePoints2f(stereoImagePoints_right[pos]));
+
+			sampleCalibrate();
+
+			std::cout << pos << ' ' << "Re-projection error: " << rms_s << std::endl;
+
+			seedPoints_left.resize(seedPoints_left.size() - 1);
+			seedPoints_right.resize(seedPoints_right.size() - 1);
+
+			if (rms_s < 2) {
+				finalPointsSelection.push_back(pos);
+				ostrSelection << pos << ' ';
+				std::cout << "calibration set: " << ostrSelection.str() << std::endl;
+			}
+
+			while (ProcessWinMessages());
+		}
+
+		std::cout << "calibration set: " << ostrSelection.str() << std::endl;
+
+
+
+		vector<vector<Point2d>> points_left; 
+		vector<vector<Point2d>> points_right;
+
+		points_left.swap(stereoImagePoints_left);
+		points_right.swap(stereoImagePoints_right);
+
+		for (auto pos : finalPointsSelection) {
+			stereoImagePoints_left.push_back(points_left[pos]);
+			stereoImagePoints_right.push_back(points_right[pos]);
+		}
 
 
 
 		std::cout << "Calibrating stereo camera" << std::endl;
-
 
 
 		double iteration_rms[256];
@@ -1930,7 +2066,9 @@ return_t __stdcall ConductCalibration(LPVOID lp) {
 			vector<vector<Point2f>> stereoImagePoints_left1(min_images);
 			vector<vector<Point2f>> stereoImagePoints_right1(min_images);
 
-			SampleImagepoints(min_images, stereoImagePoints_left, stereoImagePoints_left1, &stereoImagePoints_right, &stereoImagePoints_right1);
+			SampleImagepoints(min_images, stereoImagePoints_left, stereoImagePoints_left1, nullptr, &stereoImagePoints_right, &stereoImagePoints_right1);
+
+			g_objectPoints.resize(min_images, objectPoints);
 
 			bool fix_intrinsic = ctl->_two_step_calibration && !g_configuration._calib_use_homography;
 			fix_intrinsic = false;
@@ -2047,6 +2185,14 @@ return_t __stdcall ConductCalibration(LPVOID lp) {
 		//	cv::initUndistortRectifyMap(cameraMatrix[2], distortionCoeffs[2], cv::Mat(), cv::getOptimalNewCameraMatrix(cameraMatrix[2], distortionCoeffs[2], g_imageSize, 0), g_imageSize, CV_16SC2/*CV_32F*/, map_l[2], map_l[3]);
 		//	cv::initUndistortRectifyMap(cameraMatrix[3], distortionCoeffs[3], cv::Mat(), cv::getOptimalNewCameraMatrix(cameraMatrix[3], distortionCoeffs[3], g_imageSize, 0), g_imageSize, CV_16SC2/*CV_32F*/, map_r[2], map_r[3]);
 		//}
+
+
+		for (auto pos : finalPointsSelection) {
+			std::string text = std::to_string(pos + 1);
+			ShowUndistortedImageAndPoints(stereoImageRaw_left[pos], points_left[pos], map_l, "Calibr1", text);
+			ShowUndistortedImageAndPoints(stereoImageRaw_right[pos], points_right[pos], map_r, "Calibr2", text);
+			ProcessWinMessages(1000);
+		}
 
 		FileStorage fs(".\\stereo_calibrate.xml", FileStorage::WRITE);
 

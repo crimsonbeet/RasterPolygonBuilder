@@ -926,16 +926,23 @@ bool SynchronizedGrabResults(CBaslerUsbInstantCameraArray& cameras, std::vector<
 	}
 
 
+
+	static uint64_t timestamp_dif_min = std::numeric_limits<uint64_t>::max();
+	uint64_t timestamp_dif = std::numeric_limits<uint64_t>::max();
+	uint64_t timestamp[10] = { 0, 0 };
+
 	// Note: the power saving mode must be 
 	// maximum performance, otherwise the driver will report eventually that the device has been removed. 
 	bool image_isok = true;
 	int noresponse_count = 0;
 	for (int j = 0; j < (int)cameras.GetSize(); ++j) {
 		try {
-			cameras[j].RetrieveResult(trigger_source_software ? 0 : 34, ptrGrabResults[j], TimeoutHandling_Return);
+			cameras[j].RetrieveResult(trigger_source_software ? 0 : 23, ptrGrabResults[j], TimeoutHandling_Return);
 			if (ptrGrabResults[j] == NULL || !ptrGrabResults[j]->GrabSucceeded() || (int)ptrGrabResults[j]->GetCameraContext() != j) {
-				image_isok = false;
 				++noresponse_count;
+			}
+			else {
+				timestamp[j] = ptrGrabResults[j]->GetTimeStamp();
 			}
 		}
 		catch (GenICam::GenericException& e) {
@@ -949,21 +956,22 @@ bool SynchronizedGrabResults(CBaslerUsbInstantCameraArray& cameras, std::vector<
 	static int partialtimeout_count = 0;
 	static int totaltimeout_count = 0;
 	static int notimeout_count = 0;
-	static uint64_t timestamp_dif_min = std::numeric_limits<uint64_t>::max();
 	switch (noresponse_count) {
 	case 0: ++notimeout_count; break;
 	case 1: ++partialtimeout_count; break;
 	case 2: ++totaltimeout_count; break;
 	}
 
-	if (noresponse_count == 0 && !trigger_source_software) {
-		uint64_t timestamp[10];
-		for (int j = 0; j < (int)cameras.GetSize(); ++j) {
-			timestamp[j] = ptrGrabResults[j]->GetTimeStamp();
-		}
-		uint64_t timestamp_dif = EvaluateTimestampDifference(timestamp, cameras.GetSize());
-		uint64_t timestamp_dif_log = timestamp_dif;
-		if (timestamp_dif_min < timestamp_dif && (timestamp_dif - timestamp_dif_min) > 3000000) {
+	if (noresponse_count > 0) {
+		image_isok = false;
+	}
+	else {
+		timestamp_dif = EvaluateTimestampDifference(timestamp, cameras.GetSize());
+	}
+
+
+	if (noresponse_count == 0) { // && !trigger_source_software) {
+		if (timestamp_dif_min < timestamp_dif && (timestamp_dif - timestamp_dif_min) > 30000) {
 			noresponse_count = 1; // prevent software trigger
 			image_isok = false;
 			for (size_t j = 0; j < cameras.GetSize(); ++j) {
@@ -992,7 +1000,7 @@ bool SynchronizedGrabResults(CBaslerUsbInstantCameraArray& cameras, std::vector<
 					}
 					if (!done) {
 						timestamp_dif = EvaluateTimestampDifference(timestamp, cameras.GetSize());
-						if (timestamp_dif_min >= timestamp_dif || (timestamp_dif - timestamp_dif_min) <= 3000000) {
+						if (timestamp_dif_min >= timestamp_dif || (timestamp_dif - timestamp_dif_min) <= 30000) {
 							done = true;
 							noresponse_count = 0; // enable software trigger
 							image_isok = true;
