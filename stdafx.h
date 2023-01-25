@@ -546,10 +546,7 @@ template<typename T> struct ATLSMatrix : public ATLSMatrixvar<T> {
 
 
 
-
-
-
-struct SFeatureDetectorCtl {
+struct SCalibrationBaseCtl {
 	int _status; // ==1 - unknown, 0 - not running, 2 - running. 
 	bool _terminated; // a command to stop execution.
 
@@ -560,12 +557,21 @@ struct SFeatureDetectorCtl {
 	bool volatile _data_isvalid;
 	bool volatile _image_isvalid;
 
-	cv::Ptr<cv::FeatureDetector> _detector;
-	double _saturationFactor;
-
 	cv::Mat _image; // input to FeatureDetector
 
 	cv::Mat _image2visualize; // input to main thread
+
+	long long _last_image_timestamp;
+
+	SCalibrationBaseCtl() : _status(1), _terminated(0), _data_isvalid(false), _image_isvalid(false), _last_image_timestamp(0) {
+	}
+};
+
+
+
+struct SFeatureDetectorCtl : public SCalibrationBaseCtl {
+	cv::Ptr<cv::FeatureDetector> _detector;
+	double _saturationFactor;
 
 	std::vector<cv::KeyPoint> _keyPoints;
 	std::vector<cv::Point2f> _pointBuf; // centers of black squares 
@@ -578,10 +584,8 @@ struct SFeatureDetectorCtl {
 
 	cv::Rect _roi;
 
-	long long _last_image_timestamp;
 
-
-	SFeatureDetectorCtl() : _status(1), _terminated(0), _data_isvalid(false), _image_isvalid(false), _last_image_timestamp(0), _saturationFactor(1.0) {
+	SFeatureDetectorCtl() : SCalibrationBaseCtl(), _saturationFactor(1.0) {
 	}
 
 	SFeatureDetectorCtl(cv::Mat& image) : SFeatureDetectorCtl() {
@@ -591,6 +595,31 @@ struct SFeatureDetectorCtl {
 
 
 
+struct SStereoCalibrationCtl : public SCalibrationBaseCtl {
+
+	std::vector<size_t> _finalPointsSelection; // input/output
+
+	size_t _sample_size = 0;
+
+
+	size_t _iter_num = 0;
+
+	Mat *_cameraMatrix1 = nullptr;
+	Mat *_cameraMatrix2 = nullptr;
+	Mat *_distortionCoeffs1 = nullptr;
+	Mat *_distortionCoeffs2 = nullptr;
+	Mat *_R = nullptr;
+	Mat *_T = nullptr;
+	Mat *_E = nullptr;
+	Mat *_F = nullptr;
+
+
+	double *_rms_s = nullptr;
+
+
+	SStereoCalibrationCtl() : SCalibrationBaseCtl() {
+	}
+};
 
 
 
@@ -598,7 +627,7 @@ struct SFeatureDetectorCtl {
 
 extern Size g_boardSize;
 extern Size g_boardQuadSize;
-extern bool g_images_are_collected;
+
 
 class ClassBlobDetector : public SimpleBlobDetector {
 	bool _chess_board;

@@ -215,7 +215,7 @@ bool ProcessWinMessages(DWORD dwMilliseconds) {
 				}
 				rc = false;
 			}
-		} while (dwMilliseconds > 0);
+		} while (dwMilliseconds > 0 && !g_bTerminated);
 	}
 	catch (...) {
 		rc = false;

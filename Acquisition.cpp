@@ -764,6 +764,43 @@ SStereoFrame* NextReadFrame() {
 	return pframe;
 }
 
+bool GetLastFrame(Mat& left, Mat& right, int64_t* time_received, int64_t expiration) {
+	int64_t start_time = OSDayTimeInMilliseconds();
+
+	int count = 0;
+
+	SStereoFrame* pframe = NULL;
+	while (!g_bTerminated) {
+		if (g_lastwritten_sframe.isActive) {
+			g_lastwritten_sframe.gate.lock();
+			if (g_lastwritten_sframe.isActive) {
+				CopyStereoFrame(left, right, &g_lastwritten_sframe, time_received);
+				g_lastwritten_sframe.isActive = false;
+				++count;
+			}
+			g_lastwritten_sframe.gate.unlock();
+		}
+		if (count > 0) {
+			break;
+		}
+		if (expiration) {
+			if ((OSDayTimeInMilliseconds() - start_time) > expiration) {
+				break;
+			}
+		}
+		if (g_event_SFrameIsAvailable != INVALID_HANDLE_VALUE && g_resultingFrameRate > 0) {
+			WaitForSingleObjectEx(g_event_SFrameIsAvailable, (1000 / (int)g_resultingFrameRate) + 1, TRUE);
+		}
+		else {
+			OSWait();
+		}
+	}
+
+	bool ok = count > 0 && !left.empty() && !right.empty();
+	return ok;
+}
+
+
 
 
 #pragma warning ( push )
@@ -837,6 +874,49 @@ void Process_CameraImage(AndroidBayerFilterImage* obj) {
 
 
 
+void ConvertSynchronizedResults(std::vector<CGrabResultPtr>& ptrGrabResults, SStereoFrame& sframe, std::string* cv_winNames = NULL) {
+	for (auto& ptrGrabResult : ptrGrabResults) {
+		int width = ptrGrabResult->GetWidth();
+		int height = ptrGrabResult->GetHeight();
+
+		CPylonImage pylon_bitmapImage;
+
+		ushort* pylon_buffer = NULL;
+
+		if (ptrGrabResult->GetPixelType() != PixelType_BGR8packed) { // PixelType_RGB16packed might be a better choice
+			CImageFormatConverter converter;
+			converter.OutputPixelFormat = PixelType_BGR8packed;
+			converter.Convert(pylon_bitmapImage, ptrGrabResult);
+
+			pylon_buffer = (ushort*)pylon_bitmapImage.GetBuffer();
+		}
+		else {
+			pylon_buffer = (ushort*)ptrGrabResult->GetBuffer();
+		}
+
+		int c = (int)ptrGrabResult->GetCameraContext();
+		if (c < 0) {
+			g_bTerminated = true;
+			break;
+		}
+
+		if (sframe.frames[c].cv_image.rows != height || sframe.frames[c].cv_image.cols != width) {
+			sframe.frames[c].cv_image = Mat(height, width, CV_8UC3);
+		}
+
+		typedef Vec<uchar, 3> Vec3c;
+		memcpy(&sframe.frames[c].cv_image.at<Vec3c>(0, 0), pylon_buffer, height * width * 3);
+
+		sframe.frames[c].camera_index = c;
+		sframe.frames[c].timestamp = ptrGrabResult->GetTimeStamp();
+
+		if (cv_winNames) {
+			cv_winNames[c] = std::to_string((long long)c);
+		}
+	}
+}
+
+
 uint64_t EvaluateTimestampDifference(uint64_t* timestamp, size_t nsize) {
 	uint64_t timestamp_min = std::numeric_limits<uint64_t>::max();
 	uint64_t timestamp_max = std::numeric_limits<uint64_t>::min();
@@ -850,43 +930,6 @@ uint64_t EvaluateTimestampDifference(uint64_t* timestamp, size_t nsize) {
 	}
 	return timestamp_max - timestamp_min;
 }
-
-bool GetLastFrame(Mat& left, Mat& right, int64_t* time_received, int64_t expiration) {
-	int64_t start_time = OSDayTimeInMilliseconds();
-
-	int count = 0;
-
-	SStereoFrame* pframe = NULL;
-	while (!g_bTerminated) {
-		if (g_lastwritten_sframe.isActive) {
-			g_lastwritten_sframe.gate.lock();
-			if (g_lastwritten_sframe.isActive) {
-				CopyStereoFrame(left, right, &g_lastwritten_sframe, time_received);
-				g_lastwritten_sframe.isActive = false;
-				++count;
-			}
-			g_lastwritten_sframe.gate.unlock();
-		}
-		if (count > 0) {
-			break;
-		}
-		if (expiration) {
-			if ((OSDayTimeInMilliseconds() - start_time) > expiration) {
-				break;
-			}
-		}
-		if (g_event_SFrameIsAvailable != INVALID_HANDLE_VALUE && g_resultingFrameRate > 0) {
-			WaitForSingleObjectEx(g_event_SFrameIsAvailable, (1000 / (int)g_resultingFrameRate) + 1, TRUE);
-		}
-		else {
-			OSWait();
-		}
-	}
-
-	bool ok = count > 0 && !left.empty() && !right.empty();
-	return ok;
-}
-
 
 bool SynchronizedGrabResults(CBaslerUsbInstantCameraArray& cameras, std::vector<CGrabResultPtr>& ptrGrabResults, bool use_trigger, bool trigger_source_software) {
 	bool exception_hashappened = false;
@@ -970,7 +1013,7 @@ bool SynchronizedGrabResults(CBaslerUsbInstantCameraArray& cameras, std::vector<
 	}
 
 
-	if (noresponse_count == 0) { // && !trigger_source_software) {
+	if (noresponse_count == 0) {
 		if (timestamp_dif_min < timestamp_dif && (timestamp_dif - timestamp_dif_min) > 30000) {
 			noresponse_count = 1; // prevent software trigger
 			image_isok = false;
@@ -1027,50 +1070,7 @@ bool SynchronizedGrabResults(CBaslerUsbInstantCameraArray& cameras, std::vector<
 	return image_isok;
 }
 
-void ConvertSynchronizedResults(std::vector<CGrabResultPtr>& ptrGrabResults, SStereoFrame& sframe, std::string* cv_winNames = NULL) {
-	for (auto& ptrGrabResult : ptrGrabResults) {
-		int width = ptrGrabResult->GetWidth();
-		int height = ptrGrabResult->GetHeight();
-
-		CPylonImage pylon_bitmapImage; 
-
-		ushort* pylon_buffer = NULL; 
-
-		if (ptrGrabResult->GetPixelType() != PixelType_BGR8packed) { // PixelType_RGB16packed might be a better choice
-			CImageFormatConverter converter;
-			converter.OutputPixelFormat = PixelType_BGR8packed;
-			converter.Convert(pylon_bitmapImage, ptrGrabResult);
-
-			pylon_buffer = (ushort*)pylon_bitmapImage.GetBuffer(); 
-		}
-		else {
-			pylon_buffer = (ushort*)ptrGrabResult->GetBuffer(); 
-		}
-
-		int c = (int)ptrGrabResult->GetCameraContext();
-		if (c < 0) {
-			g_bTerminated = true;
-			break;
-		}
-
-		if (sframe.frames[c].cv_image.rows != height || sframe.frames[c].cv_image.cols != width) {
-			sframe.frames[c].cv_image = Mat(height, width, CV_8UC3); 
-		}
-
-		typedef Vec<uchar, 3> Vec3c;
-		memcpy(&sframe.frames[c].cv_image.at<Vec3c>(0, 0), pylon_buffer, height * width * 3);
-
-		sframe.frames[c].camera_index = c;
-		sframe.frames[c].timestamp = ptrGrabResult->GetTimeStamp();
-
-		if (cv_winNames) {
-			cv_winNames[c] = std::to_string((long long)c);
-		}
-	}
-}
-
-
-return_t __stdcall AcquireImagesEx(LPVOID lp) {
+return_t __stdcall SynchronizedGrabFrames(LPVOID lp) {
 	SImageAcquisitionCtl* ctl = (SImageAcquisitionCtl*)lp;
 
 	ctl->_status = 1;
@@ -1120,7 +1120,7 @@ return_t __stdcall AcquireImages(LPVOID lp) {
 	std::cout << "Acquisition has started" << std::endl; 
 	timeBeginPeriod(1);
 	try {
-		AcquireImagesEx(lp);
+		SynchronizedGrabFrames(lp);
 	}
 	catch(Exception& ex) {
 		std::cout << ex.msg << std::endl;
