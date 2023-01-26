@@ -146,7 +146,7 @@ bool approximateContourWithQuadrilateral(const std::vector<Point>& contour, std:
 	// - and be convex.
 	// Note: absolute value of an area is used because
 	// area may be positive or negative - in accordance with the contour orientation
-	if (approx.size() == 4) {
+	if (approx.size() >= 4) {
 		double area = std::fabs(contourArea((approx)));
 		if (area > (minArea) && area < (maxArea)) {
 			if (isContourConvex((approx))) {
@@ -202,7 +202,7 @@ void ClassBlobDetector::findBlobs(const Mat& image, Mat& binaryImage, std::vecto
 	BlobCentersLoG(boxes, points, binaryImage, threshold_intensity, cv::Rect(), kmat, /*arff_file_requested*/false, /*intensity_avg_ptr*/nullptr, /*max_LoG_factor*/31.0);
 
 	double desired_min_inertia = sqrt(_min_confidence);
-	double ratio_threshold = desired_min_inertia * params.minCircularity *0.8;
+	double ratio_threshold = desired_min_inertia * params.minCircularity * 0.8;
 
 	for (size_t boxIdx = 0; boxIdx < boxes.size(); boxIdx++) {
 		auto& contourOrig = boxes[boxIdx].contour;
@@ -212,16 +212,28 @@ void ClassBlobDetector::findBlobs(const Mat& image, Mat& binaryImage, std::vecto
 
 		double area = contourArea(Mat(contourOrig));
 
-		//std::vector<cv::Point>& contour = contourOrig;
 		std::vector<cv::Point> contour;
 		if (!approximateContourWithQuadrilateral(contourOrig, contour, area / 2, area * 2)) {
 			continue;
 		}
 
+		contour = contourOrig;
+
 		contours.push_back(contour);
 
 		Moments moms = moments(Mat(contour));
 		area = moms.m00;
+
+
+		// invariant moments; Mark Nixon, 7.3.2.2., p.318
+		// built from normalized central moments.
+
+		double M1 = moms.nu20 + moms.nu02;
+		double M2 = std::pow(moms.nu20 - moms.nu02, 2) + 4 * std::pow(moms.nu11, 2);
+		double M3 = std::pow(moms.nu30 - 3 * moms.nu12, 2) + std::pow(3 * moms.nu21 - moms.nu03, 2);
+
+		//std::cout.precision(17);
+		//std::cout << "M1=" << M1 << ' ' << "M2=" << M2 << ' ' << "M3=" << M3 << ' ' << std::endl;
 
 		Center center;
 		center.confidence = 1;
@@ -271,7 +283,8 @@ void ClassBlobDetector::findBlobs(const Mat& image, Mat& binaryImage, std::vecto
 			ratio *= params.minCircularity;
 		}
 
-		if (ratio < ratio_threshold) {
+
+		if (ratio < ratio_threshold && (M1 > 0.177 || M2 > 0.004 || M3 > 0.0003)) {
 			continue;
 		}
 	
@@ -1895,15 +1908,15 @@ void BoostCalibrate(const std::string& msg, size_t number_of_iterations, Mat& ca
 
 
 
-return_t __stdcall BuildGoodBatchOfPoints(LPVOID lp) {
+return_t __stdcall BuildSeedSelection(LPVOID lp) {
 	SStereoCalibrationCtl* ctl = (SStereoCalibrationCtl*)lp;
 
-	ctl->_finalPointsSelection.resize(0);
-
-	std::vector<size_t> finalPointsSelection;
+	std::vector<size_t> seedSelection;
 
 	Mat cameraMatrix[2];
 	Mat distortionCoeffs[2];
+
+	ctl->_seedSelection.resize(0);
 
 	ctl->_status = 2;
 	try {
@@ -1924,7 +1937,6 @@ return_t __stdcall BuildGoodBatchOfPoints(LPVOID lp) {
 
 		vector<vector<Point2f>> seedPoints_left(3);
 		vector<vector<Point2f>> seedPoints_right(3);
-		std::vector<size_t> seedSelection;
 
 
 		auto sampleCalibrate = [&]() {
@@ -1966,56 +1978,103 @@ return_t __stdcall BuildGoodBatchOfPoints(LPVOID lp) {
 
 
 		if (rms_s >= 1) {
+			seedSelection.resize(0);
 			std::cout << "A minimal set of image points cannot be determined; terminating" << std::endl;
 			return 0;
 		}
-
-
-
-		std::cout << "Building calibration set " << std::endl;
-
-		std::ostringstream ostrSelection;
-
-		for (auto pos : seedSelection) {
-			ostrSelection << pos << ' ';
-		}
-
-
-		finalPointsSelection = seedSelection;
-
-
-
-		for (size_t pos = 0; pos < stereoImagePoints_left.size(); ++pos) {
-			if (std::find(seedSelection.begin(), seedSelection.end(), pos) != seedSelection.end()) {
-				continue;
-			}
-
-			seedPoints_left.push_back(ImagePoints2d_To_ImagePoints2f(stereoImagePoints_left[pos]));
-			seedPoints_right.push_back(ImagePoints2d_To_ImagePoints2f(stereoImagePoints_right[pos]));
-
-			sampleCalibrate();
-
-			std::cout << pos << ' ' << "Re-projection error: " << rms_s << std::endl;
-
-			seedPoints_left.resize(seedPoints_left.size() - 1);
-			seedPoints_right.resize(seedPoints_right.size() - 1);
-
-			if (rms_s < 2) {
-				finalPointsSelection.push_back(pos);
-				ostrSelection << pos << ' ';
-				std::cout << "calibration set: " << ostrSelection.str() << std::endl;
-			}
-		}
-
-		std::cout << "calibration set: " << ostrSelection.str() << std::endl;
 
 	}
 	catch (...) {
 	}
 
 	ctl->_gate.lock();
-	ctl->_finalPointsSelection.swap(finalPointsSelection);
+	ctl->_seedSelection.swap(seedSelection);
 	ctl->_gate.unlock();
+
+	ctl->_status = 0;
+
+	return 0;
+}
+
+
+
+return_t __stdcall TryPointsSelection(LPVOID lp) {
+	SStereoCalibrationCtl* ctl = (SStereoCalibrationCtl*)lp;
+
+	std::vector<size_t> seedSelection = ctl->_seedSelection;
+	size_t pos = ctl->_selection_pos;
+
+	ctl->_pos_ok = false;
+
+	Mat cameraMatrix[2];
+	Mat distortionCoeffs[2];
+	Mat R; 
+	Mat T; 
+	Mat E; 
+	Mat F;
+
+
+	ctl->_status = 2;
+	try {
+		vector<Point3f> objectPoints;
+		for (int i = 0; i < g_boardChessCornersSize.height; ++i) {
+			for (int j = 0; j < g_boardChessCornersSize.width; ++j) {
+				objectPoints.push_back(Point3f(float(j * g_pattern_distance), float(i * g_pattern_distance), 0));
+			}
+		}
+
+
+
+		double rms_s = 0;
+
+		vector<vector<Point2f>> seedPoints_left;
+		vector<vector<Point2f>> seedPoints_right;
+
+
+		auto sampleCalibrate = [&]() {
+			int calibrateFlags = 0;// CALIB_FIX_INTRINSIC;// CALIB_USE_INTRINSIC_GUESS;
+
+			g_objectPoints.resize(seedPoints_left.size(), objectPoints);
+
+			rms_s = stereoCalibrate(g_objectPoints, seedPoints_left, seedPoints_right,
+				cameraMatrix[0], cameraMatrix[0],
+				distortionCoeffs[1], distortionCoeffs[1],
+				g_imageSize,
+				R, T, E, F,
+				calibrateFlags,
+				TermCriteria(TermCriteria::COUNT + TermCriteria::EPS, 10, FLT_EPSILON));
+		};
+
+
+		if (std::find(seedSelection.begin(), seedSelection.end(), pos) != seedSelection.end()) {
+			return 0;
+		}
+
+
+		for (auto x : seedSelection) {
+			seedPoints_left.push_back(ImagePoints2d_To_ImagePoints2f(stereoImagePoints_left[x]));
+			seedPoints_right.push_back(ImagePoints2d_To_ImagePoints2f(stereoImagePoints_right[x]));
+		}
+
+		seedPoints_left.push_back(ImagePoints2d_To_ImagePoints2f(stereoImagePoints_left[pos]));
+		seedPoints_right.push_back(ImagePoints2d_To_ImagePoints2f(stereoImagePoints_right[pos]));
+
+
+		sampleCalibrate();
+
+		if (rms_s < 2) {
+			ctl->_pos_ok = true;
+		}
+		else {
+			std::cout << "Re-projection error for pos" << ' ' << pos << " : " << rms_s << std::endl;
+		}
+
+		if (ctl->_rms_s != nullptr) {
+			*ctl->_rms_s = rms_s;
+		}
+	}
+	catch (...) {
+	}
 
 	ctl->_status = 0;
 
@@ -2026,8 +2085,6 @@ return_t __stdcall BuildGoodBatchOfPoints(LPVOID lp) {
 
 return_t __stdcall StereoCalibrateIteration(LPVOID lp) {
 	SStereoCalibrationCtl* ctl = (SStereoCalibrationCtl*)lp;
-
-	std::vector<size_t> finalPointsSelection = ctl->_finalPointsSelection;
 
 	Mat cameraMatrix[2];
 	Mat distortionCoeffs[2];
@@ -2152,14 +2209,72 @@ return_t __stdcall ConductCalibration(LPVOID lp) {
 
 
 	controls[0]._status = 1;
-	QueueWorkItem(BuildGoodBatchOfPoints, &controls[0]);
-
-
+	QueueWorkItem(BuildSeedSelection, &controls[0]);
 
 	runMessagePipe();
 
 
-	std::vector<size_t> finalPointsSelection = controls[0]._finalPointsSelection;
+
+
+	std::vector<size_t> seedSelection = controls[0]._seedSelection;
+
+	if (seedSelection.size() == 0) {
+		return 0;
+	}
+
+
+
+	std::cout << "Building calibration set " << std::endl;
+
+
+	std::ostringstream ostrSelection;
+
+	for (auto pos : seedSelection) {
+		ostrSelection << pos << ' ';
+	}
+
+
+	std::vector<size_t> finalPointsSelection = seedSelection;
+
+
+
+	for (size_t itr_num = 0; itr_num < stereoImagePoints_left.size(); itr_num += ARRAY_NUM_ELEMENTS(controls)) {
+		for (size_t j = 0; j < ARRAY_NUM_ELEMENTS(controls); ++j) {
+			size_t x = itr_num + j;
+
+			if (x >= stereoImagePoints_left.size()) {
+				continue;
+			}
+
+			auto& ctl = controls[j];
+			ctl._rms_s = nullptr;
+
+			ctl._selection_pos = x;
+			ctl._pos_ok = false;
+
+			if (std::find(seedSelection.begin(), seedSelection.end(), x) != seedSelection.end()) {
+				continue;
+			}
+
+			ctl._seedSelection = seedSelection;
+			ctl._status = 1;
+			QueueWorkItem(TryPointsSelection, &ctl);
+		}
+
+		runMessagePipe();
+
+		for (auto& ctl : controls) {
+			if (ctl._pos_ok) {
+				size_t pos = ctl._selection_pos;
+
+				finalPointsSelection.push_back(pos);
+				ostrSelection << pos << ' ';
+				std::cout << "calibration set: " << ostrSelection.str() << std::endl;
+			}
+		}
+	}
+
+	std::cout << "calibration set: " << ostrSelection.str() << std::endl;
 
 	if (finalPointsSelection.size() == 0) {
 		return 0;

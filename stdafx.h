@@ -597,7 +597,11 @@ struct SFeatureDetectorCtl : public SCalibrationBaseCtl {
 
 struct SStereoCalibrationCtl : public SCalibrationBaseCtl {
 
-	std::vector<size_t> _finalPointsSelection; // input/output
+	std::vector<size_t> _seedSelection;
+	//std::vector<size_t> _finalPointsSelection;
+
+	size_t _selection_pos = 0;
+	size_t _pos_ok = 0;
 
 	size_t _sample_size = 0;
 
