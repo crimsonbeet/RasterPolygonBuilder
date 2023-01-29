@@ -1,0 +1,37 @@
+			auto readyImages_Likeness = [&cv_image, &cv_edges]() {
+				normalize(cv_image[0].clone(), cv_image[0], 0, (size_t)256 * g_bytedepth_scalefactor, NORM_MINMAX, CV_16UC1, Mat());
+
+				normalize(cv_image[1].clone(), cv_image[1], 0, (size_t)256 * g_bytedepth_scalefactor, NORM_MINMAX, CV_16UC1, Mat());
+
+				medianBlur(cv_image[0].clone(), cv_image[0], 3);
+				medianBlur(cv_image[1].clone(), cv_image[1], 3);
+
+				Mat aux0 = cv_image[0];
+				AnisotropicDiffusion(aux0, 10);
+				aux0.convertTo(cv_image[0], CV_16UC1);
+
+				Mat aux1 = cv_image[1];
+				AnisotropicDiffusion(aux1, 10);
+				aux1.convertTo(cv_image[1], CV_16UC1);
+
+				cv_edges[0] = cv_image[0].clone();
+				cv_edges[1] = cv_image[1].clone();
+			};
+
+
+			auto prepImages_Likeness = [&cv_image, &chWeights](double chIdeal[3]) {
+				Mat aux2 = cv_image[2].clone();
+				StandardizeImage_Likeness(aux2, chIdeal);
+				cv_image[0] = mat_invert2word(aux2);
+
+				Mat aux3 = cv_image[3].clone();
+				SquareImage(aux3, chWeights);
+				cv_image[1] = mat_loginvert2byte(aux3);
+			};
+
+
+								//BuildWeights_ByChannel(unchangedImage, pt, chWeights);
+
+								//prepImages_Likeness(chIdeal, chWeights);
+								//readyImages_Likeness();
+

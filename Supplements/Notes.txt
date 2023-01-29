@@ -1,0 +1,189 @@
+std::function<void()> g_boostCalibrateLambda = nullptr;
+return_t __stdcall BoostCalibrateWorkItem(LPVOID lp) {
+	g_boostCalibrateLambda();
+	return 0;
+}
+
+
+void BoostCalibrate(size_t number_of_iterations, Mat& cameraMatrixL, Mat& cameraMatrixR, Mat& distortionCoeffsL, Mat& distortionCoeffsR, double rms[2]) {
+	g_boostCalibrateLambda = [&]() {
+
+		g_boostCalibrateLambda = nullptr;
+	};
+
+	QueueWorkItem(BoostCalibrateWorkItem);
+
+	while (g_boostCalibrateLambda != nullptr) {
+		ProcessWinMessages(10);
+	}
+}
+
+
+
+
+
+	//size_t researchPos[18] = { 1, 2, 3, 4, 6, 9, 14, 17, 18, 20, 21, 22, 23, 24, 11, 12, 8, 10};// , 19};
+	for (size_t j = 0; j < N;) {
+		if (N != imagePoints_src.size()) {
+			size_t pos = (size_t)(__int64)rand() % imagePoints_src.size();
+			if (std::find(x.begin(), x.end(), pos) == x.end()) {
+				x.push_back(pos);
+				++j;
+			}
+			//size_t pos = (size_t)(__int64)rand() % ARRAY_NUM_ELEMENTS(researchPos);
+			//if (std::find(x.begin(), x.end(), researchPos[pos]) == x.end()) {
+			//	x.push_back(researchPos[pos]);
+			//	++j;
+			//}
+		}
+		else {
+			x.push_back(j);
+			++j;
+		}
+	}
+
+
+
+
+
+
+
+
+
+	//double rms[2];
+	//BoostCalibrate("Calibrating cameras: single cameras",
+	//	number_of_iterations, 
+	//	cameraMatrix[0], cameraMatrix[1], 
+	//	distortionCoeffs[0], distortionCoeffs[1], 
+	//	rms);
+
+
+
+	vector<Point3f> objectPoints;
+	for (int i = 0; i < g_boardChessCornersSize.height; ++i) {
+		for (int j = 0; j < g_boardChessCornersSize.width; ++j) {
+			objectPoints.push_back(Point3f(float(j * g_pattern_distance), float(i * g_pattern_distance), 0));
+		}
+	}
+
+	vector<vector<Point3f>> vectorObjectPoints;
+
+
+	Mat cameraMatrix[4];
+	Mat distortionCoeffs[4];
+
+	double iteration_rms[256];
+	::memset(iteration_rms, 0, sizeof(iteration_rms));
+
+	double average_rms = 0;
+	size_t rms_cnt = 0;
+
+	double max_rms = 0;
+
+	size_t iter_num;
+	for (iter_num = 0; !g_bTerminated && iter_num < number_of_iterations; ++iter_num) {
+
+		vector<vector<Point2f>> stereoImagePoints_left1(min_images);
+		vector<vector<Point2f>> stereoImagePoints_right1(min_images);
+
+		SampleImagepoints(min_images, stereoImagePoints_left, stereoImagePoints_left1, nullptr, &stereoImagePoints_right, &stereoImagePoints_right1);
+
+		g_objectPoints.resize(min_images, objectPoints);
+
+		bool fix_intrinsic = ctl->_two_step_calibration && !g_configuration._calib_use_homography;
+		fix_intrinsic = false;
+
+		int calibrateFlags = 0;// CALIB_FIX_INTRINSIC;// CALIB_USE_INTRINSIC_GUESS;
+
+		CMVec[2 * iter_num] = cameraMatrix[0].clone();
+		CMVec[2 * iter_num + 1] = cameraMatrix[1].clone();
+		DCVec[2 * iter_num] = distortionCoeffs[0].clone();
+		DCVec[2 * iter_num + 1] = distortionCoeffs[1].clone();
+
+		rms_s = stereoCalibrate(g_objectPoints,
+			stereoImagePoints_left1, stereoImagePoints_right1,
+			CMVec[2 * iter_num], DCVec[2 * iter_num],
+			CMVec[2 * iter_num + 1], DCVec[2 * iter_num + 1],
+			g_imageSize,
+			RVec[iter_num], TVec[iter_num], EVec[iter_num], FVec[iter_num],
+			calibrateFlags,
+			TermCriteria(TermCriteria::COUNT + TermCriteria::EPS, 10, FLT_EPSILON));
+
+		iteration_rms[iter_num] = rms_s;
+		if (max_rms < rms_s) {
+			max_rms = rms_s;
+		}
+		average_rms += rms_s;
+		++rms_cnt;
+
+		std::cout << iter_num << ' ' << "Re-projection error for stereo camera: " << rms_s << std::endl;
+
+		while (ProcessWinMessages());
+
+	}
+
+
+
+
+	//cv::stereoRectify(cameraMatrix[0], distortionCoeffs[0], cameraMatrix[1], distortionCoeffs[1], g_imageSize, R, T, Rl, Rr, Pl, Pr, Q, 0);
+
+	//cv::stereoRectify(cameraMatrix[0], distortionCoeffs[0], cameraMatrix[1], distortionCoeffs[1], g_imageSize, R, T, Rl, Rr, Pl, Pr, Q, 0, 0);
+
+	//cv::stereoRectify(cameraMatrix[0], distortionCoeffs[0], cameraMatrix[1], distortionCoeffs[1], g_imageSize, R, T, Rl, Rr, Pl, Pr, Q, 0, 0, rectified_image_size);
+
+	cv::Rect Roi[2];
+	cv::stereoRectify(cameraMatrix[0], distortionCoeffs[0], cameraMatrix[1], distortionCoeffs[1], g_imageSize, R, T, Rl, Rr, Pl, Pr, Q, 0, g_configuration._calib_rectify_alpha_param, rectified_image_size, &Roi[0], &Roi[1]);
+	//if(Roi[0].width < (g_imageSize.width * 0.8) || Roi[1].width < (g_imageSize.width * 0.8)) {
+	//	cv::stereoRectify(cameraMatrix[0], distortionCoeffs[0], cameraMatrix[1], distortionCoeffs[1], g_imageSize, R, T, Rl, Rr, Pl, Pr, Q, 0, 0, rectified_image_size, &Roi[0], &Roi[1]);
+	//	std::cout << "The rectified image has been enlarged: " << std::endl;
+	//}
+
+
+
+
+	//if (ctl->_two_step_calibration) {
+	//	cv::initUndistortRectifyMap(cameraMatrix[2], distortionCoeffs[2], cv::Mat(), cv::getOptimalNewCameraMatrix(cameraMatrix[2], distortionCoeffs[2], g_imageSize, 0), g_imageSize, CV_16SC2/*CV_32F*/, map_l[2], map_l[3]);
+	//	cv::initUndistortRectifyMap(cameraMatrix[3], distortionCoeffs[3], cv::Mat(), cv::getOptimalNewCameraMatrix(cameraMatrix[3], distortionCoeffs[3], g_imageSize, 0), g_imageSize, CV_16SC2/*CV_32F*/, map_r[2], map_r[3]);
+	//}
+
+
+
+
+
+		std::cout << "Building calibration set " << std::endl;
+
+		std::ostringstream ostrSelection;
+
+		for (auto pos : seedSelection) {
+			ostrSelection << pos << ' ';
+		}
+
+
+		finalPointsSelection = seedSelection;
+
+
+
+		for (size_t pos = 0; pos < stereoImagePoints_left.size(); ++pos) {
+			if (std::find(seedSelection.begin(), seedSelection.end(), pos) != seedSelection.end()) {
+				continue;
+			}
+
+			seedPoints_left.push_back(ImagePoints2d_To_ImagePoints2f(stereoImagePoints_left[pos]));
+			seedPoints_right.push_back(ImagePoints2d_To_ImagePoints2f(stereoImagePoints_right[pos]));
+
+			sampleCalibrate();
+
+			std::cout << pos << ' ' << "Re-projection error: " << rms_s << std::endl;
+
+			seedPoints_left.resize(seedPoints_left.size() - 1);
+			seedPoints_right.resize(seedPoints_right.size() - 1);
+
+			if (rms_s < 2) {
+				finalPointsSelection.push_back(pos);
+				ostrSelection << pos << ' ';
+				std::cout << "calibration set: " << ostrSelection.str() << std::endl;
+			}
+		}
+
+		std::cout << "calibration set: " << ostrSelection.str() << std::endl;
+

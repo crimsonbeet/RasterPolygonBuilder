@@ -658,6 +658,9 @@ void matCV_8UC1_memcpy(Mat& dst, const Mat& src) {
 }
 
 void matCV_8UC3_memcpy(Mat& dst, const Mat& src) {
+	if (src.empty()) {
+		return;
+	}
 	if (src.type() != CV_8UC3) {
 		throw "matCV_8UC3_memcpy src is not CV_8UC3";
 	}
@@ -671,6 +674,9 @@ void matCV_8UC3_memcpy(Mat& dst, const Mat& src) {
 }
 
 void matCV_16UC1_memcpy(Mat& dst, const Mat& src) {
+	if (src.empty()) {
+		return;
+	}
 	if(src.type() != CV_16UC1) {
 		throw "matCV_16UC1_memcpy src is not CV_16UC1"; 
 	}

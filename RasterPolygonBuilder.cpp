@@ -385,7 +385,7 @@ void OnMouseCallback(int event, int x, int y, int flags, void* userdata) {
 
 
 
-bool DisplayReconstructionData(SPointsReconstructionCtl& reconstruction_ctl, SImageAcquisitionCtl& image_acquisition_ctl, std::string imagewin_names[4], int& time_average) {
+bool DisplayReconstructionData(SPointsReconstructionCtl& reconstruction_ctl, std::string imagewin_names[5], int& time_average) {
 	static Mat cv_image[2]; // gets destroyed each time around
 	static Mat cv_edges[2];
 	static Mat cv_background[4];
@@ -512,6 +512,10 @@ bool DisplayReconstructionData(SPointsReconstructionCtl& reconstruction_ctl, SIm
 				cvtColor(cv_edges[0], cv_image[0] = Mat(), CV_GRAY2RGB);
 				cvtColor(cv_edges[1], cv_image[1] = Mat(), CV_GRAY2RGB);
 			}
+			else {
+				cv_image[0] = cv_edges[0];
+				cv_image[1] = cv_edges[1];
+			}
 
 			for (int j = 0; j < 2; ++j) {
 				scaleImage(imagewin_names[j], fx[j], fy[j], cv_image[j]);
@@ -552,18 +556,18 @@ bool DisplayReconstructionData(SPointsReconstructionCtl& reconstruction_ctl, SIm
 					rectangle(cv_image[j], Point((int)(roi[j].x * fx[j]), (int)(roi[j].y * fy[j])), Point((int)((roi[j].x + roi[j].width) * fx[j]), (int)((roi[j].y + roi[j].height) * fy[j])), Scalar(0, 0, 255 * cdf));
 				}
 
-				for (auto& box : boxes[j]) {
-					if ((box.x[0] > 0 || box.x[1] < cv_edges[j].cols) && (box.y[0] > 0 || box.y[1] < cv_edges[j].rows))
-						rectangle(cv_image[j], Point((int)(box.x[0] * fx[j]), (int)(box.y[0] * fy[j])), Point((int)(box.x[1] * fx[j]), (int)(box.y[1] * fy[j])), Scalar(0, 0, 255 * cdf));
-				}
+				//for (auto& box : boxes[j]) {
+				//	if ((box.x[0] > 0 || box.x[1] < cv_edges[j].cols) && (box.y[0] > 0 || box.y[1] < cv_edges[j].rows))
+				//		rectangle(cv_image[j], Point((int)(box.x[0] * fx[j]), (int)(box.y[0] * fy[j])), Point((int)(box.x[1] * fx[j]), (int)(box.y[1] * fy[j])), Scalar(0, 0, 255 * cdf));
+				//}
 
-				if (reconstruction_ctl._draw_epipolar_lines) {
-					if (!g_configuration._supervised_LoG) {
-						for (int y = 0; y < cv_image[j].rows; y += 15) {
-							line(cv_image[j], Point(0, y), Point(cv_image[j].cols, y), Scalar(0, 255 * cdf, 0));
-						}
-					}
-				}
+				//if (reconstruction_ctl._draw_epipolar_lines) {
+				//	if (!g_configuration._supervised_LoG) {
+				//		for (int y = 0; y < cv_image[j].rows; y += 15) {
+				//			line(cv_image[j], Point(0, y), Point(cv_image[j].cols, y), Scalar(0, 255 * cdf, 0));
+				//		}
+				//	}
+				//}
 
 				if (imagewin_names[j].size() > 0) {
 					cv::imshow(imagewin_names[j], cv_image[j]);
@@ -1005,7 +1009,7 @@ int main() {
 
 			OSSleep(20);
 
-			bool stereodata_statistics_changed = DisplayReconstructionData(reconstruction_ctl, image_acquisition_ctl, imagewin_names, time_average);
+			bool stereodata_statistics_changed = DisplayReconstructionData(reconstruction_ctl, imagewin_names, time_average);
 			if (stereodata_statistics_changed) {
 				if (_g_images_frame) {
 				}

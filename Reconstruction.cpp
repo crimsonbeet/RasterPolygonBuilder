@@ -4019,7 +4019,16 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 		else {
 			if (!image_isok) {
 				image_isok = GetImages(cv_image[0], cv_image[1], &image_localtime, 1);
-				Sleep(20);
+				if (ctl->_calibration_exists) {
+					Mat undistorted;
+					remap(cv_image[0], undistorted, ctl->_map_l[0], ctl->_map_l[1], INTER_CUBIC/*INTER_LINEAR*//*INTER_NEAREST*/, BORDER_CONSTANT);
+					cv_image[0] = undistorted;
+					undistorted = Mat();
+					remap(cv_image[1], undistorted, ctl->_map_r[0], ctl->_map_r[1], INTER_CUBIC/*INTER_LINEAR*//*INTER_NEAREST*/, BORDER_CONSTANT);
+					cv_image[1] = undistorted;
+					undistorted = Mat();
+				}
+				//Sleep(20);
 			}
 		}
 		_g_images_frame->Invalidate();
@@ -4047,6 +4056,9 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 			}
 
 
+
+
+
 			double chWeights[3] = { 0.3, 0.59, 0.11 };
 
 			auto prepImages = [&cv_image, &chWeights]() {
@@ -4069,55 +4081,6 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 				cv_edges[window] = cv_image[window].clone();
 			};
 
-			auto prepImages_Likeness = [&cv_image, &chWeights](double chIdeal[3]) {
-				Mat aux2 = cv_image[2].clone();
-				StandardizeImage_Likeness(aux2, chIdeal);
-				cv_image[0] = mat_invert2word(aux2);
-
-				Mat aux3 = cv_image[3].clone();
-				SquareImage(aux3, chWeights);
-				cv_image[1] = mat_loginvert2byte(aux3);
-			};
-
-			auto prepImages_HSV_Likeness = [&cv_image, &chWeights](double chIdeal[3], int window) {
-				Mat aux = cv_image[2 + window].clone();
-				if (StandardizeImage_HSV_Likeness(aux, chIdeal)) {
-					cv_image[window] = mat_loginvert2word(aux);
-					cv_image[window] = mat_invert2word(cv_image[window]);
-				}
-				else {
-					Mat aux = cv_image[2 + window].clone();
-					if (window == 0) {
-						StandardizeImage(aux, chWeights);
-						cv_image[window] = mat_invert2word(aux);
-					}
-					else {
-						SquareImage(aux, chWeights);
-						cv_image[window] = mat_loginvert2byte(aux);
-					}
-				}
-			};
-
-			auto readyImages_Likeness = [&cv_image, &cv_edges]() {
-				normalize(cv_image[0].clone(), cv_image[0], 0, (size_t)256 * g_bytedepth_scalefactor, NORM_MINMAX, CV_16UC1, Mat());
-
-				normalize(cv_image[1].clone(), cv_image[1], 0, (size_t)256 * g_bytedepth_scalefactor, NORM_MINMAX, CV_16UC1, Mat());
-
-				medianBlur(cv_image[0].clone(), cv_image[0], 3);
-				medianBlur(cv_image[1].clone(), cv_image[1], 3);
-
-				Mat aux0 = cv_image[0];
-				AnisotropicDiffusion(aux0, 10);
-				aux0.convertTo(cv_image[0], CV_16UC1);
-
-				Mat aux1 = cv_image[1];
-				AnisotropicDiffusion(aux1, 10);
-				aux1.convertTo(cv_image[1], CV_16UC1);
-
-				cv_edges[0] = cv_image[0].clone();
-				cv_edges[1] = cv_image[1].clone();
-			};
-
 
 
 
@@ -4137,8 +4100,8 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 			auto submitGraphics = [&](Mat& originalImage, bool data_is_valid = false) {
 				ctl->_gate.lock();
-				ctl->_cv_image[0] = cv_image[0].clone();
-				ctl->_cv_image[1] = cv_image[1].clone();
+				//ctl->_cv_image[0] = cv_image[0].clone();
+				//ctl->_cv_image[1] = cv_image[1].clone();
 				ctl->_cv_edges[0] = cv_edges[0].clone();
 				ctl->_cv_edges[1] = cv_edges[1].clone();
 				ctl->_pixel_threshold = 91;
@@ -4270,13 +4233,27 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 						}
 						else {
-								//BuildWeights_ByChannel(unchangedImage, pt, chWeights);
-
 								double chIdeal[3];
 								BuildIdealChannels_Likeness(unchangedImage, pt, chIdeal);
 
-								//prepImages_Likeness(chIdeal, chWeights);
-								//readyImages_Likeness();
+								auto prepImages_HSV_Likeness = [&cv_image, &chWeights](double chIdeal[3], int window) {
+									Mat aux = cv_image[2 + window].clone();
+									if (StandardizeImage_HSV_Likeness(aux, chIdeal)) {
+										cv_image[window] = mat_loginvert2word(aux);
+										cv_image[window] = mat_invert2word(cv_image[window]);
+									}
+									else {
+										Mat aux = cv_image[2 + window].clone();
+										if (window == 0) {
+											StandardizeImage(aux, chWeights);
+											cv_image[window] = mat_invert2word(aux);
+										}
+										else {
+											SquareImage(aux, chWeights);
+											cv_image[window] = mat_loginvert2byte(aux);
+										}
+									}
+								};
 
 								prepImages_HSV_Likeness(chIdeal, windowNumber);
 						}
@@ -4452,6 +4429,9 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 	SPointsReconstructionCtl* ctl = (SPointsReconstructionCtl*)lp;
 
 
+	g_configuration._visual_diagnostics = true;
+
+
 
 	ctl->_gate.lock();
 	ctl->_status--;
@@ -4498,6 +4478,16 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 				continue;
 			}
 
+			if (ctl->_calibration_exists) {
+				Mat undistorted;
+				remap(cv_image[0], undistorted, ctl->_map_l[0], ctl->_map_l[1], INTER_CUBIC/*INTER_LINEAR*//*INTER_NEAREST*/, BORDER_CONSTANT);
+				cv_image[0] = undistorted;
+				undistorted = Mat();
+				remap(cv_image[1], undistorted, ctl->_map_r[0], ctl->_map_r[1], INTER_CUBIC/*INTER_LINEAR*//*INTER_NEAREST*/, BORDER_CONSTANT);
+				cv_image[1] = undistorted;
+				undistorted = Mat();
+			}
+
 			cv_image[2] = cv_image[0].clone();
 			cv_image[3] = cv_image[1].clone();
 
@@ -4514,8 +4504,6 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 
 			auto submitGraphics = [&](Mat& originalImage, bool data_is_valid = false) {
 				ctl->_gate.lock();
-				ctl->_cv_image[0] = cv_image[0].clone();
-				ctl->_cv_image[1] = cv_image[1].clone();
 				ctl->_cv_edges[0] = cv_edges[0].clone();
 				ctl->_cv_edges[1] = cv_edges[1].clone();
 				ctl->_data_isvalid = false;
@@ -4569,31 +4557,75 @@ return_t __stdcall ReconstructPoints(LPVOID lp) {
 
 
 
-void launch_reconstruction(SImageAcquisitionCtl& image_acquisition_ctl, SPointsReconstructionCtl *reconstruction_ctl) {
+void launch_reconstruction(SImageAcquisitionCtl& image_acquisition_ctl, SPointsReconstructionCtl *ctl) {
 	if(!g_bTerminated) {
-		reconstruction_ctl->_status = 4; // each thread decrements twice; default 2 threads. 
-		reconstruction_ctl->_terminated = 0;
+
+		FileStorage fs(CalibrationFileName(), FileStorage::READ);
+
+		fs["cameraMatrix_l"] >> ctl->_cameraMatrix[0];
+		fs["cameraMatrix_r"] >> ctl->_cameraMatrix[1];
+		fs["distCoeffs_l"] >> ctl->_distortionCoeffs[0];
+		fs["distCoeffs_r"] >> ctl->_distortionCoeffs[1];
+		fs["cameraMatrix_l_first"] >> ctl->_cameraMatrix[2]; // undistort on first step of calibration
+		fs["cameraMatrix_r_first"] >> ctl->_cameraMatrix[3];
+		fs["distCoeffs_l_first"] >> ctl->_distortionCoeffs[2];
+		fs["distCoeffs_r_first"] >> ctl->_distortionCoeffs[3];
+		fs["R"] >> ctl->_R;
+		fs["T"] >> ctl->_T;
+		fs["E"] >> ctl->_E;
+		fs["F"] >> ctl->_F;
+		fs["R_l"] >> ctl->_Rl;
+		fs["R_r"] >> ctl->_Rr;
+		fs["P_l"] >> ctl->_Pl;
+		fs["P_r"] >> ctl->_Pr;
+		fs["Q"] >> ctl->_Q;
+		//fs["map_l1"] >> ctl->_map_l[0];
+		//fs["map_l2"] >> ctl->_map_l[1];
+		//fs["map_r1"] >> ctl->_map_r[0];
+		//fs["map_r2"] >> ctl->_map_r[1];
+		//fs["map_l1_first"] >> ctl->_map_l[2];
+		//fs["map_l2_first"] >> ctl->_map_l[3];
+		//fs["map_r1_first"] >> ctl->_map_r[2];
+		//fs["map_r2_first"] >> ctl->_map_r[3];
+		fs["roi_l"] >> ctl->_roi[0];
+		fs["roi_r"] >> ctl->_roi[1];
+
+		fs["rectified_image_size"] >> ctl->_rectified_image_size;
+
+		fs.release();
+
+
+		ctl->_calibration_exists = ctl->_cameraMatrix[0].cols > 0 && ctl->_cameraMatrix[1].cols > 0;
+
+		if (ctl->_calibration_exists) {
+			cv::initUndistortRectifyMap(ctl->_cameraMatrix[0], ctl->_distortionCoeffs[0], ctl->_Rl, ctl->_Pl, ctl->_rectified_image_size, CV_16SC2/*CV_32F*/, ctl->_map_l[0], ctl->_map_l[1]);
+			cv::initUndistortRectifyMap(ctl->_cameraMatrix[1], ctl->_distortionCoeffs[1], ctl->_Rr, ctl->_Pr, ctl->_rectified_image_size, CV_16SC2/*CV_32F*/, ctl->_map_r[0], ctl->_map_r[1]);
+		}
+
+
+		ctl->_status = 4; // each thread decrements twice; default 2 threads. 
+		ctl->_terminated = 0;
 		if(g_configuration._frames_acquisition_mode == 1) { // reads from files sequentially, so just one thread.
-			reconstruction_ctl->_status -= 2;
+			ctl->_status -= 2;
 		}
 		else
 		if(g_configuration._frames_acquisition_mode > 1) { // for memory leak detection. reads just one image from file per thread (N alltogether), then cycles through those images. 
-			reconstruction_ctl->_status = g_configuration._frames_acquisition_mode * 2;
+			ctl->_status = g_configuration._frames_acquisition_mode * 2;
 		}
 		else
 		if(g_configuration._frames_acquisition_mode < 0) { // -N means read from cameras with N threads. 
-			reconstruction_ctl->_status = -g_configuration._frames_acquisition_mode * 2;
+			ctl->_status = -g_configuration._frames_acquisition_mode * 2;
 		}
 
-		const int N = (reconstruction_ctl->_status >> 1); // number of reconstruction threads. 
+		const int N = (ctl->_status >> 1); // number of reconstruction threads. 
 
-		reconstruction_ctl->_status += 2; // threshold calculation thread also decrements twice.  
+		ctl->_status += 2; // threshold calculation thread also decrements twice.  
 
 		for(int j = 0; j < N; ++j) {
-			QueueWorkItem(ReconstructPoints, reconstruction_ctl);
+			QueueWorkItem(ReconstructPoints, ctl);
 		}
 
-		QueueWorkItem(EvaluateOtsuThreshold, reconstruction_ctl);
+		QueueWorkItem(EvaluateOtsuThreshold, ctl);
 	}
 }
 

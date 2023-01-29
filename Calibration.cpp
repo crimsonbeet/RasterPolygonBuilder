@@ -106,22 +106,28 @@ void DrawImageAndBoard(const std::string& aName, const std::string& window_name,
 }
 
 
+std::string CalibrationFileName() {
+	return std::string(g_path_calib_images_dir) + g_path_calibrate_file;
+}
+
+
 
 bool CalibrationFileExists() {
 	bool exists = false;
-	std::string path_calibrate_file = std::string(g_path_calib_images_dir) + g_path_calibrate_file;
+	std::string path_calibrate_file = CalibrationFileName();
 	if (MyGetFileSize(path_calibrate_file) > 0) {
-		try {
-			FileStorage fs(path_calibrate_file, FileStorage::READ);
-			if (fs.isOpened()) {
-				Mat cameraMatrix;
-				fs["cameraMatrix_l"] >> cameraMatrix;
-				exists = cameraMatrix.cols > 0;
-				fs.release();
-			}
-		}
-		catch (...) {
-		}
+		exists = true;
+		//try {
+		//	FileStorage fs(path_calibrate_file, FileStorage::READ);
+		//	if (fs.isOpened()) {
+		//		Mat cameraMatrix;
+		//		fs["cameraMatrix_l"] >> cameraMatrix;
+		//		exists = cameraMatrix.cols > 0;
+		//		fs.release();
+		//	}
+		//}
+		//catch (...) {
+		//}
 	}
 	return exists;
 }
@@ -2470,7 +2476,7 @@ return_t __stdcall ConductCalibration(LPVOID lp) {
 		}
 	}
 
-	FileStorage fs(".\\stereo_calibrate.xml", FileStorage::WRITE);
+	FileStorage fs(CalibrationFileName(), FileStorage::WRITE);
 
 	fs << "cameraMatrix_l" << cameraMatrix[0];
 	fs << "cameraMatrix_r" << cameraMatrix[1];
@@ -2485,13 +2491,15 @@ return_t __stdcall ConductCalibration(LPVOID lp) {
 	fs << "P_l" << Pl;
 	fs << "P_r" << Pr;
 	fs << "Q" << Q;
-	fs << "map_l1" << map_l[0];
-	fs << "map_l2" << map_l[1];
-	fs << "map_r1" << map_r[0];
-	fs << "map_r2" << map_r[1];
+	//fs << "map_l1" << map_l[0];
+	//fs << "map_l2" << map_l[1];
+	//fs << "map_r1" << map_r[0];
+	//fs << "map_r2" << map_r[1];
 
 	fs << "roi_l" << Roi[0];
 	fs << "roi_r" << Roi[1];
+
+	fs << "rectified_image_size" << rectified_image_size;
 
 	fs.release();
 

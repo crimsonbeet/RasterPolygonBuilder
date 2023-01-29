@@ -151,6 +151,8 @@ void VS_FileLog(const std::string& msg, bool do_close = false, bool do_ipclog = 
 void Find_SubDirectories(const std::string& parent_dir, std::vector<std::string>& v_sub_dirs);
 void ARFF_FileLog(const std::string& msg, bool do_close = false, bool do_ipclog = false);
 
+std::string CalibrationFileName();
+
 
 
 extern const char ESC_KEY;
@@ -624,7 +626,6 @@ struct SStereoCalibrationCtl : public SCalibrationBaseCtl {
 	SStereoCalibrationCtl() : SCalibrationBaseCtl() {
 	}
 };
-
 
 
 
@@ -1263,6 +1264,22 @@ struct SPointsReconstructionCtl {
 
 	wsi_gate _gate;
 
+
+	Mat _cameraMatrix[4];
+	Mat _distortionCoeffs[4];
+
+	Mat _R, _T, _E, _F;
+
+	Mat _Rl, _Rr, _Pl, _Pr, _Q;
+
+	Mat _map_l[4];
+	Mat _map_r[4];
+
+	cv::Size _rectified_image_size;
+
+	bool _calibration_exists = false;
+
+
 	cv::Matx44d _world_transform; // a transform matrix that maps to coord. system of 3d features of a detected object. 
 	long long _world_transform_timestamp; // a timestamp of when _world_transform has been updated. 
 
@@ -1280,8 +1297,8 @@ struct SPointsReconstructionCtl {
 	std::vector<ReconstructedPoint> _points4Dtransformed;
 	std::vector<std::vector<ReconstructedPoint>> _coordlines4Dtransformed;
 
-	Mat _cv_image[2];
-	Mat _cv_edges[2]; // rectified _cv_image
+	Mat _cv_image[2]; // rectified image
+	Mat _cv_edges[2]; // is used for drawing the images in "Camera1" and "Camera2" windows
 	Mat _unchangedImage[2]; 
 
 	std::vector<ABox> _boxes[2];
@@ -1319,7 +1336,7 @@ void launch_reconstruction(SImageAcquisitionCtl& image_acquisition_ctl, SPointsR
 
 
 
-bool DisplayReconstructionData(SPointsReconstructionCtl& reconstruction_ctl, SImageAcquisitionCtl& image_acquisition_ctl, std::string imagewin_names[4], int& time_average);
+bool DisplayReconstructionData(SPointsReconstructionCtl& reconstruction_ctl, std::string imagewin_names[4], int& time_average);
 
 
 void InitializeCameras(SImageAcquisitionCtl& ctl);
