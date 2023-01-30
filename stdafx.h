@@ -808,6 +808,9 @@ struct ClusteredPoint: public Point2d {
 	int _isACorner;
 	int _isACenter;
 
+	std::vector<std::vector<cv::Point2d>> _contours;
+	std::vector<Point2d> _contour_notsmoothed;
+
 	double _corners_max_Y_error; // control parameter for partitioning. 
 	double _centers_min_Y_error; // work value; min. Y distance between rectangles in left and right image; is used to select correct match.  
 };
@@ -1304,6 +1307,10 @@ struct SPointsReconstructionCtl {
 	std::vector<ABox> _boxes[2];
 	std::vector<ClusteredPoint> _cv_points[2];
 
+	std::string _edgesWindows[2];
+	std::string _pointsCropWindows[2];
+	std::string _combinedFitWindows[2];
+
 	cv::Rect _roi[2];
 
 	long long _last_image_timestamp;
@@ -1336,7 +1343,7 @@ void launch_reconstruction(SImageAcquisitionCtl& image_acquisition_ctl, SPointsR
 
 
 
-bool DisplayReconstructionData(SPointsReconstructionCtl& reconstruction_ctl, std::string imagewin_names[4], int& time_average);
+bool DisplayReconstructionData(SPointsReconstructionCtl& reconstruction_ctl, int& time_average);
 
 
 void InitializeCameras(SImageAcquisitionCtl& ctl);

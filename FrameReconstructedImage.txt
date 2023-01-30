@@ -20,34 +20,38 @@ $
 
 
 >< $ Canvas DataType='Frame_Container' 
->< $ Situation Left=1 Top=70 Bottom=420 Right=500 FontFace='Segoe UI' FontHeight=10 >< BackColor Hex=D3D3D3 $ 
+>< $ Situation Left=1 Right=330 Top=70 Bottom=470 FontFace='Segoe UI' FontHeight=10 >< BackColor Hex=D3D3D3 $ 
 $ 
 
 >< $ Canvas DataType='openCV_Container' 
->< $ Situation Left=500 Top=70 Bottom=535 Right=1000 IsAbsolute=1 FontFace='Segoe UI' FontHeight=10 Name='Camera1' >< BackColor Hex=D3D3D3 $ 
+>< $ Situation Left=660 Right=1000 Top=70 Bottom=535 IsAbsolute=1 FontFace='Segoe UI' FontHeight=10 Name='Camera1' >< BackColor Hex=D3D3D3 $ 
 $ 
 
 >< $ Canvas DataType='openCV_Container' 
->< $ Situation Left=500 Top=535 Bottom=1000 Right=1000 IsAbsolute=1 FontFace='Segoe UI' FontHeight=10 Name='Camera2' >< BackColor Hex=D3D3D3 $ 
+>< $ Situation Left=660 Right=1000 Top=535 Bottom=1000 IsAbsolute=1 FontFace='Segoe UI' FontHeight=10 Name='Camera1Fit' >< BackColor Hex=D3D3D3 $ 
 $ 
 
 >< $ Canvas DataType='openCV_Container' 
->< $ Situation Left=1 Top=420 Bottom=650 Right=500 IsAbsolute=1 FontFace='Segoe UI' FontHeight=10 Name='Camera1Fit' >< BackColor Hex=D3D3D3 $ 
+>< $ Situation Left=330 Right=660 Top=70 Bottom=535 IsAbsolute=1 FontFace='Segoe UI' FontHeight=10 Name='Camera2' >< BackColor Hex=D3D3D3 $ 
 $ 
 
 >< $ Canvas DataType='openCV_Container' 
->< $ Situation Left=1 Top=650 Bottom=880 Right=500 IsAbsolute=1 FontFace='Segoe UI' FontHeight=10 Name='Camera2Fit' >< BackColor Hex=D3D3D3 $ 
+>< $ Situation Left=330 Right=660 Top=535 Bottom=1000 IsAbsolute=1 FontFace='Segoe UI' FontHeight=10 Name='Camera2Fit' >< BackColor Hex=D3D3D3 $ 
 $ 
 
 >< $ Canvas DataType='openCV_Container' 
->< $ Situation Left=1 Top=70 Bottom=420 Right=500 IsAbsolute=1 FontFace='Segoe UI' FontHeight=10 Name='CombinedFit' >< BackColor Hex=D3D3D3 $ 
+>< $ Situation Left=1 Right=330 Top=70 Bottom=470 IsAbsolute=1 FontFace='Segoe UI' FontHeight=10 Name='Combined1Fit' >< BackColor Hex=D3D3D3 $ 
+$ 
+
+>< $ Canvas DataType='openCV_Container' 
+>< $ Situation Left=1 Right=330 Top=470 Bottom=870 IsAbsolute=1 FontFace='Segoe UI' FontHeight=10 Name='Combined2Fit' >< BackColor Hex=D3D3D3 $ 
 $ 
 
 
 
 
 >< $ LogWindow 
->< $ Situation Left=1 Top=880 Bottom=1000 Right=500 FontFace='Tahoma' FontHeight=9 >< BackColor Hex=D3D3D3 $ 
+>< $ Situation Left=1 Right=330 Top=870 Bottom=1000 FontFace='Tahoma' FontHeight=9 >< BackColor Hex=D3D3D3 $ 
 $ 
 
 

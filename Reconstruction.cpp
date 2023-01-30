@@ -3978,6 +3978,12 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 	ctl->_gate.lock();
 	ctl->_status--;
+	ctl->_edgesWindows[0] = "Camera1";
+	ctl->_edgesWindows[1] = "Camera2";
+	ctl->_pointsCropWindows[0] = "Camera1Fit";
+	ctl->_pointsCropWindows[1] = "Camera2Fit";
+	ctl->_combinedFitWindows[0] = "Combined1Fit";
+	ctl->_combinedFitWindows[1] = "Combined2Fit";
 	ctl->_gate.unlock();
 
 
@@ -4133,50 +4139,50 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 			long max_scale_factor = 0;
 
-			while (!g_bTerminated && !ctl->_terminated) {
+			while (!g_bTerminated && !ctl->_terminated && image_isok) {
 				HANDLE handles[] = { g_event_SeedPointIsAvailable, g_event_ContourIsConfirmed };
 				DWORD anEvent = WaitForMultipleObjectsEx(ARRAY_NUM_ELEMENTS(handles), handles, FALSE, 100, TRUE);
 				if (anEvent == WAIT_TIMEOUT) {
 					continue;
 				}
 				if (anEvent == (WAIT_OBJECT_0 + 1)) {
-					if (g_LoG_seedPoint.params.windowNumber == 5) {
-						image_isok = false;
-						break; 
-					}
-
 					switch (g_LoG_seedPoint.params.windowNumber) {
 					case 3:
 					case 4:
 						break;
-
+					case 5:
+					case 6:
+						image_isok = false;
+						break;
 					}
 
-					contours.resize(contours_count);
-					for (auto& contour : final_contours) {
-						if (contour.size()) {
-							contours.push_back(contour);
-						}
-					}
-
-					size_t count = ConductOverlapEliminationEx(contours, final_contours, max_scale_factor != 0, max_scale_factor, false, 0);
-					if (count == 0) {
-						final_contours = contours;
-					}
-
-					finalContoursImage = unchangedImage.clone();
-					for (auto& contour:final_contours) {
-						if (contour.size()) {
-							Point a = Point2f(contour[0]);
-							for (int j = 1; j < contour.size(); ++j) {
-								Point b = Point2f(contour[j]);
-								cv::line(finalContoursImage, a, b, Scalar(0, (size_t)256 * 256, 0));
-								a = b;
+					if (image_isok) {
+						contours.resize(contours_count);
+						for (auto& contour : final_contours) {
+							if (contour.size()) {
+								contours.push_back(contour);
 							}
 						}
-					}
 
-					submitGraphics(finalContoursImage);
+						size_t count = ConductOverlapEliminationEx(contours, final_contours, max_scale_factor != 0, max_scale_factor, false, 0);
+						if (count == 0) {
+							final_contours = contours;
+						}
+
+						finalContoursImage = unchangedImage.clone();
+						for (auto& contour : final_contours) {
+							if (contour.size()) {
+								Point a = Point2f(contour[0]);
+								for (int j = 1; j < contour.size(); ++j) {
+									Point b = Point2f(contour[j]);
+									cv::line(finalContoursImage, a, b, Scalar(0, (size_t)256 * 256, 0));
+									a = b;
+								}
+							}
+						}
+
+						submitGraphics(finalContoursImage);
+					}
 				}
 				if (anEvent == WAIT_OBJECT_0) {
 					int pixel_threshold = (int)g_otsu_threshold; // gets calculated in separate thread. 
@@ -4289,8 +4295,10 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 					g_max_boxsize_pixels = std::max(g_imageSize.height, g_imageSize.width);
 
+					ctl->_gate.lock();
 					idx[0] = BlobCentersLoG(boxes[0], cv_points[0], cv_edges[2], effective_threshold[0], roi, kmat, arff_file_requested, &intensity[0]);
 					idx[1] = BlobCentersLoG(boxes[1], cv_points[1], cv_edges[3], effective_threshold[1], roi, kmat, arff_file_requested, &intensity[1]);
+					ctl->_gate.unlock();
 
 
 					if (arff_file_requested) {
@@ -4358,14 +4366,6 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 						ostr << "---" << "size_increment=" << size_increment << ' ' << "pass_number=" << pass_number << ' ' << "max_passes=" << max_passes << std::endl;
 						printf(ostr.str().c_str());
 
-						//Sleep(500);
-
-						//if (size_increment > 1) {
-						//	for (int c = 0; c < contours.size(); ++c) {
-						//		linearizeContour(contours[c], size_increment, 7);
-						//	}
-						//}
-
 						size_t count = ConductOverlapEliminationEx(contours, local_contours, false, max_scale_factor, true, size_increment, g_LoG_seedPoint.eventValue == 3/*central button*/);
 
 						if (count == 0) {
@@ -4379,38 +4379,11 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 						contours.swap(local_contours);
 						contours_count = count;
 
+						ctl->_gate.lock();
 						ClusteredPoint& point = cv_points[windowNumber][0];
-						Mat& crop_colored = point._crop;
-						if (crop_colored.rows == 0) {
-							continue;
-						}
-
-						contours.resize(count + 1);
-						CopyVector(contours[count], boxes_selected[0].contour_notsmoothed);
-
-						point._cropOriginal.copyTo(crop_colored);
-
-						for (int n = count; n >= 0; --n) {
-							std::vector<Point2d>& contour = contours[n];
-
-							double fx = point._crop_mat_scalefactor;
-							Point2f& off = point._crop_mat_offset;
-
-							Point a = (Point2f(contour[0]) + Point2f(0.5, 0.5) - (off)) * fx;
-							for (int j = 1; j < contour.size(); ++j) {
-								Point b = (Point2f(contour[j]) + Point2f(0.5, 0.5) - (off)) * fx;
-								cv::Scalar color;
-								if (n == count) {
-									color = Scalar(255.0 * 256.0, 0, 0);
-								}
-								else {
-									color = Scalar(0, (((double)n / count) * 255.0 * 256.0), (double)255 * 256);
-								}
-								cv::line(crop_colored, a, b, color);
-								a = b;
-							}
-						}
-						contours.resize(count);
+						point._contours = contours;
+						CopyVector(point._contour_notsmoothed, boxes_selected[0].contour_notsmoothed);
+						ctl->_gate.unlock();
 					}
 				}
 			}
@@ -4435,6 +4408,12 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 
 	ctl->_gate.lock();
 	ctl->_status--;
+	ctl->_edgesWindows[0] = "Camera1";
+	ctl->_edgesWindows[1] = "Camera2";
+	ctl->_pointsCropWindows[0] = "Camera1Fit";
+	ctl->_pointsCropWindows[1] = "Camera2Fit";
+	ctl->_combinedFitWindows[0] = "Combined1Fit";
+	ctl->_combinedFitWindows[1] = "Combined2Fit";
 	ctl->_gate.unlock();
 
 
@@ -4511,6 +4490,8 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 				ctl->_last_image_timestamp = image_localtime;
 				ctl->_unchangedImage[0] = originalImage.clone();
 				ctl->_unchangedImage[1] = unchangedImage.clone();
+
+				ctl->_draw_epipolar_lines = true;
 
 				if (data_is_valid) {
 					ctl->_boxes[0] = boxes[0];
@@ -4619,13 +4600,13 @@ void launch_reconstruction(SImageAcquisitionCtl& image_acquisition_ctl, SPointsR
 
 		const int N = (ctl->_status >> 1); // number of reconstruction threads. 
 
-		ctl->_status += 2; // threshold calculation thread also decrements twice.  
+		//ctl->_status += 2; // threshold calculation thread also decrements twice.  
 
 		for(int j = 0; j < N; ++j) {
 			QueueWorkItem(ReconstructPoints, ctl);
 		}
 
-		QueueWorkItem(EvaluateOtsuThreshold, ctl);
+		//QueueWorkItem(EvaluateOtsuThreshold, ctl);
 	}
 }
 
