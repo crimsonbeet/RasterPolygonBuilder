@@ -959,10 +959,12 @@ bool SynchronizedGrabResults(CBaslerUsbInstantCameraArray& cameras, std::vector<
 
 		time_mark = OSDayTimeInMilliseconds();
 
+		int trigerCount = 0;
 		for (int j = 0; j < (int)cameras.GetSize(); ++j) {
 			if (cameras[j].TriggerSource.GetValue() == Basler_UsbCameraParams::TriggerSource_Software) {
 				try {
 					cameras[j].TriggerSoftware.Execute();
+					++trigerCount;
 				}
 				catch (GenICam::GenericException& e) {
 					std::cerr << "TriggerSoftware() An exception occurred: " << e.GetDescription() << std::endl;
@@ -972,6 +974,11 @@ bool SynchronizedGrabResults(CBaslerUsbInstantCameraArray& cameras, std::vector<
 		}
 
 		do_execute_trigger = false;
+
+		if (trigerCount > 0) {
+			Sleep(10);
+			return false;
+		}
 	}
 
 
@@ -986,7 +993,7 @@ bool SynchronizedGrabResults(CBaslerUsbInstantCameraArray& cameras, std::vector<
 	int noresponse_count = 0;
 	for (int j = 0; j < (int)cameras.GetSize(); ++j) {
 		try {
-			cameras[j].RetrieveResult(trigger_source_software ? 0 : 23, ptrGrabResults[j], TimeoutHandling_Return);
+			cameras[j].RetrieveResult(23, ptrGrabResults[j], TimeoutHandling_Return);
 			if (ptrGrabResults[j] == NULL || !ptrGrabResults[j]->GrabSucceeded() || (int)ptrGrabResults[j]->GetCameraContext() != j) {
 				++noresponse_count;
 			}

@@ -290,7 +290,7 @@ void ClassBlobDetector::findBlobs(const Mat& image, Mat& binaryImage, std::vecto
 		}
 
 
-		if (ratio < ratio_threshold && (M1 > 0.177 || M2 > 0.004 || M3 > 0.0003)) {
+		if (ratio < ratio_threshold && (M1 > 0.18 || M2 > 0.004 || M3 > 0.0003)) {
 			continue;
 		}
 	
@@ -376,7 +376,7 @@ void ClassBlobDetector::detectImpl(const cv::Mat& image, std::vector<cv::KeyPoin
 
 		vector < Center > curCenters;
 		try {
-			double scale = 480.0 / binarizedImage.rows;
+			double scale = 600.0 / binarizedImage.rows;
 			if (scale < 0.95) {
 				cv::resize(binarizedImage, binarizedImage, cv::Size(0, 0), scale, scale, INTER_AREA);
 				params.minArea *= scale * scale;
