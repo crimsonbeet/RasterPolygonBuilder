@@ -310,6 +310,73 @@ void ConvertColoredImage2Mono_Likeness(cv::Mat& image, cv::Mat mean/*rgb*/, Mat&
 	image = aux.clone();
 }
 
+double hsvLikenessScore(cv::Vec<uchar, 3>& pixOriginal, double hsvIdeal[3]) {
+	double hsvOriginal[3];
+	RGB_TO_HSV(pixOriginal, hsvOriginal);
+
+	double diff = std::abs(GetAngleDifferenceInGrads(hsvIdeal[0], hsvOriginal[0]));
+	if (diff > 90) {
+		diff = 90;
+	}
+
+	//double hueLikeness = 1 - std::abs(std::tan(3.14159265358979323846 * diff / 180));
+	//double likeness;
+	//if (hueLikeness < 0) {
+	//	likeness = 0;
+	//}
+	//else {
+	//	likeness = hueLikeness;
+
+	//	likeness *= std::min(hsvIdeal[1], hsvOriginal[1]) / std::max(hsvIdeal[1], hsvOriginal[1]);
+	//	likeness *= std::max(hsvIdeal[2], hsvOriginal[2]);
+	//}
+
+	//const double tanThreshold = 1;
+	//double hueLikeness = std::pow(1 - diff / 90, 3);
+
+	const double tanThreshold = 0.5;
+	double hueLikeness = tanThreshold - std::abs(std::tan(CV_PI * diff / 180));
+
+	double likeness;
+	if (hueLikeness < 0) {
+		likeness = 0;
+	}
+	else {
+		likeness = hueLikeness / tanThreshold;
+
+
+		//for (int j = 1; j < 3; ++j) {
+		//	double chMax;
+		//	double chMin;
+		//	double ch = hsvOriginal[j];
+		//	double ch_ideal = hsvIdeal[j];
+		//	if (ch_ideal > ch) {
+		//		chMax = ch_ideal;
+		//		chMin = ch;
+		//	}
+		//	else {
+		//		chMax = ch;
+		//		chMin = ch_ideal;
+		//	}
+
+		//	likeness *= chMin > 0 ? (chMin * chMin / chMax) : 0;
+		//}
+
+
+		const double saturationIdeal = hsvIdeal[1];
+		const double valueIdeal = hsvIdeal[2];
+		const double saturationOriginal = hsvOriginal[1];
+		const double valueOriginal = hsvOriginal[2];
+
+		likeness *= std::min(saturationIdeal, saturationOriginal) / std::max(saturationIdeal, saturationOriginal);
+		likeness *= std::min(valueIdeal, valueOriginal) / std::max(valueIdeal, valueOriginal);
+
+		likeness *= 256;
+	}
+
+	return likeness;
+}
+
 bool ConvertColoredImage2Mono_HSV_Likeness(Mat& image, double rgbIdeal[3], std::function<double(double)> convert) {
 	typedef Vec<uchar, 3> Vec3c;
 	double hsvIdeal[3];
@@ -338,64 +405,10 @@ bool ConvertColoredImage2Mono_HSV_Likeness(Mat& image, double rgbIdeal[3], std::
 	for (int r = 0; r < aux.rows; ++r) {
 		for (int c = 0; c < aux.cols; ++c) {
 			Vec3c& pixOriginal = image.at<Vec3c>(r, c);
-			RGB_TO_HSV(pixOriginal, hsvOriginal);
 
-			double diff = std::abs(GetAngleDifferenceInGrads(hsvIdeal[0], hsvOriginal[0]));
-			if (diff > 90) {
-				diff = 90;
-			}
+			double likeness = hsvLikenessScore(pixOriginal, hsvIdeal);
 
-			//double hueLikeness = 1 - std::abs(std::tan(3.14159265358979323846 * diff / 180));
-			//double likeness;
-			//if (hueLikeness < 0) {
-			//	likeness = 0;
-			//}
-			//else {
-			//	likeness = hueLikeness;
-
-			//	likeness *= std::min(hsvIdeal[1], hsvOriginal[1]) / std::max(hsvIdeal[1], hsvOriginal[1]);
-			//	likeness *= std::max(hsvIdeal[2], hsvOriginal[2]);
-			//}
-
-			//const double tanThreshold = 1;
-			//double hueLikeness = std::pow(1 - diff / 90, 3);
-
-			const double tanThreshold = 0.5;
-			double hueLikeness = tanThreshold - std::abs(std::tan(CV_PI * diff / 180));
-
-			double likeness;
-			if (hueLikeness < 0) {
-				likeness = 0;
-			}
-			else {
-				likeness = hueLikeness / tanThreshold;
-
-
-				//for (int j = 1; j < 3; ++j) {
-				//	double chMax;
-				//	double chMin;
-				//	double ch = hsvOriginal[j];
-				//	double ch_ideal = hsvIdeal[j];
-				//	if (ch_ideal > ch) {
-				//		chMax = ch_ideal;
-				//		chMin = ch;
-				//	}
-				//	else {
-				//		chMax = ch;
-				//		chMin = ch_ideal;
-				//	}
-
-				//	likeness *= chMin > 0 ? (chMin * chMin / chMax) : 0;
-				//}
-
-
-				double saturationOriginal = hsvOriginal[1];
-				double valueOriginal = hsvOriginal[2];
-				likeness *= std::min(saturationIdeal, saturationOriginal) / std::max(saturationIdeal, saturationOriginal);
-				likeness *= std::min(valueIdeal, valueOriginal) / std::max(valueIdeal, valueOriginal);
-			}
-
-			aux.at<ushort>(r, c) = likeness * 256 + 0.5;//convert(likeness) + 0.5;
+			aux.at<ushort>(r, c) = likeness + 0.5;//convert(likeness) + 0.5;
 
 			if (max_likeness < likeness) {
 				max_likeness = likeness;

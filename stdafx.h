@@ -1057,6 +1057,11 @@ Mat mat_convert2byte(const Mat& src, const int bytedepth_scalefactor = g_bytedep
 Mat mat_loginvert2byte(const Mat& src, const int bytedepth_scalefactor = g_bytedepth_scalefactor); // returns CV_8UC1 matrix of log inverted values
 
 
+void RGB_TO_HSV(cv::Vec<uchar, 3> rgb, double hsv[3]);
+
+double hsvLikenessScore(cv::Vec<uchar, 3>& pixOriginal, double hsvIdeal[3]); // returns likeness score from 0 to 256.
+
+
 bool StandardizeImage_HSV_Likeness(Mat& image, double rgbIdeal[3]);
 void StandardizeImage_Likeness(Mat& image, Mat mean/*rgb*/, Mat& stdDev, Mat& factorLoadings, Mat invCovar/*inverted covariance of colors*/, Mat invCholesky);
 

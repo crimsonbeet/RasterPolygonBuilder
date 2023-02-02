@@ -3978,12 +3978,12 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 	ctl->_gate.lock();
 	ctl->_status--;
-	ctl->_edgesWindows[0] = "Camera1";
-	ctl->_edgesWindows[1] = "Camera2";
-	ctl->_pointsCropWindows[0] = "Camera1Fit";
-	ctl->_pointsCropWindows[1] = "Camera2Fit";
-	ctl->_combinedFitWindows[0] = "Combined1Fit";
-	ctl->_combinedFitWindows[1] = "Combined2Fit";
+	ctl->_edgesWindows[0] = "Camera1"; // windowNumber 1 - number is assigned in DisplayReconstructionData
+	ctl->_edgesWindows[1] = "Camera2"; // windowNumber 2
+	ctl->_pointsCropWindows[0] = "Camera1Fit"; // windowNumber 3
+	ctl->_pointsCropWindows[1] = "Camera2Fit"; // windowNumber 4
+	ctl->_combinedFitWindows[0] = "Combined1Fit"; // windowNumber 5
+	ctl->_combinedFitWindows[1] = "Combined2Fit"; // windowNumber 6
 	ctl->_gate.unlock();
 
 
@@ -4185,13 +4185,13 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 					}
 				}
 				if (anEvent == WAIT_OBJECT_0) {
-					int pixel_threshold = (int)g_otsu_threshold; // gets calculated in separate thread. 
-					if (pixel_threshold < 0) {
-						pixel_threshold = 31;
-					}
-					pixel_threshold *= g_bytedepth_scalefactor;
+					//int pixel_threshold = (int)g_otsu_threshold; // gets calculated in separate thread. 
+					//if (pixel_threshold < 0) {
+					//	pixel_threshold = 31;
+					//}
+					//pixel_threshold *= g_bytedepth_scalefactor;
 
-					pixel_threshold /= 2;
+					//pixel_threshold /= 2;
 
 
 
@@ -4240,7 +4240,7 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 						}
 						else {
 								double chIdeal[3];
-								BuildIdealChannels_Likeness(unchangedImage, pt, chIdeal);
+								BuildIdealChannels_Likeness(aux, pt, chIdeal);
 
 								auto prepImages_HSV_Likeness = [&cv_image, &chWeights](double chIdeal[3], int window) {
 									Mat aux = cv_image[2 + window].clone();
@@ -4505,6 +4505,105 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 
 
 			submitGraphics(unchangedImage);
+
+			while (!g_bTerminated && !ctl->_terminated && image_isok) {
+				HANDLE handles[] = { g_event_SeedPointIsAvailable, g_event_ContourIsConfirmed };
+				DWORD anEvent = WaitForMultipleObjectsEx(ARRAY_NUM_ELEMENTS(handles), handles, FALSE, 0, TRUE);
+				if (anEvent == WAIT_TIMEOUT) {
+					continue;
+				}
+				if (anEvent == WAIT_OBJECT_0) {
+					switch (g_LoG_imageWindowNumber) {
+					case 1:
+					case 2:
+						break;
+					default:
+						continue;
+					}
+				}
+				else {
+					continue;
+				}
+
+				Point pt;
+				pt.x = g_LoG_seedPoint.x;
+				pt.y = g_LoG_seedPoint.y;
+
+				int windowNumber = g_LoG_seedPoint.params.windowNumber - 1;
+
+				Mat aux = cv_image[2 + windowNumber].clone();
+
+				Mat mean;
+				Mat invCovar;
+				Mat_<double> invCholesky(3, 3);
+				Mat stdDev;
+				Mat factorLoadings;
+
+				double hsvIdeal[3];
+
+				double* mean_data = nullptr;
+				double likeness = 0;
+
+
+				std::function<int(Point&)> likenessScore; // returns a value discretizised from 0 to 10 representing likeness scrore.
+
+				if (BuildIdealChannels_Distribution(aux, pt, mean, stdDev, factorLoadings, invCovar, invCholesky)) {
+					double* mean_data = (double*)mean.data;
+				}
+				else {
+					double rgbIdeal[3];
+					BuildIdealChannels_Likeness(unchangedImage, pt, rgbIdeal);
+
+					const double y_componentIdeal = rgbIdeal[0] * 0.299 + rgbIdeal[1] * 0.587 + rgbIdeal[2] * 0.114;
+					if (y_componentIdeal < 40) {
+						continue;
+					}
+
+					cv::Vec<uchar, 3> pixIdeal;
+					pixIdeal[0] = (uchar)(rgbIdeal[0] + 0.5);
+					pixIdeal[1] = (uchar)(rgbIdeal[1] + 0.5);
+					pixIdeal[2] = (uchar)(rgbIdeal[2] + 0.5);
+
+					RGB_TO_HSV(pixIdeal, hsvIdeal);
+				}
+
+				double invCholesky_data[3][3] = {
+					{ invCholesky.at<double>(0, 0), invCholesky.at<double>(0, 1), invCholesky.at<double>(0, 2) },
+					{ invCholesky.at<double>(1, 0), invCholesky.at<double>(1, 1), invCholesky.at<double>(1, 2) },
+					{ invCholesky.at<double>(2, 0), invCholesky.at<double>(2, 1), invCholesky.at<double>(2, 2) }
+				};
+
+
+				if (mean_data == nullptr) {
+					likenessScore = [&aux, &hsvIdeal](cv::Point& pt) -> int {
+						double likeness = hsvLikenessScore(aux.at<cv::Vec<uchar, 3>>(pt.y, pt.x), hsvIdeal);
+						return likeness / 25.6 + 0.45;
+					};
+				}
+				else {
+					likenessScore = [&aux, &mean_data, &invCholesky_data](cv::Point& pt) -> int {
+						auto pixOrig = aux.at<cv::Vec<uchar, 3>>(pt.y, pt.x);
+
+						double pix_data[3] = { pixOrig(0) - mean_data[0], pixOrig(1) - mean_data[1], pixOrig(2) - mean_data[2] };
+
+						double pix_norm_data[3];
+						pix_norm_data[0] = invCholesky_data[0][0] * pix_data[0];
+						pix_norm_data[1] = invCholesky_data[1][0] * pix_data[0] + invCholesky_data[1][1] * pix_data[1];
+						pix_norm_data[2] = invCholesky_data[2][0] * pix_data[0] + invCholesky_data[2][1] * pix_data[1] + invCholesky_data[2][2] * pix_data[2];
+
+						double sum = 0;
+						sum += pix_norm_data[0] * pix_norm_data[0];
+						sum += pix_norm_data[1] * pix_norm_data[1];
+						sum += pix_norm_data[2] * pix_norm_data[2];
+
+						if (sum < 10) {
+							return (10 - sum) + 0.45;
+						}
+
+						return 0;
+					};
+				}
+			}
 		}
 	}
 
