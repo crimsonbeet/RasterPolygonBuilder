@@ -1061,6 +1061,11 @@ void RGB_TO_HSV(cv::Vec<uchar, 3> rgb, double hsv[3]);
 
 double hsvLikenessScore(cv::Vec<uchar, 3>& pixOriginal, double hsvIdeal[3]); // returns likeness score from 0 to 256.
 
+double Get_Squared_Z_Score(const cv::Vec<uchar, 3>& pixOrig, double mean_data[3], double invCholesky_data[3][3]);
+
+void BuildIdealChannels_Likeness(Mat& image, Point& pt, double rgbdeal[3]);
+bool BuildIdealChannels_Distribution(Mat& image, Point& pt, Mat& mean, Mat& stdDev, Mat& factorLoadings, Mat& invCovar, Mat& invCholesky, int neighbourhoodRadius = 4);
+
 
 bool StandardizeImage_HSV_Likeness(Mat& image, double rgbIdeal[3]);
 void StandardizeImage_Likeness(Mat& image, Mat mean/*rgb*/, Mat& stdDev, Mat& factorLoadings, Mat invCovar/*inverted covariance of colors*/, Mat invCholesky);

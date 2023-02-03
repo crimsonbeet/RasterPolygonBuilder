@@ -46,8 +46,6 @@ void BuildWeights_ByChannel(Mat& image, Point& pt, double weights_out[3]);
 void StandardizeImage_Likeness(Mat& image, double chIdeal[3]);
 bool StandardizeImage_HSV_Likeness(Mat& image, double rgbIdeal[3]);
 void SquareImage_Likeness(Mat& image, double chIdeal[3]);
-void BuildIdealChannels_Likeness(Mat& image, Point& pt, double chIdeal[3]);
-bool BuildIdealChannels_Distribution(Mat& image, Point& pt, Mat& mean, Mat& stdDev, Mat& factorLoadings, Mat& invCovar, Mat& invCholesky);
 
 void StandardizeImage_Likeness(Mat& image, uchar chIdeal[3]);
 void SquareImage_Likeness(Mat& image, uchar chIdeal[3]);
@@ -4533,6 +4531,32 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 
 				Mat aux = cv_image[2 + windowNumber].clone();
 
+
+				const int patternWidth = 10;
+
+				Mat crop(aux, cv::Rect(pt.x - patternWidth, pt.y - 2, 2 * patternWidth + 1, 5));
+				cv::blur(crop.clone(), crop, cv::Size(5, 5));
+
+				int direction = windowNumber == 1 ? 1 : -1;
+
+				int strip2searchWidth = 0.1 * aux.cols;
+				cv::Rect strip2searchRect(pt.x, pt.y - 2, strip2searchWidth, 5);
+				if (direction == -1) {
+					strip2searchRect.x -= strip2searchWidth;
+				}
+
+				if (strip2searchRect.x < 0) {
+					strip2searchRect.x = 0;
+				}
+				if (strip2searchRect.y < 0) {
+					strip2searchRect.y = 0;
+				}
+
+				Mat strip2search(cv_image[2 + windowNumber - direction], strip2searchRect);
+				cv::blur(strip2search.clone(), strip2search, cv::Size(5, 5));
+
+
+
 				Mat mean;
 				Mat invCovar;
 				Mat_<double> invCholesky(3, 3);
@@ -4545,14 +4569,14 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 				double likeness = 0;
 
 
-				std::function<int(Point&)> likenessScore; // returns a value discretizised from 0 to 10 representing likeness scrore.
+				std::function<int(cv::Mat&, cv::Point&)> likenessScore; // returns a value discretized from 0 to 10 to represent likeness scrore.
 
-				if (BuildIdealChannels_Distribution(aux, pt, mean, stdDev, factorLoadings, invCovar, invCholesky)) {
-					double* mean_data = (double*)mean.data;
+				if (BuildIdealChannels_Distribution(crop, cv::Point(patternWidth, 2), mean, stdDev, factorLoadings, invCovar, invCholesky, 2)) {
+					mean_data = (double*)mean.data;
 				}
 				else {
 					double rgbIdeal[3];
-					BuildIdealChannels_Likeness(unchangedImage, pt, rgbIdeal);
+					BuildIdealChannels_Likeness(crop, cv::Point(patternWidth, 2), rgbIdeal);
 
 					const double y_componentIdeal = rgbIdeal[0] * 0.299 + rgbIdeal[1] * 0.587 + rgbIdeal[2] * 0.114;
 					if (y_componentIdeal < 40) {
@@ -4573,35 +4597,31 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 					{ invCholesky.at<double>(2, 0), invCholesky.at<double>(2, 1), invCholesky.at<double>(2, 2) }
 				};
 
-
 				if (mean_data == nullptr) {
-					likenessScore = [&aux, &hsvIdeal](cv::Point& pt) -> int {
+					likenessScore = [&hsvIdeal](cv::Mat& aux, cv::Point& pt) -> int {
 						double likeness = hsvLikenessScore(aux.at<cv::Vec<uchar, 3>>(pt.y, pt.x), hsvIdeal);
 						return likeness / 25.6 + 0.45;
 					};
 				}
 				else {
-					likenessScore = [&aux, &mean_data, &invCholesky_data](cv::Point& pt) -> int {
-						auto pixOrig = aux.at<cv::Vec<uchar, 3>>(pt.y, pt.x);
-
-						double pix_data[3] = { pixOrig(0) - mean_data[0], pixOrig(1) - mean_data[1], pixOrig(2) - mean_data[2] };
-
-						double pix_norm_data[3];
-						pix_norm_data[0] = invCholesky_data[0][0] * pix_data[0];
-						pix_norm_data[1] = invCholesky_data[1][0] * pix_data[0] + invCholesky_data[1][1] * pix_data[1];
-						pix_norm_data[2] = invCholesky_data[2][0] * pix_data[0] + invCholesky_data[2][1] * pix_data[1] + invCholesky_data[2][2] * pix_data[2];
-
-						double sum = 0;
-						sum += pix_norm_data[0] * pix_norm_data[0];
-						sum += pix_norm_data[1] * pix_norm_data[1];
-						sum += pix_norm_data[2] * pix_norm_data[2];
-
-						if (sum < 10) {
-							return (10 - sum) + 0.45;
+					likenessScore = [&mean_data, &invCholesky_data](cv::Mat& aux, cv::Point& pt) -> int {
+						double zScore = Get_Squared_Z_Score(aux.at<cv::Vec<uchar, 3>>(pt.y, pt.x), mean_data, invCholesky_data);
+						if (zScore < 10) {
+							return (10 - zScore) + 0.45;
 						}
 
 						return 0;
 					};
+				}
+
+				std::vector<int> cropPattern(crop.cols);
+				std::vector<int> strip2searchPattern(strip2search.cols);
+
+				for (int c = 0; c < crop.cols; ++c) {
+					cropPattern[c] = likenessScore(crop, cv::Point(c, 1));
+				}
+				for (int c = 0; c < strip2search.cols; ++c) {
+					strip2searchPattern[c] = likenessScore(strip2search, cv::Point(c, 1));
 				}
 			}
 		}
