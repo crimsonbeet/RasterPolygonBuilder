@@ -795,6 +795,12 @@ struct ClusteredPoint: public Point2d {
 				(Mat&)*this = cloner.clone();
 			}
 		}
+		MatCloner(const Mat& mat) : Mat() {
+			(Mat&)*this = mat.clone();
+		}
+		MatCloner(Mat&& mat) : Mat() {
+			(Mat&)*this = mat;
+		}
 	};
 
 	MatCloner _crop;
@@ -1063,7 +1069,7 @@ double hsvLikenessScore(cv::Vec<uchar, 3>& pixOriginal, double hsvIdeal[3]); // 
 
 double Get_Squared_Z_Score(const cv::Vec<uchar, 3>& pixOrig, double mean_data[3], double invCholesky_data[3][3]);
 
-void BuildIdealChannels_Likeness(Mat& image, Point& pt, double rgbdeal[3]);
+void BuildIdealChannels_Likeness(Mat& image, Point& pt, double rgbdeal[3], int radius = 2);
 bool BuildIdealChannels_Distribution(Mat& image, Point& pt, Mat& mean, Mat& stdDev, Mat& factorLoadings, Mat& invCovar, Mat& invCholesky, int neighbourhoodRadius = 4);
 
 

@@ -184,7 +184,7 @@ bool BuildIdealChannels_Distribution(Mat& image, Point& pt, Mat& mean, Mat& stdD
 		if (neighbourhoodRadius > 4) {
 			neighbourhoodRadius = 4;
 		}
-		Mat_<double> neighbours(neighbourhoodRadius == 2? 25: neighbourhoodRadius == 3 ? 49: 81, 3);
+		Mat_<double> neighbours(neighbourhoodRadius <= 2? 25: neighbourhoodRadius == 3 ? 49: 81, 3);
 		int yStart = pt.y - neighbourhoodRadius;
 		int yEnd = pt.y + neighbourhoodRadius + 1;
 		while (yStart < 0) ++yStart, ++yEnd;
@@ -231,7 +231,7 @@ bool BuildIdealChannels_Distribution(Mat& image, Point& pt, Mat& mean, Mat& stdD
 
 		double invConditionNumber = cv::invert(Q.clone(), invCovar, DECOMP_SVD);
 		std::cout << "Covar inverse condition number " << invConditionNumber << std::endl;
-		if (invConditionNumber > 0.001) {
+		if (invConditionNumber > 0.01) {
 			if (cv::Cholesky(&Q.at<double>(0, 0), (size_t)Q.step, Q.rows, nullptr, 0, 0)) {
 				for (int i = 0; i < 2; ++i) {
 					for (int j = i + 1; j < 3; ++j) {
@@ -246,13 +246,13 @@ bool BuildIdealChannels_Distribution(Mat& image, Point& pt, Mat& mean, Mat& stdD
 	}
 }
 
-void BuildIdealChannels_Likeness(Mat& image, Point& pt, double chIdeal[3]) {
+void BuildIdealChannels_Likeness(Mat& image, Point& pt, double chIdeal[3], int radius) {
 	if (image.type() == CV_8UC3) {
 		double likeness[3] = { 0, 0, 0 };
 		double cnt = 0;
 		typedef Vec<uchar, 3> Vec3c;
-		for (int r = pt.y - 1; r < image.rows && r < pt.y + 2; ++r) {
-			for (int c = pt.x - 1; c < image.cols && c < pt.x + 2; ++c) {
+		for (int r = pt.y - radius; r < image.rows && r < pt.y + radius + 1; ++r) {
+			for (int c = pt.x - radius; c < image.cols && c < pt.x + radius + 1; ++c) {
 				if (r < 0 || c < 0) {
 					continue;
 				}

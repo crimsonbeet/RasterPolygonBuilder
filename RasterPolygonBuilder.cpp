@@ -598,19 +598,7 @@ bool DisplayReconstructionData(SPointsReconstructionCtl& reconstruction_ctl, int
 		}
 
 
-		//if(image_isok && g_background_image[0].rows > 0) {
-		//	g_background_image_lock.lock();
-		//	for(int j = 0; j < 2; ++j) {
-		//		if(g_background_image[j].rows > 0) {
-		//			matCV_16UC1_memcpy(cv_background[j], g_background_image[j]);
-		//			resize(cv_background[j], cv_background[j + 2] = Mat(), cv::Size(0, 0), fx, fy, INTER_AREA);
-		//		}
-		//	}
-		//	g_background_image_lock.unlock();
-		//}
-
-
-		if (!data_isok && image_isok) {
+		if (image_isok) { // show rectified images with detected objects and epipolar lines.
 			for (int j = 0; j < 2; ++j) {
 				if (edgesWindow[j].size() > 0) {
 					cv::imshow(edgesWindow[j], cv_image[j]);
@@ -631,29 +619,8 @@ bool DisplayReconstructionData(SPointsReconstructionCtl& reconstruction_ctl, int
 					}
 				}
 			}
-
-			int indices[3] = { 0, 1, 4 };
-			for (int j : indices) {
-			}
 		}
 
-
-		if (data_isok && image_isok) { // draw rectified images with detected objects and epipolar lines.
-			for (int j = 0; j < 2; ++j) {
-				//for (auto& box : boxes[j]) {
-				//	if ((box.x[0] > 0 || box.x[1] < cv_edges[j].cols) && (box.y[0] > 0 || box.y[1] < cv_edges[j].rows))
-				//		rectangle(cv_image[j], Point((int)(box.x[0] * fx[j]), (int)(box.y[0] * fy[j])), Point((int)(box.x[1] * fx[j]), (int)(box.y[1] * fy[j])), Scalar(0, 0, 255 * cdf));
-				//}
-
-				if (edgesWindow[j].size() > 0) {
-					cv::imshow(edgesWindow[j], cv_image[j]);
-				}
-
-				if (cv_background[j].rows > 0) {
-					cv::imshow(edgesWindow[j], cv_background[j + 2]);
-				}
-			}
-		}
 
 		if (data_isok && image_isok) { // draw detected shapes. 
 			for (int j = 0; j < 2; ++j) {
@@ -1066,6 +1033,9 @@ int main() {
 		rootCVWindows(_g_images_frame, ARRAY_NUM_ELEMENTS(imagewin_names), 1, imagewin_names);
 
 		while (!g_bTerminated) {
+			if (ProcessWinMessages()) {
+			}
+
 			if (g_configuration._changes_pending) {
 				AcceptNewGlobalConfiguration(configuration/*out - local config*/, image_acquisition_ctl, &reconstruction_ctl, launch_reconstruction);
 				if (!g_bTerminated) {
@@ -1080,16 +1050,21 @@ int main() {
 				continue;
 			}
 
-			OSSleep(20);
-
-			bool stereodata_statistics_changed = DisplayReconstructionData(reconstruction_ctl, time_average);
-			if (stereodata_statistics_changed) {
-				if (_g_images_frame) {
-				}
+			if (g_bTerminated) {
+				continue;
 			}
 
-
-			if (ProcessWinMessages()) {
+			if (ProcessWinMessages(20)) {
+			}
+			try {
+				bool stereodata_statistics_changed = DisplayReconstructionData(reconstruction_ctl, time_average);
+				if (stereodata_statistics_changed) {
+					if (_g_images_frame) {
+					}
+				}
+			}
+			catch (Exception& ex) {
+				std::cout << ex.msg << std::endl;
 			}
 		}
 	}
