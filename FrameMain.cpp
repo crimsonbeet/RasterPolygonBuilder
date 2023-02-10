@@ -108,13 +108,17 @@ void FrameMain::Instantiate() {
 		break; 
 		case 5: // create reconstructed images frame. 
 		if(_veccanvas.size() > 1) { 
-			_images_frame = new FrameReconstructedImage(_hinst, _veccanvas[1]._hwnd);
-			_g_images_frame = _images_frame;
-			_g_images_frame->SetTopMost();
+			for (size_t x = 0; x < _veccanvas.size(); ++x) {
+				if (_veccanvas[x]._data_type == "FrameReconstructedImage") {
+					_images_frame = new FrameReconstructedImage(_hinst, _veccanvas[1]._hwnd);
+					_g_images_frame = _images_frame;
+					_g_images_frame->SetTopMost();
 
-			if(_g_images_frame->_veccanvas.size() > 0) {
-				_g_images_frame->_veccanvas[0]._delegates->_onmessage_delegates.Add(&FrameMain::OnMessage, this);
-				_g_images_frame->_veccanvas[0]._delegates->_ondraw_delegates.Add(&FrameMain::OnCanvasPaint, this);
+					if (_g_images_frame->_veccanvas.size() > 0) {
+						_g_images_frame->_veccanvas[0]._delegates->_onmessage_delegates.Add(&FrameMain::OnMessage, this);
+						_g_images_frame->_veccanvas[0]._delegates->_ondraw_delegates.Add(&FrameMain::OnCanvasPaint, this);
+					}
+				}
 			}
 
 			_g_frame_history->InsertHistory(_g_images_frame);
@@ -220,6 +224,9 @@ void FrameMain::OnCanvasMessage(SOnMessageParams& params) {
 		if(IsSizing()) {
 		}
 		else {
+			RECT rect;
+			GetClientRect(params._pwin->_hwnd, &rect);
+			glResize(rect.right, rect.bottom);
 		}
 		break;
 	}
@@ -235,8 +242,31 @@ void FrameMain::OnPaint(SOnDrawParams& params) { // One time deal.
 	} 
 } 
 
+
+
+extern HWND _g_hGLWindow;
+extern HDC _g_hGLDConext;
+extern HGLRC _g_hGLRContext;
+
+
 void FrameMain::OnCanvasPaint(SOnDrawParams& params) { // One time deal. 
 	_g_images_frame->_veccanvas[0]._delegates->_ondraw_delegates.Remove(&FrameMain::OnCanvasPaint, this);
+
+
+	_g_hGLDConext = GetDC(params._pwin->_hwnd);
+	if (!glSetupPixelFormat(_g_hGLDConext)) {
+		PostQuitMessage(0);
+	}
+
+
+
+	wglMakeCurrent(_g_hGLDConext, _g_hGLRContext = wglCreateContext(_g_hGLDConext));
+
+
+
+	RECT rect;
+	GetClientRect(params._pwin->_hwnd, &rect);
+	initializeGL(rect.right, rect.bottom);
 }
 
 

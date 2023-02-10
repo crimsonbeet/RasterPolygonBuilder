@@ -20,7 +20,7 @@ $
 
 
 >< $ Canvas DataType='Frame_Container' 
->< $ Situation Left=1 Right=330 Top=70 Bottom=470 FontFace='Segoe UI' FontHeight=10 >< BackColor Hex=D3D3D3 $ 
+>< $ Situation Left=1 Right=330 Top=470 Bottom=870 FontFace='Segoe UI' FontHeight=10 >< BackColor Hex=D3D3D3 $ 
 $ 
 
 >< $ Canvas DataType='openCV_Container' 

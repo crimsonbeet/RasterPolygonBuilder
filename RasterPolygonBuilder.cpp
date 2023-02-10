@@ -385,6 +385,36 @@ void OnMouseCallback(int event, int x, int y, int flags, void* userdata) {
 
 
 
+
+GLvoid startScene();
+GLvoid drawScene(std::vector<Mat_<double>>& points4D, const std::vector<bool>& isACoordinatePoint, std::vector<int>& labels, std::vector<std::vector<Mat_<double>>>& coordlines4D);
+GLvoid commitScene();
+
+void drawScene(std::vector<ReconstructedPoint>& points4D, std::vector<int>& labels, std::vector<std::vector<ReconstructedPoint>>& coordlines4D, Mat_<double> translate) {
+	std::vector<Mat_<double>> points;
+	std::vector<std::vector<Mat_<double>>> coordlines(coordlines4D.size());
+	std::vector<bool> isACoordinatePoint(points4D.size(), false);
+	int idx = 0;
+	points.reserve(points4D.size());
+	for (auto& point : points4D) {
+		points.push_back((Mat_<double>)point + translate);
+		if (point._isACoordinatePoint) {
+			isACoordinatePoint[idx] = true;
+		}
+		++idx;
+	}
+	for (size_t j = 0; j < coordlines4D.size(); ++j) {
+		coordlines[j].reserve(coordlines4D[j].size());
+		for (auto& point : coordlines4D[j]) {
+			coordlines[j].push_back((Mat_<double>)point + translate);
+		}
+	}
+	drawScene(points, isACoordinatePoint, labels, coordlines);
+}
+
+
+
+
 bool DisplayReconstructionData(SPointsReconstructionCtl& reconstruction_ctl, int& time_average) {
 	static Mat cv_image[2]; // gets destroyed each time around
 	static Mat cv_edges[2];
@@ -554,6 +584,36 @@ bool DisplayReconstructionData(SPointsReconstructionCtl& reconstruction_ctl, int
 		stereodata_statistics_changed = true;
 
 		reconstruction_ctl._gate.unlock();
+	}
+
+	if (data_isok) {
+		if (points4D.size()) {
+			Mat_<double> translate(4, 1);
+
+			startScene();
+
+			double max_point[3] = { -10000, -10000, -10000 };
+			for (auto& point : points4Dtransformed) {
+				for (int j = 0; j < 3; ++j) {
+					if (point(j) > max_point[j]) {
+						max_point[j] = point(j);
+					}
+				}
+			}
+
+			static double offset_point[4] = { 0, 0, -10, 0 };
+
+			offset_point[0] = (offset_point[0] * 9 + (-max_point[0] * 1) - 0.001 * 10) / 10.0;
+			offset_point[1] = (offset_point[1] * 9 + (max_point[1] * 2) - 0.001 * 10) / 10.0;
+			offset_point[2] = (offset_point[2] * 9 + (-max_point[2] * 2) - 1.501 * 10) / 10.0;
+
+			for (int j = 0; j < 4; ++j) {
+				translate(j) = offset_point[j];
+			}
+			drawScene(points4Dtransformed, labels, coordlines4Dtransformed, translate);
+
+			commitScene();
+		}
 	}
 
 

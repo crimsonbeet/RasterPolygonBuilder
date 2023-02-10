@@ -79,7 +79,32 @@ using namespace Pylon;
 
 
 
+
+
 #include "MASInterface.h"
+
+
+
+
+
+#include <GL/gl.h> 
+#include <GL/glu.h> 
+
+#pragma comment(lib, "openGL32.lib")
+#pragma comment(lib, "glu32.lib")
+
+extern HWND  _g_hGLWindow;
+extern HDC _g_hGLDConext;
+extern HGLRC _g_hGLRContext;
+
+BOOL glSetupPixelFormat(HDC);
+GLvoid glResize(GLsizei, GLsizei);
+GLvoid initializeGL(GLsizei, GLsizei);
+GLvoid drawScene(GLvoid);
+
+
+
+
 
 
 #pragma comment(lib, "DS7Singleton.lib")
@@ -1080,6 +1105,19 @@ Mat mat_invert2word(const Mat& src, const int bytedepth_scalefactor = g_bytedept
 Mat mat_loginvert2word(const Mat& src, const int bytedepth_scalefactor = g_bytedepth_scalefactor); // returns CV_16UC1 matrix
 
 void ConvertColoredImage2Mono(Mat& image, double chWeights[3], std::function<double(double)> convert);
+
+
+
+
+void reconstruct4DPoints(
+	std::vector<ClusteredPoint> points2D[2] /*in/out*/, // gets sorted and modified. The _cluster is set to the index of epipolar cluster. 
+	Mat& F, /*in*/
+	Mat& camMatl, /*in*/
+	Mat& camMatr, /*in*/
+	Mat& Pl, /*in*/
+	Mat& Pr, /*in*/
+	std::vector<ReconstructedPoint>& points4D /*out*/ // the _id member of each point links to the point in cv_point array. 
+);
 
 
 

@@ -383,8 +383,8 @@ double FindBestAlignment(const std::vector<int>& pattern, const std::vector<int>
 		for (size_t j = 1; j < N; ++j) {
 			const size_t i_1 = i - 1;
 			const size_t j_1 = j - 1;
-			int case1Cost = A[i_1][j_1] + std::abs(pattern[i_1] - strip2searchForPattern[j_1]);
-			//int case1Cost = A[i_1][j_1] + std::sqrt(approx_log2(std::abs((int)i - (int)X))) * std::abs(pattern[i_1] - strip2searchForPattern[j_1]); // not good: long tails do not work on low texture
+			//int case1Cost = A[i_1][j_1] + std::abs(pattern[i_1] - strip2searchForPattern[j_1]);
+			int case1Cost = A[i_1][j_1] + approx_log2(1 + std::abs(pattern[i_1] - strip2searchForPattern[j_1]));
 			int case2Cost = A[i_1][j] + 2 * gapCost;
 			int case3Cost = A[i][j_1] + gapCost;
 			if (case1Cost < case2Cost && case1Cost < case3Cost) {
@@ -413,7 +413,7 @@ double FindBestAlignment(const std::vector<int>& pattern, const std::vector<int>
 	int caseCost = A[m][n];
 
 	for (size_t j = n; j > M; --j) {
-		if (T[m][j] == 1) {
+		if (T[m][j] != 3) {
 			if (A[m][j] <= caseCost) {
 				n = j;
 				caseCost = A[m][j];
@@ -4713,17 +4713,18 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 				double* mean_data = nullptr;
 				double likeness = 0;
 
+				cv::Point patternCenter(patternHalfWidth, blurHeight / 2);
 
 				std::function<int(cv::Mat&, cv::Point&)> likenessScore; // returns a value discretized from 0 to 10 to represent likeness scrore.
 
-				if (BuildIdealChannels_Distribution(crop, cv::Point(patternHalfWidth, blurHeight / 2), mean, stdDev, factorLoadings, invCovar, invCholesky, blurHeight / 2)) {
+				if (BuildIdealChannels_Distribution(crop, patternCenter, mean, stdDev, factorLoadings, invCovar, invCholesky, blurHeight / 2)) {
 					mean_data = (double*)mean.data;
 				}
 				else {
 					std::cout << "Using HSV transform" << std::endl;
 
 					double rgbIdeal[3];
-					BuildIdealChannels_Likeness(crop, cv::Point(patternHalfWidth, blurHeight / 2), rgbIdeal, blurHeight / 2);
+					BuildIdealChannels_Likeness(crop, patternCenter, rgbIdeal, blurHeight / 2);
 
 					const double y_componentIdeal = rgbIdeal[0] * 0.299 + rgbIdeal[1] * 0.587 + rgbIdeal[2] * 0.114;
 					if (y_componentIdeal < 40) {
@@ -4774,10 +4775,13 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 
 				int pos = FindBestAlignment(pattern, strip2searchForPattern) + 0.45;
 				if (pos <= 0) {
-					std::cout << "Unable to determnine the match for the selected point" << std::endl; 
+					std::cout << "Unable to determnine match for the selected point" << std::endl; 
 					default_cv_points();
 					continue;
 				}
+
+				//double detectedScore = strip2searchForPattern[pos];
+				//double patternScore = pattern[patternCenter.x];
 
 				detectedPoint.x = pt.x + direction * pos + 0.45;
 				detectedPoint.y = pt.y;
@@ -4787,6 +4791,8 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 
 				cv_points[windowNumber].resize(1);
 				cv_points[windowNumber][0]._crop = crop;
+				cv_points[windowNumber][0].x = pt.x;
+				cv_points[windowNumber][0].y = pt.y;
 
 				cv::Point pt1(pos - 2 * patternHalfWidth, 0);
 				cv::Point pt2(pos + 2 * patternHalfWidth + 1, blurHeight);
@@ -4799,6 +4805,20 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 
 				cv_points[targetWindow].resize(1);
 				cv_points[targetWindow][0]._crop = Mat(strip2search, cv::Rect(pt1, pt2));
+				cv_points[targetWindow][0].x = detectedPoint.x;
+				cv_points[targetWindow][0].y = detectedPoint.y;
+
+				std::vector<ReconstructedPoint> points4D; 
+
+				reconstruct4DPoints(
+					cv_points, 
+					ctl->_F, /*in*/
+					ctl->_cameraMatrix[0], /*in*/
+					ctl->_cameraMatrix[1], /*in*/
+					ctl->_Pl, /*in*/
+					ctl->_Pr, /*in*/
+					points4D /*out*/ // the _id member of each point links to the point in cv_point array. 
+				);
 			}
 		}
 	}
@@ -5118,20 +5138,7 @@ Mat_<double> IterativeLinearLSTriangulation(Point3d u,	//homogenous image point 
 }
 
 
-void CheckTrianglePointsOrder(std::vector<std::vector<ReconstructedPoint*>>& pairs) {
-	if(pairs[0][1] == pairs[1][1]) {
-		std::swap(pairs[0][0], pairs[0][1]);
-		std::swap(pairs[1][0], pairs[1][1]);
-	}
-	else
-	if(pairs[0][0] != pairs[1][0]) {
-		std::swap(pairs[0][0], pairs[0][1]);
-	}
-	if(pairs[0][0] != pairs[1][0]) {
-		std::swap(pairs[0][0], pairs[0][1]);
-		std::swap(pairs[1][0], pairs[1][1]);
-	}
-}
+
 
 double Eval_ReprojectError(
 	Point2d& pl, /*in*/
@@ -5148,16 +5155,6 @@ double Eval_ReprojectError(
 
 	return reproject_err / 2.0; 
 }
-
-struct Set_CameraNumber {
-	int _cameraNumber; 
-	void operator() (ClusteredPoint& point) {
-		point._camera = _cameraNumber; 
-	}
-	Set_CameraNumber(int cameraNumber): _cameraNumber(cameraNumber) {
-	}
-}; 
-
 
 
 
@@ -5190,7 +5187,6 @@ void PartitionPoints(std::vector<ClusteredPoint> cv_points[2], std::vector<std::
 	combinedpoints.insert(combinedpoints.end(), cv_points[1].begin(), cv_points[1].end());
 
 	if(combinedpoints.size()) {
-		//std::vector<int> ylevels(combinedpoints.size(), -1);
 		std::vector<int> ylevels;
 		partitionEx(combinedpoints, ylevels, ComparePointsForEpipolarEquivalence(g_max_Y_error));
 
@@ -5368,8 +5364,8 @@ void reconstruct4DPoints(
 	std::vector<ReconstructedPoint>& points4D /*out*/ // the _id member of each point links to the point in cv_point array. 
 	) {
 
-	std::for_each(points2D[0].begin(), points2D[0].end(), Set_CameraNumber(-1));
-	std::for_each(points2D[1].begin(), points2D[1].end(), Set_CameraNumber(+1));
+	std::for_each(points2D[0].begin(), points2D[0].end(), [](ClusteredPoint& p) { p._camera = -1; });
+	std::for_each(points2D[1].begin(), points2D[1].end(), [](ClusteredPoint& p) { p._camera = +1; });
 
 	std::vector<std::vector<ClusteredPoint*>> clusters; // is built on epipolar lines (here it is a strip of configurable width). cluster must have even number of points; otherwise do mark all points in the cluster as not clustered. 
 
@@ -5427,5 +5423,4 @@ void reconstruct4DPoints(
 		point(2) = -point(2);
 	}
 }
-
 

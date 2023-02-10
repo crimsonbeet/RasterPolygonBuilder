@@ -197,6 +197,7 @@
     <ClCompile Include="FrameEdit.cpp" />
     <ClCompile Include="FrameMain.cpp" />
     <ClCompile Include="FrameReconstructedImage.cpp" />
+    <ClCompile Include="openGL.cpp" />
     <ClCompile Include="RasterPolygonBuilder.cpp" />
     <ClCompile Include="Reconstruction.cpp" />
     <ClCompile Include="stdafx.cpp">
