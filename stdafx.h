@@ -854,14 +854,26 @@ struct ReconstructedPoint: public Matx41d {
 		_isACoordinatePoint = 0; 
 		_isACorner = 0; 
 		_isACenter = 0; 
+
+		memset(_rgb_normalized, 0, sizeof(_rgb_normalized));
 	}
 	ReconstructedPoint(): _id(-1) { 
 		Init(); 
 	}
-	ReconstructedPoint(const Mat_<double>& point, int id): Matx41d(point(0), point(1), point(2), 1), _id(id) {
+	ReconstructedPoint(const ReconstructedPoint& point): Matx41d(point(0), point(1), point(2), 1), _id(-1) {
+		_not_astandalone_object = point._not_astandalone_object;
+		_reprojection_error = point._reprojection_error;
+		_cluster = point._cluster;
+		_isACoordinatePoint = point._isACoordinatePoint;
+		_isACorner = point._isACorner;
+		_isACenter = point._isACenter;
+
+		memcpy(_rgb_normalized, point._rgb_normalized, sizeof(_rgb_normalized));
+	}
+	ReconstructedPoint(const Mat_<double>& point, int id) : Matx41d(point(0), point(1), point(2), 1), _id(id) {
 		Init();
 	}
-	ReconstructedPoint(const Matx41d& point, int id, int aType, double reprojection_error = 0, int cluster = -1): Matx41d(point), _id(id) { 
+	ReconstructedPoint(const Matx41d& point, int id, int aType, double reprojection_error = 0, int cluster = -1): Matx41d(point), _id(id) {
 		Init();
 		_isACorner = aType == 1? 1: 0;
 		_isACenter = aType == 2? 1: 0;
@@ -887,6 +899,8 @@ struct ReconstructedPoint: public Matx41d {
 	int _cluster; 
 	int _isACorner; 
 	int _isACenter;
+
+	double _rgb_normalized[3];
 };
 
 

@@ -110,7 +110,7 @@ void FrameMain::Instantiate() {
 		if(_veccanvas.size() > 1) { 
 			for (size_t x = 0; x < _veccanvas.size(); ++x) {
 				if (_veccanvas[x]._data_type == "FrameReconstructedImage") {
-					_images_frame = new FrameReconstructedImage(_hinst, _veccanvas[1]._hwnd);
+					_images_frame = new FrameReconstructedImage(_hinst, _veccanvas[x]._hwnd);
 					_g_images_frame = _images_frame;
 					_g_images_frame->SetTopMost();
 
@@ -260,9 +260,9 @@ void FrameMain::OnCanvasPaint(SOnDrawParams& params) { // One time deal.
 
 
 
-	wglMakeCurrent(_g_hGLDConext, _g_hGLRContext = wglCreateContext(_g_hGLDConext));
-
-
+	if (!wglMakeCurrent(_g_hGLDConext, _g_hGLRContext = wglCreateContext(_g_hGLDConext))) {
+		PostQuitMessage(0);
+	}
 
 	RECT rect;
 	GetClientRect(params._pwin->_hwnd, &rect);

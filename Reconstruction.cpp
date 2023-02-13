@@ -384,9 +384,9 @@ double FindBestAlignment(const std::vector<int>& pattern, const std::vector<int>
 			const size_t i_1 = i - 1;
 			const size_t j_1 = j - 1;
 			//int case1Cost = A[i_1][j_1] + std::abs(pattern[i_1] - strip2searchForPattern[j_1]);
-			int case1Cost = A[i_1][j_1] + approx_log2(1 + std::abs(pattern[i_1] - strip2searchForPattern[j_1]));
-			int case2Cost = A[i_1][j] + 2 * gapCost;
-			int case3Cost = A[i][j_1] + gapCost;
+			int case1Cost = A[i_1][j_1] + 10 * approx_log2(1 + std::abs(pattern[i_1] - strip2searchForPattern[j_1]));
+			int case2Cost = A[i_1][j] + 18 * gapCost;
+			int case3Cost = A[i][j_1] + 10 * gapCost;
 			if (case1Cost < case2Cost && case1Cost < case3Cost) {
 				T[i][j] = 1;
 				A[i][j] = case1Cost;
@@ -402,9 +402,6 @@ double FindBestAlignment(const std::vector<int>& pattern, const std::vector<int>
 			}
 		}
 	}
-
-	double Y = 0; // yet unknown
-	size_t w = 0;
 
 	size_t m = M - 1;
 	size_t n = N - 1;
@@ -425,6 +422,9 @@ double FindBestAlignment(const std::vector<int>& pattern, const std::vector<int>
 	if (n != (N - 1)) {
 		std::cout << "Changed starting case number to " << n << std::endl;
 	}
+
+	double Y = 0; // yet unknown
+	size_t w = 0;
 
 	while (caseType != 0) {
 		switch (caseType) {
@@ -448,7 +448,7 @@ double FindBestAlignment(const std::vector<int>& pattern, const std::vector<int>
 		caseType = T[m][n];
 	}
 
-	if (w != 0) {
+	if (w > 1) {
 		Y /= w;
 	}
 
@@ -4506,6 +4506,9 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 	return 0;
 }
 
+
+
+
 return_t __stdcall RenderCameraImages(LPVOID lp) {
 	SPointsReconstructionCtl* ctl = (SPointsReconstructionCtl*)lp;
 
@@ -4532,6 +4535,8 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 	Mat cv_image[4];
 	std::vector<ABox> boxes[2];
 	std::vector<ClusteredPoint> cv_points[2];
+
+	std::vector<ReconstructedPoint> points4D;
 
 	Mat unchangedImage;
 
@@ -4611,6 +4616,9 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 					ctl->_boxes[1] = boxes[1];
 					ctl->_cv_points[0] = cv_points[0];
 					ctl->_cv_points[1] = cv_points[1];
+
+					ctl->_points4D = points4D;
+
 					ctl->_data_isvalid = true;
 				}
 				ctl->_gate.unlock();
@@ -4710,6 +4718,7 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 
 				double hsvIdeal[3];
 
+				double rgbIdeal[3];
 				double* mean_data = nullptr;
 				double likeness = 0;
 
@@ -4719,11 +4728,13 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 
 				if (BuildIdealChannels_Distribution(crop, patternCenter, mean, stdDev, factorLoadings, invCovar, invCholesky, blurHeight / 2)) {
 					mean_data = (double*)mean.data;
+					for (size_t c = 0; c < ARRAY_NUM_ELEMENTS(rgbIdeal); ++c) {
+						rgbIdeal[c] = mean_data[c];
+					}
 				}
 				else {
 					std::cout << "Using HSV transform" << std::endl;
 
-					double rgbIdeal[3];
 					BuildIdealChannels_Likeness(crop, patternCenter, rgbIdeal, blurHeight / 2);
 
 					const double y_componentIdeal = rgbIdeal[0] * 0.299 + rgbIdeal[1] * 0.587 + rgbIdeal[2] * 0.114;
@@ -4794,8 +4805,8 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 				cv_points[windowNumber][0].x = pt.x;
 				cv_points[windowNumber][0].y = pt.y;
 
-				cv::Point pt1(pos - 2 * patternHalfWidth, 0);
-				cv::Point pt2(pos + 2 * patternHalfWidth + 1, blurHeight);
+				cv::Point pt1(pos - patternHalfWidth, 0);
+				cv::Point pt2(pos + patternHalfWidth + 1, blurHeight);
 				if (pt1.x < 0) {
 					pt1.x = 0;
 				}
@@ -4808,7 +4819,7 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 				cv_points[targetWindow][0].x = detectedPoint.x;
 				cv_points[targetWindow][0].y = detectedPoint.y;
 
-				std::vector<ReconstructedPoint> points4D; 
+				size_t newPointIdx = points4D.size();
 
 				reconstruct4DPoints(
 					cv_points, 
@@ -4819,6 +4830,16 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 					ctl->_Pr, /*in*/
 					points4D /*out*/ // the _id member of each point links to the point in cv_point array. 
 				);
+
+				if (newPointIdx < points4D.size()) {
+					auto& point4D = points4D[newPointIdx];
+					const auto max_elem = *std::max_element(std::begin(rgbIdeal), std::end(rgbIdeal));
+					for (size_t c = 0; c < ARRAY_NUM_ELEMENTS(rgbIdeal); ++c) {
+						point4D._rgb_normalized[c] = rgbIdeal[c] / max_elem;
+					}
+				}
+
+				break;
 			}
 		}
 	}
@@ -5413,14 +5434,8 @@ void reconstruct4DPoints(
 
 			double min_reproject_err = reconstruct4DPoint(X, p1, p2, F, Pl, Pr);
 
-			points4D.push_back(ReconstructedPoint(Matx41d(X(0), X(1), X(2), 1), (int)j, p1.aType(), min_reproject_err));
+			points4D.push_back(ReconstructedPoint(Matx41d(X(0), -X(1), -X(2), 1), (int)j, p1.aType(), min_reproject_err));
 		}
-	}
-
-	// invert Z-coordinate
-
-	for(auto& point : points4D) {
-		point(2) = -point(2);
 	}
 }
 

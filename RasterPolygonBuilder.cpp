@@ -387,17 +387,19 @@ void OnMouseCallback(int event, int x, int y, int flags, void* userdata) {
 
 
 GLvoid startScene();
-GLvoid drawScene(std::vector<Mat_<double>>& points4D, const std::vector<bool>& isACoordinatePoint, std::vector<int>& labels, std::vector<std::vector<Mat_<double>>>& coordlines4D);
+GLvoid drawScene(std::vector<Mat_<double>>& points4D, const std::vector<bool>& isACoordinatePoint, std::vector<int>& labels, const std::vector<std::vector<double>>& colors, std::vector<std::vector<Mat_<double>>>& coordlines4D);
 GLvoid commitScene();
 
 void drawScene(std::vector<ReconstructedPoint>& points4D, std::vector<int>& labels, std::vector<std::vector<ReconstructedPoint>>& coordlines4D, Mat_<double> translate) {
 	std::vector<Mat_<double>> points;
 	std::vector<std::vector<Mat_<double>>> coordlines(coordlines4D.size());
+	std::vector<std::vector<double>> colors;
 	std::vector<bool> isACoordinatePoint(points4D.size(), false);
 	int idx = 0;
 	points.reserve(points4D.size());
 	for (auto& point : points4D) {
 		points.push_back((Mat_<double>)point + translate);
+		colors.push_back(std::vector<double>(std::begin(point._rgb_normalized), std::end(point._rgb_normalized)));
 		if (point._isACoordinatePoint) {
 			isACoordinatePoint[idx] = true;
 		}
@@ -409,7 +411,7 @@ void drawScene(std::vector<ReconstructedPoint>& points4D, std::vector<int>& labe
 			coordlines[j].push_back((Mat_<double>)point + translate);
 		}
 	}
-	drawScene(points, isACoordinatePoint, labels, coordlines);
+	drawScene(points, isACoordinatePoint, labels, colors, coordlines);
 }
 
 
@@ -541,8 +543,32 @@ bool DisplayReconstructionData(SPointsReconstructionCtl& reconstruction_ctl, int
 			coordsystem_label = reconstruction_ctl._coordsystem_label; // it is the label of the cluster that represents the coordsystem. 
 			points4D = (reconstruction_ctl._points4D); // the _id member of each point links to the point in cv_point array. 
 			coordlines4D = (reconstruction_ctl._coordlines4D);
+
 			points4Dtransformed = (reconstruction_ctl._points4Dtransformed);
 			coordlines4Dtransformed = (reconstruction_ctl._coordlines4Dtransformed);
+
+
+			if (coordlines4D.size() == 0) {
+				coordlines4D.resize(3);
+				cv::Matx41d coord[3] = { cv::Matx41d(1, 0, 0, 1), cv::Matx41d(0, 1, 0, 1), cv::Matx41d(0, 0, 1, 1) };
+				for (size_t k = 0; k < 3; ++k) {
+					coordlines4D[k].push_back(ReconstructedPoint(cv::Matx41d(0, 0, 0, 1), -1/*no id*/, 3/*coord. point*/));
+					coordlines4D[k].push_back(ReconstructedPoint(coord[k], -1, 3));
+				}
+
+				coordlines4Dtransformed = coordlines4D;
+			}
+			if (points4Dtransformed.size() == 0) {
+				if (points4D.size() != 0) {
+					CopyVector(points4Dtransformed, points4D);
+				}
+			}
+
+			for (size_t k = 0; k < points4Dtransformed.size(); ++k) {
+				coordlines4Dtransformed.resize(k + 3 + 1);
+				coordlines4Dtransformed[k + 3].push_back(ReconstructedPoint(cv::Matx41d(0, 0, 0, 1), -1/*no id*/, 3/*coord. point*/));
+				coordlines4Dtransformed[k + 3].push_back(ReconstructedPoint(points4Dtransformed[k], -1, 3));
+			}
 
 			reconstruction_ctl._data_isvalid = false;
 		}
@@ -589,6 +615,7 @@ bool DisplayReconstructionData(SPointsReconstructionCtl& reconstruction_ctl, int
 	if (data_isok) {
 		if (points4D.size()) {
 			Mat_<double> translate(4, 1);
+			for (int j = 0; j < 4; ++j) translate(j) = 0;
 
 			startScene();
 
@@ -601,7 +628,7 @@ bool DisplayReconstructionData(SPointsReconstructionCtl& reconstruction_ctl, int
 				}
 			}
 
-			static double offset_point[4] = { 0, 0, -10, 0 };
+			double offset_point[4] = { 0, 0, -1, 0 };
 
 			offset_point[0] = (offset_point[0] * 9 + (-max_point[0] * 1) - 0.001 * 10) / 10.0;
 			offset_point[1] = (offset_point[1] * 9 + (max_point[1] * 2) - 0.001 * 10) / 10.0;
@@ -610,6 +637,9 @@ bool DisplayReconstructionData(SPointsReconstructionCtl& reconstruction_ctl, int
 			for (int j = 0; j < 4; ++j) {
 				translate(j) = offset_point[j];
 			}
+
+
+
 			drawScene(points4Dtransformed, labels, coordlines4Dtransformed, translate);
 
 			commitScene();
