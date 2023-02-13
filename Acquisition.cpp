@@ -326,21 +326,6 @@ double hsvLikenessScore(cv::Vec<uchar, 3>& pixOriginal, double hsvIdeal[3]) {
 		diff = 90;
 	}
 
-	//double hueLikeness = 1 - std::abs(std::tan(3.14159265358979323846 * diff / 180));
-	//double likeness;
-	//if (hueLikeness < 0) {
-	//	likeness = 0;
-	//}
-	//else {
-	//	likeness = hueLikeness;
-
-	//	likeness *= std::min(hsvIdeal[1], hsvOriginal[1]) / std::max(hsvIdeal[1], hsvOriginal[1]);
-	//	likeness *= std::max(hsvIdeal[2], hsvOriginal[2]);
-	//}
-
-	//const double tanThreshold = 1;
-	//double hueLikeness = std::pow(1 - diff / 90, 3);
-
 	const double tanThreshold = 0.5;
 	double hueLikeness = tanThreshold - std::abs(std::tan(CV_PI * diff / 180));
 
@@ -350,24 +335,6 @@ double hsvLikenessScore(cv::Vec<uchar, 3>& pixOriginal, double hsvIdeal[3]) {
 	}
 	else {
 		likeness = hueLikeness / tanThreshold;
-
-
-		//for (int j = 1; j < 3; ++j) {
-		//	double chMax;
-		//	double chMin;
-		//	double ch = hsvOriginal[j];
-		//	double ch_ideal = hsvIdeal[j];
-		//	if (ch_ideal > ch) {
-		//		chMax = ch_ideal;
-		//		chMin = ch;
-		//	}
-		//	else {
-		//		chMax = ch;
-		//		chMin = ch_ideal;
-		//	}
-
-		//	likeness *= chMin > 0 ? (chMin * chMin / chMax) : 0;
-		//}
 
 
 		const double saturationIdeal = hsvIdeal[1];

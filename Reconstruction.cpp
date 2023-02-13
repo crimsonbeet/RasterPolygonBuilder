@@ -372,21 +372,21 @@ double FindBestAlignment(const std::vector<int>& pattern, const std::vector<int>
 	}
 
 	for (size_t i = 0; i < M; ++i) {
-		A[i][0] = 1; // M* N* gapCost;
+		A[i][0] = 1; 
 	}
 
 	for (size_t j = 0; j < N; ++j) {
-		A[0][j] = 1; // M* N* gapCost;
+		A[0][j] = 1; 
 	}
 
 	for (size_t i = 1; i < M; ++i) {
 		for (size_t j = 1; j < N; ++j) {
 			const size_t i_1 = i - 1;
 			const size_t j_1 = j - 1;
-			//int case1Cost = A[i_1][j_1] + std::abs(pattern[i_1] - strip2searchForPattern[j_1]);
-			int case1Cost = A[i_1][j_1] + 10 * approx_log2(1 + std::abs(pattern[i_1] - strip2searchForPattern[j_1]));
-			int case2Cost = A[i_1][j] + 18 * gapCost;
-			int case3Cost = A[i][j_1] + 10 * gapCost;
+			int case1Cost = A[i_1][j_1] + (10 * std::abs(pattern[i_1] - strip2searchForPattern[j_1]));
+			//int case1Cost = A[i_1][j_1] + (10 * approx_log2(1 + std::abs(pattern[i_1] - strip2searchForPattern[j_1])) + 0.5);
+			int case2Cost = A[i_1][j] + 20 * gapCost;
+			int case3Cost = A[i][j_1] + 5 * gapCost;
 			if (case1Cost < case2Cost && case1Cost < case3Cost) {
 				T[i][j] = 1;
 				A[i][j] = case1Cost;
@@ -406,53 +406,68 @@ double FindBestAlignment(const std::vector<int>& pattern, const std::vector<int>
 	size_t m = M - 1;
 	size_t n = N - 1;
 
-	int caseType = T[m][n];
 	int caseCost = A[m][n];
+	int caseCostMin = caseCost;
+
+	std::stack<size_t> q;
+	q.push(n);
 
 	for (size_t j = n; j > M; --j) {
 		if (T[m][j] != 3) {
 			if (A[m][j] <= caseCost) {
 				n = j;
+				q.push(n);
 				caseCost = A[m][j];
-				caseType = T[m][j];
 			}
 		}
 	}
 
-	if (n != (N - 1)) {
-		std::cout << "Changed starting case number to " << n << std::endl;
-	}
+	double pos = 0;
 
-	double Y = 0; // yet unknown
-	size_t w = 0;
+	while (!q.empty()) {
+		m = M - 1;
+		n = q.top();
+		q.pop();
 
-	while (caseType != 0) {
-		switch (caseType) {
-		case 1:
-			--m;
-			--n;
-			break;
-		case 2:
-			--m; // case of allignment matches entry from pattern and gap from strip2search
-			break;
-		case 3:
-			--n;
-			break;
+		size_t nStart = n;
+
+		int caseType = T[m][n];
+		caseCost = std::numeric_limits<int>::max();
+
+		double Y = 0; // yet unknown
+
+		while (caseType != 0) {
+			switch (caseType) {
+			case 1:
+				--m;
+				--n;
+				break;
+			case 2:
+				--m; // case of allignment matches entry from pattern and gap from strip2search
+				break;
+			case 3:
+				--n;
+				break;
+			}
+
+			if (m == X) {
+				caseCost = A[m][n];
+				Y = n - 1;
+				break;
+			}
+
+			caseType = T[m][n];
 		}
 
-		if (m == X) {
-			Y += n - 1;
-			++w;
+		if (caseCost < caseCostMin) {
+			pos = Y;
+			caseCostMin = caseCost;
+			std::cout << "Changed position to " << pos << "; starting case number " << nStart << std::endl;
 		}
-
-		caseType = T[m][n];
 	}
 
-	if (w > 1) {
-		Y /= w;
-	}
 
-	return Y;
+	return pos;
 }
 
 
@@ -4710,69 +4725,36 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 
 
 
-				Mat mean;
-				Mat invCovar;
-				Mat_<double> invCholesky(3, 3);
-				Mat stdDev;
-				Mat factorLoadings;
-
 				double hsvIdeal[3];
 
 				double rgbIdeal[3];
-				double* mean_data = nullptr;
 				double likeness = 0;
 
 				cv::Point patternCenter(patternHalfWidth, blurHeight / 2);
 
 				std::function<int(cv::Mat&, cv::Point&)> likenessScore; // returns a value discretized from 0 to 10 to represent likeness scrore.
 
-				if (BuildIdealChannels_Distribution(crop, patternCenter, mean, stdDev, factorLoadings, invCovar, invCholesky, blurHeight / 2)) {
-					mean_data = (double*)mean.data;
-					for (size_t c = 0; c < ARRAY_NUM_ELEMENTS(rgbIdeal); ++c) {
-						rgbIdeal[c] = mean_data[c];
-					}
-				}
-				else {
-					std::cout << "Using HSV transform" << std::endl;
+				std::cout << "Using HSV transform" << std::endl;
 
-					BuildIdealChannels_Likeness(crop, patternCenter, rgbIdeal, blurHeight / 2);
+				BuildIdealChannels_Likeness(crop, patternCenter, rgbIdeal, blurHeight / 2);
 
-					const double y_componentIdeal = rgbIdeal[0] * 0.299 + rgbIdeal[1] * 0.587 + rgbIdeal[2] * 0.114;
-					if (y_componentIdeal < 40) {
-						default_cv_points();
-						continue;
-					}
-
-					cv::Vec<uchar, 3> pixIdeal;
-					pixIdeal[0] = (uchar)(rgbIdeal[0] + 0.5);
-					pixIdeal[1] = (uchar)(rgbIdeal[1] + 0.5);
-					pixIdeal[2] = (uchar)(rgbIdeal[2] + 0.5);
-
-					RGB_TO_HSV(pixIdeal, hsvIdeal);
+				const double y_componentIdeal = rgbIdeal[0] * 0.299 + rgbIdeal[1] * 0.587 + rgbIdeal[2] * 0.114;
+				if (y_componentIdeal < 40) {
+					default_cv_points();
+					continue;
 				}
 
-				double invCholesky_data[3][3] = {
-					{ invCholesky.at<double>(0, 0), invCholesky.at<double>(0, 1), invCholesky.at<double>(0, 2) },
-					{ invCholesky.at<double>(1, 0), invCholesky.at<double>(1, 1), invCholesky.at<double>(1, 2) },
-					{ invCholesky.at<double>(2, 0), invCholesky.at<double>(2, 1), invCholesky.at<double>(2, 2) }
+				cv::Vec<uchar, 3> pixIdeal;
+				pixIdeal[0] = (uchar)(rgbIdeal[0] + 0.5);
+				pixIdeal[1] = (uchar)(rgbIdeal[1] + 0.5);
+				pixIdeal[2] = (uchar)(rgbIdeal[2] + 0.5);
+
+				RGB_TO_HSV(pixIdeal, hsvIdeal);
+
+				likenessScore = [&hsvIdeal](cv::Mat& aux, cv::Point& pt) -> int {
+					double likeness = hsvLikenessScore(aux.at<cv::Vec<uchar, 3>>(pt.y, pt.x), hsvIdeal);
+					return 2 * likeness / 25.6 + 0.45;
 				};
-
-				if (mean_data == nullptr) {
-					likenessScore = [&hsvIdeal](cv::Mat& aux, cv::Point& pt) -> int {
-						double likeness = hsvLikenessScore(aux.at<cv::Vec<uchar, 3>>(pt.y, pt.x), hsvIdeal);
-						return 2 * likeness / 25.6 + 0.45;
-					};
-				}
-				else {
-					likenessScore = [&mean_data, &invCholesky_data](cv::Mat& aux, cv::Point& pt) -> int {
-						double zScore = Get_Squared_Z_Score(aux.at<cv::Vec<uchar, 3>>(pt.y, pt.x), mean_data, invCholesky_data);
-						if (zScore < 10) {
-							return 2 * (10 - zScore) + 0.45;
-						}
-
-						return 0;
-					};
-				}
 
 				std::vector<int> pattern(crop.cols);
 				std::vector<int> strip2searchForPattern(strip2search.cols);

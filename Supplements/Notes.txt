@@ -187,3 +187,12 @@ void BoostCalibrate(size_t number_of_iterations, Mat& cameraMatrixL, Mat& camera
 
 		std::cout << "calibration set: " << ostrSelection.str() << std::endl;
 
+
+
+
+
+
+
+
+
+
