@@ -18,7 +18,7 @@ extern bool g_bRestart;
 extern HANDLE g_event_SFrameIsAvailable;
 
 
-void RGB_TO_HSV(Vec<uchar, 3> rgb, double hsv[3]) {
+void RGB_TO_HSV(Vec<uchar, 3> rgb, double hsv[3], const double maxMinThreshold) {
 	BYTE chMax = rgb[0];
 	BYTE chMin = chMax;
 	std::for_each(&rgb[1], &rgb[2] + 1, [&chMax, &chMin](BYTE& ch) {
@@ -31,6 +31,12 @@ void RGB_TO_HSV(Vec<uchar, 3> rgb, double hsv[3]) {
 	});
 
 	const double chMaxMin = (chMax - chMin);
+	if (chMaxMin <= maxMinThreshold) {
+		hsv[0] = 361;
+		hsv[1] = 0;
+		hsv[2] = chMax;
+		return;
+	}
 
 	double s = chMaxMin / (chMax == 0 ? 1 : chMax);
 
@@ -56,9 +62,22 @@ void RGB_TO_HSV(Vec<uchar, 3> rgb, double hsv[3]) {
 		h += 360;
 	}
 
+	if (isnan(h)) {
+		h = 361;
+	}
+
 	hsv[0] = h;
 	hsv[1] = s;
 	hsv[2] = chMax;
+}
+
+double GetFScore(cv::Vec<uchar, 3> ch1, cv::Vec<uchar, 3> ch2) {
+	double fscore = 1;
+	for (int j = 0; j < 3; ++j) {
+		double ch[2] = { ch1[j], ch2[j] };
+		fscore *= (2.0 * ch[0] * ch[1]) / (pow(ch[0], 2) + pow(ch[1], 2));
+	}
+	return fscore;
 }
 
 double GetAngleDifferenceInGrads(double x, double y) {
@@ -181,10 +200,10 @@ void BuildWeights_ByChannel(Mat& image, Point& pt, double weights_out[3]) {
 
 bool BuildIdealChannels_Distribution(Mat& image, Point& pt, Mat& mean, Mat& stdDev, Mat& factorLoadings, Mat& invCovar, Mat& invCholesky, int neighbourhoodRadius) {
 	if (image.type() == CV_8UC3) {
-		if (neighbourhoodRadius > 4) {
-			neighbourhoodRadius = 4;
+		if (neighbourhoodRadius > 5) {
+			neighbourhoodRadius = 5;
 		}
-		Mat_<double> neighbours(neighbourhoodRadius <= 2? 25: neighbourhoodRadius == 3 ? 49: 81, 3);
+		Mat_<double> neighbours(neighbourhoodRadius <= 2? 25: neighbourhoodRadius == 3 ? 49: neighbourhoodRadius == 4 ? 81: 121, 3);
 		int yStart = pt.y - neighbourhoodRadius;
 		int yEnd = pt.y + neighbourhoodRadius + 1;
 		while (yStart < 0) ++yStart, ++yEnd;
@@ -231,7 +250,7 @@ bool BuildIdealChannels_Distribution(Mat& image, Point& pt, Mat& mean, Mat& stdD
 
 		double invConditionNumber = cv::invert(Q.clone(), invCovar, DECOMP_SVD);
 		std::cout << "Covar inverse condition number " << invConditionNumber << std::endl;
-		if (invConditionNumber > 0.01) {
+		if (invConditionNumber > 0.001) {
 			if (cv::Cholesky(&Q.at<double>(0, 0), (size_t)Q.step, Q.rows, nullptr, 0, 0)) {
 				for (int i = 0; i < 2; ++i) {
 					for (int j = i + 1; j < 3; ++j) {
@@ -321,6 +340,10 @@ double hsvLikenessScore(cv::Vec<uchar, 3>& pixOriginal, double hsvIdeal[3]) {
 	double hsvOriginal[3];
 	RGB_TO_HSV(pixOriginal, hsvOriginal);
 
+	if (hsvOriginal[0] > 360) {
+		return 0; // hue is undefined
+	}
+
 	double diff = std::abs(GetAngleDifferenceInGrads(hsvIdeal[0], hsvOriginal[0]));
 	if (diff > 90) {
 		diff = 90;
@@ -348,6 +371,10 @@ double hsvLikenessScore(cv::Vec<uchar, 3>& pixOriginal, double hsvIdeal[3]) {
 		likeness *= 256;
 	}
 
+	if (isnan(likeness) || likeness < 0 || likeness > 256) {
+		likeness = 0;
+	}
+
 	return likeness;
 }
 
@@ -369,6 +396,9 @@ bool ConvertColoredImage2Mono_HSV_Likeness(Mat& image, double rgbIdeal[3]) {
 	const double y_componentIdeal = rgbIdeal[0] * 0.299 + rgbIdeal[1] * 0.587 + rgbIdeal[2] * 0.114;
 
 	if (y_componentIdeal < 40) {
+		return false;
+	}
+	if (hsvIdeal[0] > 360) {
 		return false;
 	}
 

@@ -986,6 +986,9 @@ struct SImageAcquisitionCtl {
 		for (auto& exp : _exposure_times) exp = 0;
 	}
 
+	~SImageAcquisitionCtl() {
+	}
+
 private:
 	CBaslerUsbInstantCameraArray _basler_cameras = CBaslerUsbInstantCameraArray(NUMBER_OF_CAMERAS); // defines number of cameras to use
 };
@@ -1102,7 +1105,9 @@ Mat mat_convert2byte(const Mat& src, const int bytedepth_scalefactor = g_bytedep
 Mat mat_loginvert2byte(const Mat& src, const int bytedepth_scalefactor = g_bytedepth_scalefactor); // returns CV_8UC1 matrix of log inverted values
 
 
-void RGB_TO_HSV(cv::Vec<uchar, 3> rgb, double hsv[3]);
+void RGB_TO_HSV(cv::Vec<uchar, 3> rgb, double hsv[3], const double maxMinThreshold = 3);
+
+double GetFScore(cv::Vec<uchar, 3> ch1, cv::Vec<uchar, 3> ch2);
 
 double hsvLikenessScore(cv::Vec<uchar, 3>& pixOriginal, double hsvIdeal[3]); // returns likeness score from 0 to 256.
 
@@ -1401,6 +1406,9 @@ struct SPointsReconstructionCtl {
 		_foreground_extraction_isvalid = false;
 		_coordsystem_label = -1; 
 		_draw_epipolar_lines = true;
+	}
+
+	~SPointsReconstructionCtl() {
 	}
 };
 

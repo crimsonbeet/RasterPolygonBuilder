@@ -353,11 +353,11 @@ double RadiusOfRectangle(const std::vector<Point2d>& points) {
 
 
 
-double FindBestAlignment(const std::vector<int>& pattern, const std::vector<int>& strip2searchForPattern) { // returns center point of alignment
+double FindBestAlignment(const Mat& crop, const Mat& strip2search, int row2search) { // returns center point of alignment
 	const int gapCost = 1;
 
-	const size_t M = pattern.size() + 1;
-	const size_t N = strip2searchForPattern.size() + 1;
+	const size_t M = crop.cols + 1;
+	const size_t N = strip2search.cols + 1;
 
 	const size_t X = M / 2;
 
@@ -372,34 +372,36 @@ double FindBestAlignment(const std::vector<int>& pattern, const std::vector<int>
 	}
 
 	for (size_t i = 0; i < M; ++i) {
-		A[i][0] = 1; 
+		A[i][0] = 1;
 	}
 
 	for (size_t j = 0; j < N; ++j) {
-		A[0][j] = 1; 
+		A[0][j] = 1;
 	}
+
+	const int r = row2search;
 
 	for (size_t i = 1; i < M; ++i) {
 		for (size_t j = 1; j < N; ++j) {
 			const size_t i_1 = i - 1;
 			const size_t j_1 = j - 1;
-			int case1Cost = A[i_1][j_1] + (10 * std::abs(pattern[i_1] - strip2searchForPattern[j_1]));
-			//int case1Cost = A[i_1][j_1] + (10 * approx_log2(1 + std::abs(pattern[i_1] - strip2searchForPattern[j_1])) + 0.5);
+			double fscore = GetFScore(crop.at<cv::Vec<uchar, 3>>(r, i_1), strip2search.at<cv::Vec<uchar, 3>>(r, j_1));
+			int case1Cost = A[i_1][j_1] + 30 * (1 - fscore) + 0.45;
 			int case2Cost = A[i_1][j] + 20 * gapCost;
-			int case3Cost = A[i][j_1] + 5 * gapCost;
+			int case3Cost = A[i][j_1] + 10 * gapCost;
 			if (case1Cost < case2Cost && case1Cost < case3Cost) {
 				T[i][j] = 1;
 				A[i][j] = case1Cost;
 			}
-			else 
-			if (case2Cost < case3Cost) {
-				T[i][j] = 2;
-				A[i][j] = case2Cost;
-			}
-			else {
-				T[i][j] = 3;
-				A[i][j] = case3Cost;
-			}
+			else
+				if (case2Cost < case3Cost) {
+					T[i][j] = 2;
+					A[i][j] = case2Cost;
+				}
+				else {
+					T[i][j] = 3;
+					A[i][j] = case3Cost;
+				}
 		}
 	}
 
@@ -412,7 +414,7 @@ double FindBestAlignment(const std::vector<int>& pattern, const std::vector<int>
 	std::stack<size_t> q;
 	q.push(n);
 
-	for (size_t j = n; j > M; --j) {
+	for (size_t j = n; j > (M + (M >> 1)); --j) {
 		if (T[m][j] != 3) {
 			if (A[m][j] <= caseCost) {
 				n = j;
@@ -452,7 +454,7 @@ double FindBestAlignment(const std::vector<int>& pattern, const std::vector<int>
 
 			if (m == X) {
 				caseCost = A[m][n];
-				Y = n - 1;
+				Y = n;
 				break;
 			}
 
@@ -463,13 +465,13 @@ double FindBestAlignment(const std::vector<int>& pattern, const std::vector<int>
 			pos = Y;
 			caseCostMin = caseCost;
 			std::cout << "Changed position to " << pos << "; starting case number " << nStart << std::endl;
+			break;
 		}
 	}
 
 
 	return pos;
 }
-
 
 
 
@@ -4667,6 +4669,9 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 				pt.x = g_LoG_seedPoint.x / sf.fx + 0.5;
 				pt.y = g_LoG_seedPoint.y / sf.fy + 0.5;
 
+				//pt.x = 1312;
+				//pt.y = 1608;
+
 				int windowNumber = g_LoG_seedPoint.params.windowNumber - 1;
 				int direction = windowNumber == 1 ? 1 : -1;
 
@@ -4706,11 +4711,12 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 
 
 				int strip2searchWidth = 0.15 * aux.cols;
-				const int patternHalfWidth = ((strip2searchWidth/15) >> 1) << 1; //40
-				const int blurHeight = 5;
+				const int patternHalfWidth = ((strip2searchWidth / 15) >> 1) << 1; //40
+				const int blurHeight = 11;
 
-				Mat crop(aux, cv::Rect(pt.x - patternHalfWidth, pt.y - blurHeight / 2, 2 * patternHalfWidth + 1, blurHeight));
-				cv::blur(crop.clone(), crop, cv::Size(1, blurHeight));
+				Mat cropAux(aux, cv::Rect(pt.x - patternHalfWidth, pt.y - blurHeight / 2, 2 * patternHalfWidth + 1, blurHeight));
+				Mat crop;
+				cv::blur(cropAux, crop, cv::Size(1, blurHeight));
 
 
 				cv::Rect strip2searchRect(pt.x, pt.y - blurHeight / 2, strip2searchWidth, blurHeight);
@@ -4720,61 +4726,24 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 				checkRectangle(strip2searchRect);
 
 
-				Mat strip2search(cv_image[2 + windowNumber - direction], strip2searchRect);
-				cv::blur(strip2search.clone(), strip2search, cv::Size(1, blurHeight));
+				Mat strip2searchAux(cv_image[2 + windowNumber - direction], strip2searchRect);
+				Mat strip2search;
+				cv::blur(strip2searchAux, strip2search, cv::Size(1, blurHeight));
 
 
-
-				double hsvIdeal[3];
-
-				double rgbIdeal[3];
-				double likeness = 0;
+				double rgbSelected[3];
 
 				cv::Point patternCenter(patternHalfWidth, blurHeight / 2);
 
-				std::function<int(cv::Mat&, cv::Point&)> likenessScore; // returns a value discretized from 0 to 10 to represent likeness scrore.
+				BuildIdealChannels_Likeness(crop, patternCenter, rgbSelected, 0);
 
-				std::cout << "Using HSV transform" << std::endl;
 
-				BuildIdealChannels_Likeness(crop, patternCenter, rgbIdeal, blurHeight / 2);
-
-				const double y_componentIdeal = rgbIdeal[0] * 0.299 + rgbIdeal[1] * 0.587 + rgbIdeal[2] * 0.114;
-				if (y_componentIdeal < 40) {
-					default_cv_points();
-					continue;
-				}
-
-				cv::Vec<uchar, 3> pixIdeal;
-				pixIdeal[0] = (uchar)(rgbIdeal[0] + 0.5);
-				pixIdeal[1] = (uchar)(rgbIdeal[1] + 0.5);
-				pixIdeal[2] = (uchar)(rgbIdeal[2] + 0.5);
-
-				RGB_TO_HSV(pixIdeal, hsvIdeal);
-
-				likenessScore = [&hsvIdeal](cv::Mat& aux, cv::Point& pt) -> int {
-					double likeness = hsvLikenessScore(aux.at<cv::Vec<uchar, 3>>(pt.y, pt.x), hsvIdeal);
-					return 2 * likeness / 25.6 + 0.45;
-				};
-
-				std::vector<int> pattern(crop.cols);
-				std::vector<int> strip2searchForPattern(strip2search.cols);
-
-				for (int c = 0; c < crop.cols; ++c) {
-					pattern[c] = likenessScore(crop, cv::Point(c, 2));
-				}
-				for (int c = 0; c < strip2search.cols; ++c) {
-					strip2searchForPattern[c] = likenessScore(strip2search, cv::Point(c, 2));
-				}
-
-				int pos = FindBestAlignment(pattern, strip2searchForPattern) + 0.45;
+				int pos = FindBestAlignment(crop, strip2search, blurHeight / 2) + 0.45;
 				if (pos <= 0) {
 					std::cout << "Unable to determnine match for the selected point" << std::endl; 
 					default_cv_points();
 					continue;
 				}
-
-				//double detectedScore = strip2searchForPattern[pos];
-				//double patternScore = pattern[patternCenter.x];
 
 				detectedPoint.x = pt.x + direction * pos + 0.45;
 				detectedPoint.y = pt.y;
@@ -4815,9 +4784,9 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 
 				if (newPointIdx < points4D.size()) {
 					auto& point4D = points4D[newPointIdx];
-					const auto max_elem = *std::max_element(std::begin(rgbIdeal), std::end(rgbIdeal));
-					for (size_t c = 0; c < ARRAY_NUM_ELEMENTS(rgbIdeal); ++c) {
-						point4D._rgb_normalized[c] = rgbIdeal[c] / max_elem;
+					//const auto max_elem = *std::max_element(std::begin(rgbSelected), std::end(rgbSelected));
+					for (size_t c = 0; c < ARRAY_NUM_ELEMENTS(rgbSelected); ++c) {
+						point4D._rgb_normalized[c] = rgbSelected[c] / 255;
 					}
 				}
 
