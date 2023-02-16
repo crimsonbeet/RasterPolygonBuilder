@@ -4709,9 +4709,8 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 					cv_points[1][0]._crop = imread(IMG_DELETEDOCUMENT_H, cv::IMREAD_ANYCOLOR);
 				};
 
-
-				int strip2searchWidth = 0.15 * aux.cols;
-				const int patternHalfWidth = ((strip2searchWidth / 15) >> 1) << 1; //40
+				int strip2searchWidth = 0.35 * aux.cols;
+				const int patternHalfWidth = ((strip2searchWidth / 35) >> 1) << 1; //40
 				const int blurHeight = 11;
 
 				Mat cropAux(aux, cv::Rect(pt.x - patternHalfWidth, pt.y - blurHeight / 2, 2 * patternHalfWidth + 1, blurHeight));
@@ -4784,7 +4783,6 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 
 				if (newPointIdx < points4D.size()) {
 					auto& point4D = points4D[newPointIdx];
-					//const auto max_elem = *std::max_element(std::begin(rgbSelected), std::end(rgbSelected));
 					for (size_t c = 0; c < ARRAY_NUM_ELEMENTS(rgbSelected); ++c) {
 						point4D._rgb_normalized[c] = rgbSelected[c] / 255;
 					}
