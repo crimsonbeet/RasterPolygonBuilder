@@ -1,0 +1,28 @@
+
+
+		N2[n].x = -aLine[1]; 
+		N2[n].y = aLine[0];
+
+		Point2f mean;
+		mean.x = aLine[2];
+		mean.y = aLine[3];
+
+		D2[n] = mean.ddot(N2[n]);
+		
+
+		Matx22d A; 
+		Matx21d B;
+		A(0, 0) = N2[j].x; 
+		A(0, 1) = N2[j].y;
+		A(1, 0) = N2[k].x;
+		A(1, 1) = N2[k].y;
+
+		B(0, 0) = D2[j];
+		B(1, 0) = D2[k];
+
+		Mat solution; 
+		cv::solve(A, B, solution); 
+		Mat_<double> corner(solution); 
+
+		corners[j].x = int((corner(0, 0) * invscale + 0.49999));
+		corners[j].y = int((corner(1, 0) * invscale + 0.49999));

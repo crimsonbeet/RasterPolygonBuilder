@@ -2559,8 +2559,9 @@ void linearizeContour(std::vector<Point_<T>>&contour, double stepSize, const siz
 	const size_t N = contour[0] == contour[n]? n: n+1;
 	const double D = pow(stepSize, 2) * 2; 
 	bool prevIsOk = false; 
-	Point2f aPoint = contour[0];
-	Point2f aNext;
+	Point2d aPrevious;
+	Point2d aPoint = contour[0];
+	Point2d aNext;
 	size_t k;
 	for (k = 1; k < N; ++k) {
 		aNext = contour[k % N]; 
@@ -2582,6 +2583,7 @@ void linearizeContour(std::vector<Point_<T>>&contour, double stepSize, const siz
 	std::vector<Point_<T>> aux;
 	aux.push_back(aPoint);
 
+	aPrevious = aPoint; 
 	aPoint = aNext;
 	size_t m;
 	std::vector<Point2d> segment;
@@ -2594,15 +2596,75 @@ void linearizeContour(std::vector<Point_<T>>&contour, double stepSize, const siz
 		if (d > D || segment.size() == maxSegmentSize) {
 			if (segment.size() == 0) {
 				aux.push_back(aPoint);
-			}
-			else
-			if (segment.size() == 2) {
-				aux.push_back(round2dPoint((segment[0] + segment[1]) * 0.5));
+				aPrevious = aPoint;
 			}
 			else {
-				fitLine2Segment(segment, aux); 
+				Point2d aFirst = segment[0];
+				Point2d N1(aFirst.y - aPrevious.y, aPrevious.x - aFirst.x);
+				Point2d N2(aPoint.y - aNext.y, aNext.x - aPoint.x);
+
+				N1 = N1 / sqrt(N1.dot(N1));
+				N2 = N2 / sqrt(N2.dot(N2));
+
+				double cos_N1_N2 = N1.dot(N2);
+
+				if (cos_N1_N2 < -0.9998) { // > 179
+					aux.push_back(round2dPoint((aFirst + aPoint) * 0.5));
+				}
+				else
+				if (abs(cos_N1_N2) > 0.5) { //  < 60, > 120
+					if (segment.size() == 2) {
+						aux.push_back(round2dPoint((aFirst + aPoint) * 0.5));
+					}
+					else {
+						fitLine2Segment(segment, aux);
+					}
+
+					//d = pow(aPoint.x - aFirst.x, 2) + pow(aPoint.y - aFirst.y, 2);
+					//if (d > D) {
+					//	aux.push_back(aFirst);
+					//	aux.push_back(aPoint);
+					//}
+					//else {
+					//	aux.push_back(round2dPoint((aFirst + aPoint) * 0.5));
+					//}
+				}
+				else {
+					double D1 = aPrevious.dot(N1);
+					double D2 = aNext.dot(N2);
+
+					Matx22d A;
+					Matx21d B;
+					A(0, 0) = N1.x;
+					A(0, 1) = N1.y;
+					A(1, 0) = N2.x;
+					A(1, 1) = N2.y;
+
+					B(0, 0) = D1;
+					B(1, 0) = D2;
+
+					Mat solution;
+					bool solved = false;
+					if (cv::solve(A, B, solution)) {
+						Mat_<double> corner(solution);
+						Point2d point(corner(0, 0), corner(1, 0));
+
+						d = pow(point.x - aFirst.x, 2) + pow(point.y - aFirst.y, 2) + pow(point.x - aPoint.x, 2) + pow(point.y - aPoint.y, 2);
+						if (d < (D * 100)) {
+							aux.push_back(point);
+							solved = true;
+						}
+					}
+
+					if (!solved) {
+						aux.push_back(round2dPoint((aFirst + aPoint) * 0.5));
+					}
+				}
+
+				segment.resize(0);
+
+				aPrevious = aux[aux.size() - 1]; 
 			}
-			segment.resize(0); 
 		}
 		else {
 			if (segment.size() == 0) {
@@ -2610,6 +2672,7 @@ void linearizeContour(std::vector<Point_<T>>&contour, double stepSize, const siz
 			}
 			segment.push_back(aNext);
 		}
+
 		aPoint = aNext;
 	}
 	if (segment.size()) {
