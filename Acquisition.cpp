@@ -75,10 +75,23 @@ double GetFScore(cv::Vec<uchar, 3> ch1, cv::Vec<uchar, 3> ch2) {
 	double fscore = 1;
 	for (int j = 0; j < 3; ++j) {
 		double ch[2] = { ch1[j], ch2[j] };
-		fscore *= (2.0 * ch[0] * ch[1]) / (pow(ch[0], 2) + pow(ch[1], 2));
+		fscore *= (2.0 * (double)ch[0] * (double)ch[1]) / (pow(ch[0], 2) + pow(ch[1], 2));
 	}
 	return fscore;
 }
+
+//double GetFScore(cv::Vec<uchar, 3> ch1, cv::Vec<uchar, 3> ch2) {
+//	double dotProd = 0;
+//	double normSqrt = 0;
+//	for (int j = 0; j < 3; ++j) {
+//		dotProd += (double)ch1[j] * (double)ch2[j];
+//
+//		normSqrt += (double)ch1[j] * (double)ch1[j];
+//		normSqrt += (double)ch2[j] * (double)ch2[j];
+//	}
+//	double fscoreNorm = 2 * dotProd / normSqrt;
+//	return fscoreNorm;
+//}
 
 double GetAngleDifferenceInGrads(double x, double y) {
 	double a1 = x - y;

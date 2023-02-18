@@ -354,19 +354,17 @@ double RadiusOfRectangle(const std::vector<Point2d>& points) {
 
 
 double FindBestAlignment(const Mat& crop, const Mat& strip2search, int row2search) { // returns center point of alignment
-	const int gapCost = 1;
-
 	const size_t M = crop.cols + 1;
 	const size_t N = strip2search.cols + 1;
 
 	const size_t X = M / 2;
 
-	std::vector<std::vector<int>> A(M);
+	std::vector<std::vector<int64_t>> A(M);
 	for (auto& v : A) {
 		v.resize(N);
 	}
 
-	std::vector<std::vector<int>> T(M);
+	std::vector<std::vector<char>> T(M);
 	for (auto& t : T) {
 		t.resize(N);
 	}
@@ -381,35 +379,39 @@ double FindBestAlignment(const Mat& crop, const Mat& strip2search, int row2searc
 
 	const int r = row2search;
 
+	const int gapCost = 2000;
+	const double scoreWeight = 2 * gapCost;
+
 	for (size_t i = 1; i < M; ++i) {
 		for (size_t j = 1; j < N; ++j) {
 			const size_t i_1 = i - 1;
 			const size_t j_1 = j - 1;
 			double fscore = GetFScore(crop.at<cv::Vec<uchar, 3>>(r, i_1), strip2search.at<cv::Vec<uchar, 3>>(r, j_1));
-			int case1Cost = A[i_1][j_1] + 30 * (1 - fscore) + 0.45;
-			int case2Cost = A[i_1][j] + 20 * gapCost;
-			int case3Cost = A[i][j_1] + 10 * gapCost;
+			int64_t case1Cost = A[i_1][j_1] + scoreWeight * (1 - fscore) + 0.45;
+			//int64_t case1Cost = A[i_1][j_1] + approx_log2(1 + (256 * (1 - fscore))) + 0.45;
+			int64_t case2Cost = A[i_1][j] + gapCost;
+			int64_t case3Cost = A[i][j_1] + gapCost;
 			if (case1Cost < case2Cost && case1Cost < case3Cost) {
 				T[i][j] = 1;
 				A[i][j] = case1Cost;
 			}
 			else
-				if (case2Cost < case3Cost) {
-					T[i][j] = 2;
-					A[i][j] = case2Cost;
-				}
-				else {
-					T[i][j] = 3;
-					A[i][j] = case3Cost;
-				}
+			if (case2Cost < case3Cost) {
+				T[i][j] = 2;
+				A[i][j] = case2Cost;
+			}
+			else {
+				T[i][j] = 3;
+				A[i][j] = case3Cost;
+			}
 		}
 	}
 
 	size_t m = M - 1;
 	size_t n = N - 1;
 
-	int caseCost = A[m][n];
-	int caseCostMin = caseCost;
+	int64_t caseCost = A[m][n];
+	int64_t caseCostMin = caseCost + 1;
 
 	std::stack<size_t> q;
 	q.push(n);
@@ -434,7 +436,7 @@ double FindBestAlignment(const Mat& crop, const Mat& strip2search, int row2searc
 		size_t nStart = n;
 
 		int caseType = T[m][n];
-		caseCost = std::numeric_limits<int>::max();
+		caseCost = std::numeric_limits<int64_t>::max();
 
 		double Y = 0; // yet unknown
 
@@ -2612,7 +2614,7 @@ void linearizeContour(std::vector<Point_<T>>&contour, double stepSize, const siz
 					aux.push_back(round2dPoint((aFirst + aPoint) * 0.5));
 				}
 				else
-				if (abs(cos_N1_N2) > 0.5) { //  < 60, > 120
+				if (abs(cos_N1_N2) > 0.3) { //  < 70, > 130
 					if (segment.size() == 2) {
 						aux.push_back(round2dPoint((aFirst + aPoint) * 0.5));
 					}
