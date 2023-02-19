@@ -377,9 +377,10 @@ double FindBestAlignment(const Mat& crop, const Mat& strip2search, int row2searc
 		A[0][j] = 1;
 	}
 
+
 	const int r = row2search;
 
-	const int gapCost = 2000;
+	const int gapCost = 20000;
 	const double scoreWeight = 2 * gapCost;
 
 	for (size_t i = 1; i < M; ++i) {
@@ -388,7 +389,6 @@ double FindBestAlignment(const Mat& crop, const Mat& strip2search, int row2searc
 			const size_t j_1 = j - 1;
 			double fscore = GetFScore(crop.at<cv::Vec<uchar, 3>>(r, i_1), strip2search.at<cv::Vec<uchar, 3>>(r, j_1));
 			int64_t case1Cost = A[i_1][j_1] + scoreWeight * (1 - fscore) + 0.45;
-			//int64_t case1Cost = A[i_1][j_1] + approx_log2(1 + (256 * (1 - fscore))) + 0.45;
 			int64_t case2Cost = A[i_1][j] + gapCost;
 			int64_t case3Cost = A[i][j_1] + gapCost;
 			if (case1Cost < case2Cost && case1Cost < case3Cost) {
@@ -434,6 +434,7 @@ double FindBestAlignment(const Mat& crop, const Mat& strip2search, int row2searc
 		q.pop();
 
 		size_t nStart = n;
+		std::cout << "starting case number " << nStart << std::endl;
 
 		int caseType = T[m][n];
 		caseCost = std::numeric_limits<int64_t>::max();
@@ -454,19 +455,24 @@ double FindBestAlignment(const Mat& crop, const Mat& strip2search, int row2searc
 				break;
 			}
 
+			caseType = T[m][n];
+
 			if (m == X) {
 				caseCost = A[m][n];
 				Y = n;
-				break;
+				if (caseType != 2) {
+					break;
+				}
+				else {
+					std::cout << "position detected " << Y << "; gap from strip2search" << std::endl;
+				}
 			}
-
-			caseType = T[m][n];
 		}
 
 		if (caseCost < caseCostMin) {
 			pos = Y;
 			caseCostMin = caseCost;
-			std::cout << "Changed position to " << pos << "; starting case number " << nStart << std::endl;
+			std::cout << "Changed position to " << pos << "; case cost " << caseCost << "; starting case number " << nStart << std::endl;
 			break;
 		}
 	}
@@ -901,8 +907,24 @@ void mat_minMax(Mat& m, T1 minMax[2]) {
 	}
 }
 
+void mat_minMax(const cv::Mat& m, std::vector<std::vector<uchar>>& minMax) {
+	minMax.resize(0);
 
+	std::vector<cv::Mat> channels;
+	switch (m.type()) {
+	case CV_8UC3:
+		cv::split(m, channels);
+		minMax.resize(3);
+		for (size_t j = 0; j < 3; ++j) {
+			minMax[j].resize(2);
+			mat_minMax(channels[j], static_cast<uchar*>(minMax[j].data()));
+		}
 
+		break;
+	default:
+		break;
+	}
+}
 
 
 void BlobDetector(std::vector<ABox>& boxes, Mat& image, const unsigned int min_intensity, cv::Rect roi, const unsigned int max_intensity, const int max_boxsize_pixels, const double circularity_ratio) {

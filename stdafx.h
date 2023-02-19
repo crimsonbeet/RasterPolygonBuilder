@@ -1088,7 +1088,10 @@ void matCV_8UC1_memcpy(Mat& dst, const Mat& src);
 void matCV_8UC3_memcpy(Mat& dst, const Mat& src);
 
 template<typename T1>
-void mat_minMax(Mat& m, T1 minMax[2]); 
+void mat_minMax(Mat& m, T1 minMax[2]);
+
+void mat_minMax(const cv::Mat& m, std::vector<std::vector<uchar>>& minMax);
+
 
 template<typename T1, typename T2>
 inline void mat_findMinMax(T2 *val, const cv::Size& src_size, const size_t row_step, T1 minMax[2]); 
@@ -1107,7 +1110,7 @@ Mat mat_loginvert2byte(const Mat& src, const int bytedepth_scalefactor = g_byted
 
 void RGB_TO_HSV(cv::Vec<uchar, 3> rgb, double hsv[3], const double maxMinThreshold = 3);
 
-double GetFScore(cv::Vec<uchar, 3> ch1, cv::Vec<uchar, 3> ch2);
+double GetFScore(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2);
 
 double hsvLikenessScore(cv::Vec<uchar, 3>& pixOriginal, double hsvIdeal[3]); // returns likeness score from 0 to 256.
 
