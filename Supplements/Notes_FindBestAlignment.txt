@@ -374,3 +374,45 @@ double GetFScore(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2, dou
 
 
 
+
+
+
+
+double GetFScore(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2, double scaleFactors[3], double means[3]) {
+	double fscore = 1;
+	for (int j = 0; j < 3; ++j) {
+		double px[2] = { (ch1[j] - means[j] + 256) * scaleFactors[j], (ch2[j] - means[j] + 256) * scaleFactors[j] };
+		if (ch1[j] > 0 && ch2[j] > 0) {
+			fscore *= (2.0 * px[0] * px[1]) / (pow(px[0], 2) + pow(px[1], 2));
+		}
+	}
+	return fscore;
+}
+
+			double fscore = GetFScore(crop.at<cv::Vec<uchar, 3>>(r, i_1), strip2search.at<cv::Vec<uchar, 3>>(r, j_1), scaleFactors, means);
+
+
+
+				std::vector<std::vector<uchar>> minMax;
+				mat_minMax(crop, minMax);
+
+				cv::Scalar cvMeans = cv::mean(crop);
+
+				double scaleFactors[3];
+				double means[3];
+
+				for (size_t j = 0; j < 3; ++j) {
+					double range = minMax[j][1] - minMax[j][0];
+					if (range > 1) {
+						//scaleFactors[j] = 1 + approx_log2(256.0 / range);
+						scaleFactors[j] = 256.0 / range;
+					}
+					else {
+						scaleFactors[j] = 1;
+					}
+					means[j] = cvMeans.val[j];
+				}
+
+
+
+

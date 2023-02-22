@@ -251,7 +251,7 @@ bool BuildIdealChannels_Distribution(Mat& image, Point& pt, Mat& mean, Mat& stdD
 
 		double invConditionNumber = cv::invert(Q.clone(), invCovar, DECOMP_SVD);
 		std::cout << "Covar inverse condition number " << invConditionNumber << std::endl;
-		if (invConditionNumber > 0.001) {
+		if (invConditionNumber > 0.01) {
 			if (cv::Cholesky(&Q.at<double>(0, 0), (size_t)Q.step, Q.rows, nullptr, 0, 0)) {
 				for (int i = 0; i < 2; ++i) {
 					for (int j = i + 1; j < 3; ++j) {

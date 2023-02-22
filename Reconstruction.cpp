@@ -2302,11 +2302,11 @@ void filterContour(std::vector<Point_<T>>& contour, std::vector<Point2d>& shocks
 						}
 					}
 
-					//max_kval -= 0.1;
-					//if (max_kval < 1) {
-					//	max_kval = 1;
-					//}
-					max_kval = 1;
+					max_kval -= 0.1;
+					if (max_kval < 1) {
+						max_kval = 1;
+					}
+					//max_kval = 1;
 				}
 				K(0, 1) = 0;
 				K(1, 0) = 0;
@@ -2636,7 +2636,7 @@ void linearizeContour(std::vector<Point_<T>>&contour, double stepSize, const siz
 					aux.push_back(round2dPoint((aFirst + aPoint) * 0.5));
 				}
 				else
-				if (abs(cos_N1_N2) > 0.3) { //  < 70, > 130
+				if (abs(cos_N1_N2) > 0.3) { //  < 70, > 110
 					if (segment.size() == 2) {
 						aux.push_back(round2dPoint((aFirst + aPoint) * 0.5));
 					}
