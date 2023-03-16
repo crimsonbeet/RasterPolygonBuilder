@@ -106,8 +106,16 @@ void DrawImageAndBoard(const std::string& aName, const std::string& window_name,
 }
 
 
+std::string CalibrationDirName() {
+	if (g_configuration._frames_acquisition_mode > 1) {
+		return std::string(g_path_calib_external_images_dir);
+	}
+	return std::string(g_path_calib_images_dir);
+}
+
+
 std::string CalibrationFileName() {
-	return std::string(g_path_calib_images_dir) + g_path_calibrate_file;
+	return CalibrationDirName() + g_path_calibrate_file;
 }
 
 
@@ -827,7 +835,7 @@ return_t __stdcall BuildChessMinEnclosingQuadrilateral(LPVOID lp) {
 				compression_params.push_back(0);
 
 
-				cv::imwrite(std::string(g_path_calib_images_dir) + "ST1-" + ctl->_outputWindow + "-ChessPattern-enclose.png", image1, compression_params);
+				cv::imwrite(std::string(CalibrationDirName()) + "ST1-" + ctl->_outputWindow + "-ChessPattern-enclose.png", image1, compression_params);
 			}
 		}
 		else {
@@ -993,7 +1001,7 @@ return_t __stdcall BuildChessGridCorners(LPVOID lp) {
 				for (int k = 0; k < edgesMapped.size(); ++k) {
 					putText(image1, std::to_string(k).c_str(), edgesMapped[k], FONT_HERSHEY_SCRIPT_SIMPLEX, 0.5, Scalar(255, 0, 0), 1);
 				}
-				std::string name = std::string(g_path_calib_images_dir) + "ST2-" + ctl->_outputWindow + "-ChessPattern-level" + std::to_string(level) + ".png";
+				std::string name = std::string(CalibrationDirName()) + "ST2-" + ctl->_outputWindow + "-ChessPattern-level" + std::to_string(level) + ".png";
 				cv::imwrite(name, image1, compression_params);
 			}
 
@@ -1081,7 +1089,7 @@ return_t __stdcall BuildChessGridCorners(LPVOID lp) {
 				for (int k = 0; k < edgesBuf.size(); ++k) {
 					putText(grayscale, std::to_string(k).c_str(), edgesBuf[k], FONT_HERSHEY_SCRIPT_SIMPLEX, 1, Scalar(0, 0, 255), 2);
 				}
-				cv::imwrite(std::string(g_path_calib_images_dir) + "ST3-" + ctl->_outputWindow + "-ChessPattern-Labeled.png", grayscale, compression_params);
+				cv::imwrite(std::string(CalibrationDirName()) + "ST3-" + ctl->_outputWindow + "-ChessPattern-Labeled.png", grayscale, compression_params);
 			}
 			else {
 				static int x = 0;
@@ -1333,7 +1341,7 @@ void Save_Images(Mat& image, vector<vector<Point2d>>& imagePoints, int points_id
 	compression_params.push_back(IMWRITE_PNG_COMPRESSION); // Mar.4 2015.
 	compression_params.push_back(0);
 
-	std::string image_name = std::string(g_path_calib_images_dir) + name + ".png";
+	std::string image_name = std::string(CalibrationDirName()) + name + ".png";
 
 	std::cout << "Saving image" << ' ' << image_name << std::endl;
 	cv::imwrite(image_name, image * std::max(256 / (int)g_bytedepth_scalefactor, 1), compression_params); // Mar.4 2015.
@@ -1352,7 +1360,7 @@ void Save_Images(Mat& image, vector<vector<Point2d>>& imagePoints, int points_id
 		for(int k = 0; k < imagePoints[points_idx - 1].size(); ++k) {
 			circle(color_image, Point2i((int)(imagePoints[points_idx - 1][k].x + 0.5), (int)(imagePoints[points_idx - 1][k].y + 0.5)), 5, Scalar(0, 0, 255 * 256), -1);
 		}
-		image_name = std::string(g_path_calib_images_dir) + name + "-points" + ".png";
+		image_name = std::string(CalibrationDirName()) + name + "-points" + ".png";
 		std::cout << "Saving image" << ' ' << image_name << std::endl;
 		cv::imwrite(image_name, color_image, compression_params); // Mar.4 2015.
 	}
@@ -1579,11 +1587,11 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 
 
 		auto lambda_Save_Images = [&](size_t N, int nl, int nr) {
-			MyCreateDirectory(g_path_calib_images_dir, "AcquireImagepointsEx");
+			MyCreateDirectory(CalibrationDirName(), "AcquireImagepointsEx");
 
 			if (ctl->_save_all_calibration_images && !imagesFromFilesAreOk) {
 				if (current_N == 1) {
-					Delete_FilesInDirectory(g_path_calib_images_dir);
+					Delete_FilesInDirectory(CalibrationDirName());
 					while (ProcessWinMessages());
 				}
 				Save_Images(images[0], imagePoints[0], nl, std::to_string(N) + 'l');
@@ -1597,7 +1605,7 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 				nr = imagePoints[1].size();
 			}
 
-			std::string xml_name = std::string(g_path_calib_images_dir) + std::to_string(N) + ".xml";
+			std::string xml_name = std::string(CalibrationDirName()) + std::to_string(N) + ".xml";
 			std::cout << "Saving xml" << ' ' << xml_name << std::endl;
 			FileStorage fw(xml_name, FileStorage::WRITE);
 			fw << "left_points" << imagePoints[0][(size_t)nl - 1];

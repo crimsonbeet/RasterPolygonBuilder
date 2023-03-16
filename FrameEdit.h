@@ -43,7 +43,6 @@ public:
 	int Validate_calib_use_homography(std::string& value);
 	int Validate_use_ellipse_fit(std::string& value);
 	int Validate_calib_rectify_alpha_param(std::string& value);
-	int Validate_images_from_files(std::string& value);
 	int Validate_image_height(std::string& value);
 	int Validate_max_Y_error(std::string& value);
 	int Validate_12bit_format(std::string& value);

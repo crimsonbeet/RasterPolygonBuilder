@@ -45,7 +45,6 @@ struct StereoConfiguration {
 
 	int _calib_auto_image_capture;
 	int _two_step_calibration;
-	int _calib_images_from_files; // is used for re-calibration from previously captured images in "Calibimages" folder. 
 	int _save_all_calibration_images;
 
 	double _calib_min_confidence; 
@@ -76,7 +75,7 @@ struct StereoConfiguration {
 
 	int _supervised_LoG = 1; 
 
-	int _frames_acquisition_mode; // is used to input from files the frames for reconstruction; value of >1 means read the first image and then re-use it in N threads; -N means read from cameras with N threads. 
+	int _frames_acquisition_mode; // is used to input from files the frames for reconstruction; value of >1 means expect incoming frames from external cameras; -N means read from cameras with N threads. 
 	int _evaluate_contours = 0;
 
 	int _visual_diagnostics; 
@@ -114,7 +113,6 @@ struct StereoConfiguration {
 
 		_calib_auto_image_capture = 1; 
 		_two_step_calibration = 1;
-		_calib_images_from_files = 0;
 		_save_all_calibration_images = 0;
 
 		_max_boxsize_pixels = 25; 
@@ -202,7 +200,6 @@ private:
 
 		_calib_auto_image_capture = other._calib_auto_image_capture;
 		_two_step_calibration = other._two_step_calibration;
-		_calib_images_from_files = other._calib_images_from_files;
 		_save_all_calibration_images = other._save_all_calibration_images; 
 
 		_calib_min_confidence = other._calib_min_confidence; 
@@ -257,7 +254,6 @@ CONTAINS_FLAT_MEMBER(_12bit_format, Format12Bit)
 CONTAINS_FLAT_MEMBER(_percent_maxintensity, PercentMaxintensity) // is used only in BlobDetector() that implements center of gravity (not used)
 CONTAINS_FLAT_MEMBER(_calib_auto_image_capture, CalibAutoImageCapture)
 CONTAINS_FLAT_MEMBER(_two_step_calibration, TwoStepCalibration)
-CONTAINS_FLAT_MEMBER(_calib_images_from_files, CalibImagesFromFiles)
 CONTAINS_FLAT_MEMBER(_save_all_calibration_images, SaveAll)
 CONTAINS_FLAT_MEMBER(_calib_min_confidence, CalibMinConfidence)
 CONTAINS_FLAT_MEMBER(_calib_rectify_alpha_param, CalibRectifyAlphaParam)

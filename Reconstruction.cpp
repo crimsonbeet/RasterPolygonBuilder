@@ -43,12 +43,8 @@ void SquareImage(Mat& image, double chWeights[3]);
 void BuildWeights_ByChannel(Mat& image, Point& pt, double weights_out[3]);
 
 
-void StandardizeImage_Likeness(Mat& image, double chIdeal[3]);
 bool StandardizeImage_HSV_Likeness(Mat& image, double rgbIdeal[3]);
-void SquareImage_Likeness(Mat& image, double chIdeal[3]);
-
-void StandardizeImage_Likeness(Mat& image, uchar chIdeal[3]);
-void SquareImage_Likeness(Mat& image, uchar chIdeal[3]);
+void StandardizeImage_Likeness(Mat& image, Mat mean/*rgb*/, Mat& stdDev, Mat& factorLoadings, Mat invCovar/*inverted covariance of colors*/, Mat invCholesky);
 
 
 
@@ -4962,8 +4958,8 @@ void launch_reconstruction(SImageAcquisitionCtl& image_acquisition_ctl, SPointsR
 			ctl->_status -= 2;
 		}
 		else
-		if(g_configuration._frames_acquisition_mode > 1) { // for memory leak detection. reads just one image from file per thread (N alltogether), then cycles through those images. 
-			ctl->_status = g_configuration._frames_acquisition_mode * 2;
+		if(g_configuration._frames_acquisition_mode > 1) { // the frames come from producer
+			ctl->_status -= 2;
 		}
 		else
 		if(g_configuration._frames_acquisition_mode < 0) { // -N means read from cameras with N threads. 

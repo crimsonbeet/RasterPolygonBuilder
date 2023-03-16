@@ -41,6 +41,7 @@ const char* g_path_vsconfiguration = ".\\VSWorkConfiguration.txt";
 const char* g_path_defaultvsconfiguration = "VSConfiguration.txt";
 const char* g_path_connectconfiguration = ".\\connection.txt";
 const char* g_path_calib_images_dir = "G:\\Calibimages-Development\\";
+const char* g_path_calib_external_images_dir = "G:\\Calibimages-External\\";
 const char* g_path_nwpu_images_dir = ".\\nwpu_images\\";
 
 const char* g_path_calibrate_file = ".\\stereo_calibrate.xml";
@@ -308,7 +309,6 @@ void AcceptNewGlobalConfiguration(StereoConfiguration& configuration/*out - loca
 	image_acquisition_ctl._trigger_source_software = configuration._trigger_source_hardware == 0;
 
 	image_acquisition_ctl._two_step_calibration = configuration._two_step_calibration != 0;
-	image_acquisition_ctl._calib_images_from_files = configuration._calib_images_from_files != 0;
 	image_acquisition_ctl._save_all_calibration_images = configuration._save_all_calibration_images != 0;
 
 	image_acquisition_ctl._pattern_is_whiteOnBlack = configuration._pattern_is_whiteOnBlack != 0;
@@ -1005,18 +1005,14 @@ int main() {
 
 
 
-	bool do_calibration = !g_configuration._evaluate_contours && !(g_bCalibrationExists = CalibrationFileExists());
-	bool do_calibration_from_files = do_calibration && image_acquisition_ctl._calib_images_from_files;
-
-
-
-
-	if (!do_calibration) {
+	if (g_configuration._frames_acquisition_mode > 1) {
 		std::string connectConfig = ReadTextFile(g_path_connectconfiguration);
 		if (connectConfig.size()) {
 			PIPCObjInterface ds7remoting = IPCObjectGetInterface();
 			if (ds7remoting) {
 				g_ds7remoting_success = ds7remoting->Initialize(connectConfig.c_str());
+
+	            ADD_WSINAMESPACE(XAndroidCamera)
 
 				ds7remoting->GetSettings(g_remoting_settings);
 
@@ -1025,6 +1021,8 @@ int main() {
 						g_producer_settings.insert(std::make_pair(e._name, e));
 					}
 				}
+
+				ds7remoting->FinalizeConnectors();
 			}
 		}
 		if (g_ds7remoting_success) {
@@ -1032,7 +1030,8 @@ int main() {
 			if (ds7remoting) {
 				ds7remoting->SetTraceLevel(1 | 2 | 4 | 8);
 
-				g_api_handles.push_back(SetCallback(Process_CameraImage));
+				g_api_handles.push_back(SetCallback(Process_CameraBayerFilterImage));
+				g_api_handles.push_back(SetCallback(Process_CameraJpegImage));
 
 				ds7remoting->AddExceptionDelegate(&g_xipcexception_handler);
 				ds7remoting->JoinNetwork();
@@ -1079,7 +1078,14 @@ int main() {
 
 
 
-	if (g_configuration._frames_acquisition_mode < 0 && !do_calibration_from_files) {
+	bool do_calibration = !(g_bCalibrationExists = CalibrationFileExists()) && !g_configuration._evaluate_contours;
+	
+	image_acquisition_ctl._calib_images_from_files = do_calibration && g_configuration._frames_acquisition_mode == 1;
+
+
+
+
+	if (g_configuration._frames_acquisition_mode < 0) {
 		InitializeCameras(image_acquisition_ctl);
 
 		if (g_bCamerasAreOk && !g_bTerminated) {
@@ -1089,20 +1095,20 @@ int main() {
 			image_acquisition_ctl._imagepoints_status = -1;
 			image_acquisition_ctl._status = -1;
 			image_acquisition_ctl._terminated = 0; 
-			QueueWorkItem(AcquireImages, &image_acquisition_ctl);
+			QueueWorkItem(AcquireInternalCameraFrames, &image_acquisition_ctl);
 		}
 	}
-
-
 
 
 
 	if (do_calibration) {
-		if (g_bCamerasAreOk || image_acquisition_ctl._calib_images_from_files) {
+		if (g_bCamerasAreOk || g_ds7remoting_success || image_acquisition_ctl._calib_images_from_files) {
 			CalibrateCameras(configuration, image_acquisition_ctl);
 			g_bTerminated = true;
 		}
 	}
+
+
 
 
 

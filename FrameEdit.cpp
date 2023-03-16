@@ -472,22 +472,6 @@ int StereoConfiguration_UIControl::Validate_calib_rectify_alpha_param(std::strin
 	return err;
 }
 
-int StereoConfiguration_UIControl::Validate_images_from_files(std::string& value) {
-	int err = 0;
-	value = trim2stdstring(value);
-	if(value.size() && !RegExp_CheckNaturalNumber(value, &_val._calib_images_from_files)) {
-		err = 1;
-	}
-	else {
-		value.resize(0);
-		if(_val._calib_images_from_files) {
-			_val._calib_images_from_files = 1;
-			value += _val._calib_images_from_files;
-		}
-	}
-	return err;
-}
-
 int StereoConfiguration_UIControl::Validate_image_height(std::string& value) {
 	int err = 0;
 	value = trim2stdstring(value);
@@ -611,7 +595,6 @@ void StereoConfiguration_UIControl::PushValues(const StereoConfiguration& config
 	HListPushEntryField(pHList, _val, _val._image_height, &StereoConfiguration_UIControl::Validate_image_height, this);
 	HListPushEntryField(pHList, _val, _val._max_Y_error, &StereoConfiguration_UIControl::Validate_max_Y_error, this);
 	HListPushEntryField(pHList, _val, _val._12bit_format, &StereoConfiguration_UIControl::Validate_12bit_format, this); 
-	HListPushEntryField(pHList, _val, _val._calib_images_from_files, &StereoConfiguration_UIControl::Validate_images_from_files, this);
 	HListPushEntryField(pHList, _val, _val._distance_to_target, &StereoConfiguration_UIControl::Validate_distance_to_target, this);
 	HListPushEntryField(pHList, _val, _val._use_center_of_gravity, &StereoConfiguration_UIControl::Validate_use_center_of_gravity, this);
 	HListPushEntryField(pHList, _val, _val._visual_diagnostics, &StereoConfiguration_UIControl::Validate_visual_diagnostics, this);

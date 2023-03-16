@@ -427,57 +427,6 @@ bool ConvertColoredImage2Mono_HSV_Likeness(Mat& image, double rgbIdeal[3]) {
 	return true;
 }
 
-void ConvertColoredImage2Mono_Likeness(Mat& image, double chIdeal[3], std::function<double(uchar)> convert) {
-	assert(image.type() == CV_8UC3);
-	cv::Mat aux(image.size(), CV_16UC1);
-	typedef Vec<uchar, 3> Vec3c;
-	for (int r = 0; r < aux.rows; ++r) {
-		for (int c = 0; c < aux.cols; ++c) {
-			Vec3c pixVec = image.at<Vec3c>(r, c);
-			double pixt = 1;
-
-			for (int j = 0; j < 3; ++j) {
-				double chMax;
-				double chMin;
-				double ch = pixVec[j];
-				double ch_ideal = chIdeal[j];
-				if (ch_ideal > ch) {
-					chMax = ch_ideal;
-					chMin = ch;
-				}
-				else {
-					chMax = ch;
-					chMin = ch_ideal;
-				}
-
-				pixt += chMin > 0 ? (chMin * chMin / chMax) : 0;
-			}
-
-			aux.at<ushort>(r, c) = (ushort)std::floor(convert(pixt) + 0.5);
-		}
-	}
-	image = aux.clone();
-}
-
-void ConvertColoredImage2Mono_FScore(Mat& image, uchar chIdeal[3], std::function<double(uchar)> convert) {
-	cv::Mat aux(image.size(), CV_16UC1);
-	double powIdeal2[3] = { pow(chIdeal[0], 2), pow(chIdeal[1], 2), pow(chIdeal[2], 2) };
-	typedef Vec<uchar, 3> Vec3c;
-	for (int r = 0; r < aux.rows; ++r) {
-		for (int c = 0; c < aux.cols; ++c) {
-			Vec3c& pixVec = image.at<Vec3c>(r, c);
-			ushort& pix = aux.at<ushort>(r, c);
-			double w = 1;
-			for (int j = 0; j < 3; ++j) {
-				double ch = pixVec[j];
-				w *= (2.0 * ch * chIdeal[j]) / (pow(ch, 2) + powIdeal2[j]);
-			}
-			pix = (ushort)std::floor(convert(w * 256) + 0.5); ;
-		}
-	}
-	image = aux.clone();
-}
-
 void StandardizeImage_Likeness(Mat& image, Mat mean/*rgb*/, Mat& stdDev, Mat& factorLoadings, Mat invCovar/*inverted covariance of colors*/, Mat invCholesky) {
 	if (image.type() == CV_8UC3) {
 		ConvertColoredImage2Mono_Likeness(image, mean/*rgb*/, stdDev, factorLoadings, invCovar/*inverted covariance of colors*/, invCholesky);
@@ -506,69 +455,6 @@ bool StandardizeImage_HSV_Likeness(Mat& image, double rgbIdeal[3]) {
 
 	return true;
 }
-void StandardizeImage_Likeness(Mat& image, double chIdeal[3]) {
-	if (image.type() == CV_8UC3) {
-		ConvertColoredImage2Mono_Likeness(image, chIdeal, [](double ch) {
-			return std::min(ch * 256, 256.0 * 256.0);
-		});
-	}
-	if (image.type() != CV_16UC1) {
-		if (image.type() != CV_8UC1) {
-			image.clone().convertTo(image, CV_8UC1);
-		}
-		image.clone().convertTo(image, CV_16UC1);
-		image *= (size_t)256;
-	}
-}
-void SquareImage_Likeness(Mat& image, double chIdeal[3]) {
-	if (image.type() == CV_8UC3) {
-		ConvertColoredImage2Mono_Likeness(image, chIdeal, [](double ch) {
-			return pow(ch, 2);
-		});
-	}
-	if (image.type() != CV_16UC1) {
-		if (image.type() != CV_8UC1) {
-			image.clone().convertTo(image, CV_8UC1);
-		}
-		image.clone().convertTo(image, CV_16UC1);
-		cv::Mat aux;
-		multiply(image, image, aux);
-		image = aux.clone();
-	}
-}
-
-
-void StandardizeImage_Likeness(Mat& image, uchar chIdeal[3]) {
-	if (image.type() == CV_8UC3) {
-		ConvertColoredImage2Mono_CosineLikeness(image, chIdeal, [](double ch) {
-			return ch * 256;
-		});
-	}
-	if (image.type() != CV_16UC1) {
-		if (image.type() != CV_8UC1) {
-			image.clone().convertTo(image, CV_8UC1);
-		}
-		image.clone().convertTo(image, CV_16UC1);
-		image *= (size_t)256;
-	}
-}
-void SquareImage_Likeness(Mat& image, uchar chIdeal[3]) {
-	if (image.type() == CV_8UC3) {
-		ConvertColoredImage2Mono_CosineLikeness(image, chIdeal, [](double ch) {
-			return pow(ch, 2);
-		});
-	}
-	if (image.type() != CV_16UC1) {
-		if (image.type() != CV_8UC1) {
-			image.clone().convertTo(image, CV_8UC1);
-		}
-		image.clone().convertTo(image, CV_16UC1);
-		cv::Mat aux;
-		multiply(image, image, aux);
-		image = aux.clone();
-	}
-}
-
 
 
 
@@ -580,8 +466,8 @@ bool GetImagesFromFile(Mat& left_image, Mat& right_image, std::vector<cv::Point2
 	//std::string nl = std::to_string(current_N);
 	//std::string nr = std::to_string(current_N);
 
-	//left_image = imread(std::string(g_path_calib_images_dir) + nl + 'l' + ".bmp");
-	//right_image = imread(std::string(g_path_calib_images_dir) + nr + 'r' + ".bmp");
+	//left_image = imread(std::string(CalibrationDirName()) + nl + 'l' + ".bmp");
+	//right_image = imread(std::string(CalibrationDirName()) + nr + 'r' + ".bmp");
 
 
 	left_image.resize(0);
@@ -590,7 +476,7 @@ bool GetImagesFromFile(Mat& left_image, Mat& right_image, std::vector<cv::Point2
 	pointsLeft.resize(0);
 	pointsRight.resize(0);
 
-	std::string xmlFilename = std::string(g_path_calib_images_dir) + current_N + ".xml";
+	std::string xmlFilename = std::string(CalibrationDirName()) + current_N + ".xml";
 
 	std::cout << "Getting content from " << xmlFilename << std::endl;
 
@@ -611,17 +497,17 @@ bool GetImagesFromFile(Mat& left_image, Mat& right_image, std::vector<cv::Point2
 	}
 
 	if (left_image.rows == 0 || left_image.cols == 0) {
-		left_image = imread(std::string(g_path_calib_images_dir) + nl + 'l' + "-chess.png", ImreadModes::IMREAD_ANYDEPTH); // Mar.4 2015.
+		left_image = imread(std::string(CalibrationDirName()) + nl + 'l' + "-chess.png", ImreadModes::IMREAD_ANYDEPTH); // Mar.4 2015.
 	}
 	if(right_image.rows == 0 || right_image.cols == 0) {
-		right_image = imread(std::string(g_path_calib_images_dir) + nr + 'r' + "-chess.png", ImreadModes::IMREAD_ANYDEPTH); // Mar.4 2015.
+		right_image = imread(std::string(CalibrationDirName()) + nr + 'r' + "-chess.png", ImreadModes::IMREAD_ANYDEPTH); // Mar.4 2015.
 	}
 
 	if (left_image.rows == 0 || left_image.cols == 0) {
-		left_image = imread(std::string(g_path_calib_images_dir) + nl + 'l' + ".png", ImreadModes::IMREAD_ANYDEPTH | ImreadModes::IMREAD_ANYCOLOR); // Mar.4 2015.
+		left_image = imread(std::string(CalibrationDirName()) + nl + 'l' + ".png", ImreadModes::IMREAD_ANYDEPTH | ImreadModes::IMREAD_ANYCOLOR); // Mar.4 2015.
 	}
 	if (right_image.rows == 0 || right_image.cols == 0) {
-		right_image = imread(std::string(g_path_calib_images_dir) + nr + 'r' + ".png", ImreadModes::IMREAD_ANYDEPTH | ImreadModes::IMREAD_ANYCOLOR); // Mar.4 2015.
+		right_image = imread(std::string(CalibrationDirName()) + nr + 'r' + ".png", ImreadModes::IMREAD_ANYDEPTH | ImreadModes::IMREAD_ANYCOLOR); // Mar.4 2015.
 	}
 
 	if (left_image.rows == 0 || left_image.cols == 0) {
@@ -714,7 +600,7 @@ void CopyStereoFrame(Mat& left, Mat& right, SStereoFrame* pframe, int64* time_re
 	// the matrices get initalized if they do not match the dimensions. this should happen just one time. 
 	// the idea is to initialize the matrices once, and then re-use them after that. 
 	Mat* dst[2] = { &left, &right };
-	int idx[2] = { pframe->frames[0].camera_index == 0 ? 0 : (NUMBER_OF_CAMERAS - 1), pframe->frames[0].camera_index == 0 ? (NUMBER_OF_CAMERAS - 1) : 0};
+	std::vector<int> idx = pframe->GetIdxs();
 	int j = 0;
 	for (auto dst : dst) {
 		Mat& image = pframe->frames[idx[j++]].cv_image;
@@ -857,7 +743,7 @@ bool GetImages(Mat& left, Mat& right, int64_t* time_received, const int N/*min_f
 			++count;
 		}
 
-		int idx[2] = { pframe->frames[0].camera_index == 0 ? 0 : (NUMBER_OF_CAMERAS - 1), pframe->frames[0].camera_index == 0 ? (NUMBER_OF_CAMERAS - 1) : 0 };
+		std::vector<int> idx = pframe->GetIdxs();
 		int64_t dif = max(pframe->frames[idx[0]].timestamp, pframe->frames[idx[1]].timestamp) - min(pframe->frames[idx[0]].timestamp, pframe->frames[idx[1]].timestamp);
 		int64_t time_difference = std::numeric_limits<int64_t>::max();
 		if (dif < time_difference) {
@@ -891,10 +777,45 @@ AndroidCameraRaw10Image* ProcvessRaw10Image(AndroidCameraRaw10Image* obj) {
 	return obj;
 }
 
-void Process_CameraImage(AndroidBayerFilterImage* obj) {
+void Process_CameraBayerFilterImage(AndroidBayerFilterImage* obj) {
+	std::vector<int16_t> rawImage;
+	obj->get_image(rawImage);
 
+	Mat image(cv::Size(obj->_width, obj->_height), CV_16UC1, rawImage.data());
+
+	Mat frame;  
+	cv::demosaicing(image, frame, cv::COLOR_BayerRGGB2RGB, 3);
+	frame.convertTo(image, CV_8UC3);
+
+
+	SStereoFrame &sframe = g_lastwritten_sframe;
+	sframe.gate.lock();
+	std::vector<int> idxs = sframe.GetIdxs();
+
+	sframe.frames[idxs[obj->_isFirst ? 0 : 1]].cv_image = image;
+
+	if (sframe.isActive) {
+		sframe.isActive = false;
+
+		SStereoFrame& snframe = NextWriteFrame();
+		snframe = sframe;
+		snframe.isActive = true;
+
+		snframe.gate.unlock();
+
+		if (g_event_SFrameIsAvailable != INVALID_HANDLE_VALUE) {
+			SetEvent(g_event_SFrameIsAvailable);
+		}
+	}
+	else {
+		sframe.isActive = true;
+	}
+	sframe.gate.unlock();
 }
 
+void Process_CameraJpegImage(AndroidCameraJpegImage* obj) {
+
+}
 
 
 void ConvertSynchronizedResults(std::vector<CGrabResultPtr>& ptrGrabResults, SStereoFrame& sframe, std::string* cv_winNames = NULL) {
@@ -1146,7 +1067,7 @@ return_t __stdcall SynchronizedGrabFrames(LPVOID lp) {
 
 
 
-return_t __stdcall AcquireImages(LPVOID lp) {
+return_t __stdcall AcquireInternalCameraFrames(LPVOID lp) {
 	std::cout << "Acquisition has started" << std::endl; 
 	timeBeginPeriod(1);
 	try {

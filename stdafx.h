@@ -177,6 +177,7 @@ void Find_SubDirectories(const std::string& parent_dir, std::vector<std::string>
 void ARFF_FileLog(const std::string& msg, bool do_close = false, bool do_ipclog = false);
 
 std::string CalibrationFileName();
+std::string CalibrationDirName();
 
 
 
@@ -189,6 +190,7 @@ extern int64_t qcounter_delta;
 extern const char *g_path_vsconfiguration;
 extern const char *g_path_defaultvsconfiguration;
 extern const char *g_path_calib_images_dir;
+extern const char* g_path_calib_external_images_dir;
 extern const char* g_path_nwpu_images_dir;
 
 extern const char *g_path_calibrate_file;
@@ -1007,7 +1009,7 @@ return_t __stdcall ReconstructPoints(LPVOID lp);
 /*
 Main acquisition loop
 */
-return_t __stdcall AcquireImages(LPVOID lp);
+return_t __stdcall AcquireInternalCameraFrames(LPVOID lp);
 
 
 return_t __stdcall EvaluateOtsuThreshold(LPVOID lp);
@@ -1471,6 +1473,9 @@ struct SStereoFrame {
 	SStereoFrame() {
 		local_timestamp = 0;
 		isActive = false;
+		for (int j = 0; j < NUMBER_OF_CAMERAS; ++j) {
+			frames[j].camera_index = j;
+		}
 	}
 
 	SStereoFrame& operator=(const SStereoFrame& other) {
@@ -1480,6 +1485,11 @@ struct SStereoFrame {
 			frames[j] = other.frames[j];
 		}
 		return *this;
+	}
+
+	std::vector<int> GetIdxs() {
+		std::vector<int> idxs = { frames[0].camera_index == 0 ? 0 : (NUMBER_OF_CAMERAS - 1), frames[0].camera_index == 0 ? (NUMBER_OF_CAMERAS - 1) : 0 };
+		return idxs;
 	}
 };
 

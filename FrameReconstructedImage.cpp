@@ -100,7 +100,7 @@ void FrameReconstructedImage::NEW_StereoConfiguration(StereoConfiguration& confi
 
 	bool is_disabled = false; 
 
-	if(MyGetFileSize(g_path_calibrate_file)) {
+	if(MyGetFileSize(CalibrationFileName())) {
 		KWinChangeMaskedImageList(_g_document_images, *_toolbar->_piml, 2);
 		KWinChangeMaskedImageList(_g_document_images_hot, *_toolbar->_pimlhot, 2);
 	}
@@ -121,8 +121,8 @@ void FrameReconstructedImage::NEW_StereoConfiguration(StereoConfiguration& confi
 
 void FrameReconstructedImage::ProcessToolBarCommand(SReBar& rebar) {
 	if(rebar._lparam == (LPARAM)_toolbar->_hwndtoolbar) { 
-		const char *path_file_from = g_path_calibrate_file;
-		const char *path_file_to = g_path_calibrate_file_backup;
+		std::string path_file_from = CalibrationFileName();
+		std::string path_file_to = g_path_calibrate_file_backup;
 		std::string str;
 		switch(rebar._wparam) {
 			case 203/*new document*/: 
@@ -130,7 +130,7 @@ void FrameReconstructedImage::ProcessToolBarCommand(SReBar& rebar) {
 			case 204/*delete document*/: 
 			if(_toolbar->_piml->_images[1] == _g_altdocument_images[1]) {
 				path_file_from = g_path_calibrate_file_backup;
-				path_file_to = g_path_calibrate_file;
+				path_file_to = CalibrationFileName();
 			}
 			ReadTextFile(path_file_from, str);
 			if(str.size()) {
