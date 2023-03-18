@@ -1,0 +1,8 @@
+
+	size_t EXP streamify(const short int* transformed_values, const size_t N, std::string & vStreamed_values, const size_t zStep);
+
+	short buf[35] = { 434, 1023, 1023, 1023, 1023, 1023, 1023, 1023, 1023, 1023, 1023, 1023, 1023, 1023, 1023, 1023, 1023, 1023, 1023, 1023, 1023, 1023, 1023, 1023, 1023, 1023, 1023, 1023, 1023, 1023, 1023, 1023, 1023, 1023, 719 };
+	std::string vStreamed_values;
+	streamify(buf, ARRAY_NUM_ELEMENTS(buf), vStreamed_values, 1);
+
+

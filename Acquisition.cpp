@@ -768,31 +768,12 @@ bool GetImages(Mat& left, Mat& right, int64_t* time_received, const int N/*min_f
 
 
 
-
-
-
-AndroidCameraRaw10Image* ProcvessRaw10Image(AndroidCameraRaw10Image* obj) {
-	uint8_t *ptr = obj->_buffers[0]._buffer.data();
-
-	return obj;
-}
-
-void Process_CameraBayerFilterImage(AndroidBayerFilterImage* obj) {
-	std::vector<int16_t> rawImage;
-	obj->get_image(rawImage);
-
-	Mat image(cv::Size(obj->_width, obj->_height), CV_16UC1, rawImage.data());
-
-	Mat frame;  
-	cv::demosaicing(image, frame, cv::COLOR_BayerRGGB2RGB, 3);
-	frame.convertTo(image, CV_8UC3);
-
-
-	SStereoFrame &sframe = g_lastwritten_sframe;
+void TransferImage2StereoFrame(Mat &image, bool isFirst) {
+	SStereoFrame& sframe = g_lastwritten_sframe;
 	sframe.gate.lock();
 	std::vector<int> idxs = sframe.GetIdxs();
 
-	sframe.frames[idxs[obj->_isFirst ? 0 : 1]].cv_image = image;
+	sframe.frames[idxs[isFirst ? 0 : 1]].cv_image = image;
 
 	if (sframe.isActive) {
 		sframe.isActive = false;
@@ -813,8 +794,30 @@ void Process_CameraBayerFilterImage(AndroidBayerFilterImage* obj) {
 	sframe.gate.unlock();
 }
 
-void Process_CameraJpegImage(AndroidCameraJpegImage* obj) {
 
+AndroidCameraRaw10Image* ProcvessRaw10Image(AndroidCameraRaw10Image* obj) {
+	uint8_t *ptr = obj->_buffers[0]._buffer.data();
+
+	return obj;
+}
+
+void Process_CameraBayerFilterImage(AndroidBayerFilterImage* obj) {
+	std::vector<int16_t> rawImage;
+	obj->get_image(rawImage);
+
+	Mat image(cv::Size(obj->_width, obj->_height), CV_16UC1, rawImage.data());
+
+	Mat frame;  
+	cv::demosaicing(image, frame, cv::COLOR_BayerBGGR2RGB, 3);
+	frame.convertTo(image, CV_8UC3);
+
+	TransferImage2StereoFrame(image, obj->_isFirst);
+}
+
+void Process_CameraJpegImage(AndroidCameraJpegImage* obj) {
+	Mat image = cv::imdecode(obj->_cont._buffer, cv::IMREAD_COLOR);
+
+	TransferImage2StereoFrame(image, obj->_isFirst);
 }
 
 
