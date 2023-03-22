@@ -6,6 +6,8 @@
 
 #include "opencv2\highgui\highgui_c.h"
 
+#include "LoGSeedPoint.h"
+
 
 
 using namespace Pylon;
@@ -54,6 +56,11 @@ vector<Mat> stereoImageRaw_right;
 vector<vector<Point3f> > g_objectPoints;
 
 std::string cv_windows[6];
+
+extern HANDLE g_event_SeedPointIsAvailable;
+
+
+double g_greenSquare_mean_data[3] = { 108.59519, 106.87839, 93.29372 };// { 117.41603, 108.29612, 89.85426 };
 
 
 
@@ -592,7 +599,8 @@ return_t __stdcall DetectBlackSquaresVia_ColorDistribution(LPVOID lp) {
 	ctl->_status = 2;
 	try {
 		if (image.type() == CV_8UC3) {
-			double mean_data[3] = { 108.59519, 106.87839, 93.29372 };// { 117.41603, 108.29612, 89.85426 };
+			double mean_data[3] = {g_greenSquare_mean_data[0], g_greenSquare_mean_data[1], g_greenSquare_mean_data[2]};
+
 			double invCovar_data[9] = { 0.008706637, 0.002279566, -0.01101841, 0.002279566, 0.043274569, -0.03528071, -0.011018411, -0.035280710, 0.04288963 };// { 0.003871324, 0.001966916, -0.001440268, 0.001966916, 0.036550065, -0.030285284, -0.001440268, -0.030285284, 0.035661410 };
 			double invCholesky_data[9] = { 0.05144795, 0.0000000, 0.0000000, -0.05682516, 0.1193855, 0.0000000, -0.05320382, -0.1703575, 0.2070981 };// { 0.061335769, 0.0000000, 0.0000000, 0.007146916, 0.1040693, 0.0000000, -0.007626832, -0.1603734, 0.1888423 };
 
@@ -1372,12 +1380,18 @@ a frame that has images captured at smallest time-difference.
 The N controlls a minimum amount of frames to consider.
 */
 void VisualizeCapturedImages(cv::Mat& left_image, cv::Mat& right_image) {
+	static bool onMouse_isActive[6] = { 0, 0, 0, 0, 0 };
+	static MouseCallbackParameters mouse_callbackParams[6];
+
 	while (ProcessWinMessages());
 	Mat cv_image[2] = { left_image.clone(), right_image.clone() };
 	for (int c = 0; c < ARRAY_NUM_ELEMENTS(cv_image); ++c) {
 		double fx = 700.0 / cv_image[c].cols;
 		double fy = fx;
-		HWND hwnd = (HWND)cvGetWindowHandle(cv_windows[c + 4].c_str());
+
+		std::string& imagewin_name = cv_windows[c + 4];
+
+		HWND hwnd = (HWND)cvGetWindowHandle(imagewin_name.c_str());
 		RECT clrect;
 		if (GetWindowRect(GetParent(hwnd), &clrect)) {
 			fx = (double)(clrect.right - clrect.left) / (double)cv_image[c].cols;
@@ -1385,14 +1399,24 @@ void VisualizeCapturedImages(cv::Mat& left_image, cv::Mat& right_image) {
 			fx = fy = std::min(fx, fy);
 		}
 		cv::resize(cv_image[c], cv_image[c], cv::Size(0, 0), fx, fy, INTER_AREA);
-		cv::imshow(cv_windows[c + 4], cv_image[c]);
+		cv::imshow(imagewin_name, cv_image[c]);
+
+		if (!onMouse_isActive[c]) {
+			void OnMouseCallback(int event, int x, int y, int flags, void* userdata); 
+
+			mouse_callbackParams[c].scaleFactors.fx = fx;
+			mouse_callbackParams[c].scaleFactors.fy = fy;
+			mouse_callbackParams[c].windowNumber = c + 1;
+			cv::setMouseCallback(imagewin_name, OnMouseCallback, (void*)&mouse_callbackParams[c]); 
+			onMouse_isActive[c] = true;
+		}
 	}
 }
 
 int g_sync_button_pressed;
 return_t __stdcall ShowSynchronizationButton(LPVOID lp) {
 	ProcessWinMessages(10);
-	MessageBoxA(NULL, "Press when ready", "Synchronization", MB_OK | MB_TOPMOST);
+	MessageBoxA(NULL, "Press when ready", "Synchronization", MB_OK | MB_TOPMOST | MB_SETFOREGROUND);
 	g_sync_button_pressed = true;
 	return 0;
 }
@@ -1410,20 +1434,26 @@ bool GetImagesEx(Mat& left, Mat& right, int64_t* time_spread, const int N/*min_f
 	Mat image[2];
 	bool imageReady = false;
 	bool imageGetterFinished = true; 
-	while (!g_sync_button_pressed || !imageGetterFinished) {
+	bool click_has_occured = false;
+	while (!(g_sync_button_pressed || click_has_occured) || !imageGetterFinished) {
 		if (imageReady) {
 			VisualizeCapturedImages(image[0], image[1]);
 			imageReady = false;
 			imagesOk = true;
 		}
-		if(imageGetterFinished && !g_sync_button_pressed) {
+		if(imageGetterFinished && !(g_sync_button_pressed || click_has_occured)) {
 			g_imageGetter = [&]() {
-				imageReady = GetImages(image[0], image[1], time_spread, N);
+				imageReady = GetImages(image[0], image[1], time_spread, N, 500);
 				g_imageGetter = nullptr;
 				imageGetterFinished = true;
 			};
 			imageGetterFinished = false;
 			QueueWorkItem(GetImagesWorkItem);
+		}
+
+		DWORD anEvent = WaitForSingleObjectEx(g_event_SeedPointIsAvailable, 0, FALSE);
+		if (anEvent == WAIT_OBJECT_0) {
+			click_has_occured = true;
 		}
 
 		while (ProcessWinMessages(10));
@@ -1432,6 +1462,22 @@ bool GetImagesEx(Mat& left, Mat& right, int64_t* time_spread, const int N/*min_f
 		left = image[0];
 		right = image[1];
 	}
+	if (click_has_occured) {
+		SetEvent(g_event_SeedPointIsAvailable);
+	}
+
+	if (!g_sync_button_pressed) {
+		HWND msgbox = FindWindowA(NULL, "Synchronization");
+		if (msgbox != NULL) {
+			SendMessageA(msgbox, WM_CLOSE, 0, 0);
+		}
+
+		imagesOk = false;
+	}
+	else {
+		imagesOk = left.rows > 0 && right.rows > 0;
+	}
+
 	return imagesOk;
 }
 
@@ -1477,6 +1523,8 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 
 	g_aposteriory_minsdistance *= (ctl->_calib_images_from_files? 1: 1.01);
 
+	Mat images[2];
+
 	while(!g_bTerminated && !ctl->_terminated && stereoImagePoints_left.size() < max_images && !_g_calibrationimages_frame->_stop_capturing) {
 		if(ProcessWinMessages(10)) {
 			continue;
@@ -1484,12 +1532,74 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 
 		__int64 time_now = OSDayTimeInMilliseconds();
 
-		int64 image_localtime = 0;
 
-		Mat images[2];
+		int64 image_localtime = 0;
 
 		Mat& left_image = images[0];
 		Mat& right_image = images[1];
+
+
+		DWORD anEvent = WaitForSingleObjectEx(g_event_SeedPointIsAvailable, 0, FALSE);
+		if (anEvent == WAIT_OBJECT_0) {
+			ImageScaleFactors sf = g_LoG_seedPoint.params.scaleFactors;
+
+			Point pt;
+			pt.x = (int)(g_LoG_seedPoint.x / sf.fx + 0.5);
+			pt.y = (int)(g_LoG_seedPoint.y / sf.fy + 0.5);
+
+			int windowNumber = g_LoG_seedPoint.params.windowNumber - 1;
+
+			Mat &aux = images[windowNumber];
+
+			if (aux.rows > pt.y) {
+				double seedReference[3];
+
+				BuildIdealChannels_Likeness(aux, pt, seedReference);
+				double grayWorldMean = 0;
+				for (int j = 0; j < 3; ++j) {
+					if (seedReference[j] == 0) {
+						seedReference[j] = 1;
+					}
+					grayWorldMean += seedReference[j];
+				}
+				grayWorldMean /= 3.0;
+
+				std::cout << "Reference RGB values: " << seedReference[0] << ',' << seedReference[1] << ',' << seedReference[2] << ';' << " Mean value: " << grayWorldMean << std::endl;
+
+				Mat image;
+				aux.convertTo(image, CV_32FC3);
+
+				double whiteFactor[3] = { 1, 1, 1 };
+				for (int j = 0; j < 3; ++j) {
+					switch (g_LoG_seedPoint.eventValue) {
+					case 1:
+					case 4:
+						whiteFactor[j] = 255.0 / seedReference[j]; // ground truth 
+						//whiteFactor[j] = grayWorldMean / seedReference[j]; // gray world 
+						break;
+					case 2:
+					case 5:
+						whiteFactor[j] = g_greenSquare_mean_data[j] / seedReference[j]; // green world 
+						break;
+					}
+				}
+
+				typedef Vec<float, 3> Vec3f;
+				for (int r = 0; r < image.rows; ++r) {
+					for (int c = 0; c < image.cols; ++c) {
+						Vec3f& pixImage = image.at<Vec3f>(r, c);
+						for (int j = 0; j < 3; ++j) {
+							pixImage[j] *= whiteFactor[j];
+						}
+					}
+				}
+
+				image.convertTo(aux, CV_8UC3);
+
+				VisualizeCapturedImages(left_image, right_image);
+			}
+		}
+
 
 
 		int nl = imagePoints[0].size() - 1;
@@ -1499,7 +1609,12 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 		bool imagesFromFilesAreOk = false;
 
 		g_imageGetFromFilesLambda = [&]() {
-			imagesFromFilesAreOk = GetImagesFromFile(left_image, right_image, imagePoints[0][nl], imagePoints[1][nr], std::to_string(current_N));
+			Mat im[2];
+			imagesFromFilesAreOk = GetImagesFromFile(im[0], im[1], imagePoints[0][nl], imagePoints[1][nr], std::to_string(current_N));
+			if (imagesFromFilesAreOk) {
+				left_image = im[0];
+				right_image = im[1];
+			}
 			g_imageGetFromFilesLambda = nullptr;
 		};
 

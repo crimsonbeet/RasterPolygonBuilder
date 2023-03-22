@@ -477,7 +477,7 @@ bool DisplayReconstructionData(SPointsReconstructionCtl& reconstruction_ctl, int
 		mouse_callbackParams[idx].scaleFactors.fx = fx[idx];
 		mouse_callbackParams[idx].scaleFactors.fy = fy[idx];
 		mouse_callbackParams[idx].windowNumber = idx + 1;
-		setMouseCallback(imagewin_name, OnMouseCallback, (void*)&mouse_callbackParams[idx]); // initiate new evaluation
+		cv::setMouseCallback(imagewin_name, OnMouseCallback, (void*)&mouse_callbackParams[idx]); // initiate new evaluation
 		onMouse_isActive[idx] = true;
 	};
 

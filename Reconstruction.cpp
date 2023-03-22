@@ -856,6 +856,49 @@ inline const T mat_get(Mat& m, int i, int j) {
 	return rc;
 }
 
+void matCV_8UC1_memcpy(Mat& dst, const Mat& src) {
+	if (src.type() != CV_8UC1) {
+		throw "matCV_8UC1_memcpy src is not CV_8UC1";
+	}
+	int width = src.cols;
+	int height = src.rows;
+	if (dst.rows != height || dst.cols != width || dst.type() != CV_8UC1) {
+		dst = Mat(height, width, CV_8UC1);
+	}
+	memcpy(&dst.at<uchar>(0, 0), &src.at<uchar>(0, 0), height * width * sizeof(uchar));
+}
+
+void matCV_8UC3_memcpy(Mat& dst, const Mat& src) {
+	if (src.empty()) {
+		return;
+	}
+	if (src.type() != CV_8UC3) {
+		throw "matCV_8UC3_memcpy src is not CV_8UC3";
+	}
+	int width = src.cols;
+	int height = src.rows;
+	if (dst.rows != height || dst.cols != width || dst.type() != CV_8UC3) {
+		dst = Mat(height, width, CV_8UC3);
+	}
+	typedef Vec<uchar, 3> Vec3c;
+	memcpy(&dst.at<Vec3c>(0, 0), &src.at<Vec3c>(0, 0), height * width * sizeof(Vec3c));
+}
+
+void matCV_16UC1_memcpy(Mat& dst, const Mat& src) {
+	if (src.empty()) {
+		return;
+	}
+	if (src.type() != CV_16UC1) {
+		throw "matCV_16UC1_memcpy src is not CV_16UC1";
+	}
+	int width = src.cols;
+	int height = src.rows;
+	if (dst.rows != height || dst.cols != width || dst.type() != CV_16UC1) {
+		dst = Mat(height, width, CV_16UC1);
+	}
+	memcpy(&dst.at<ushort>(0, 0), &src.at<ushort>(0, 0), height * width * sizeof(ushort));
+}
+
 
 template<typename T1, typename T2>
 inline void mat_findMinMax(T2 *val, const cv::Size& src_size, const size_t row_step, T1 minMax[2]) { // returns CV_8UC1 matrix
@@ -4416,12 +4459,12 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 					cv::Rect roi;
 
-					ImageScaleFactors sf = g_LoG_seedPoint.params.scaleFactors;
-					roi.x = (int)(g_LoG_seedPoint.x / sf.fx + 0.5) - 4;
-					roi.y = (int)(g_LoG_seedPoint.y / sf.fy + 0.5) - 4;
-
 					roi.height = kmatN;
 					roi.width = kmatN;
+
+					ImageScaleFactors sf = g_LoG_seedPoint.params.scaleFactors;
+					roi.x = (int)(g_LoG_seedPoint.x / sf.fx + 0.5) - roi.width / 2;
+					roi.y = (int)(g_LoG_seedPoint.y / sf.fy + 0.5) - roi.height / 2;
 
 					Point pt;
 					pt.x = roi.x + roi.width / 2;

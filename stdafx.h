@@ -700,7 +700,7 @@ public:
 		params.maxThreshold = 180 * g_bytedepth_scalefactor;
 		params.minRepeatability = min_repeatability/*5*/; // 2015-09-15 Set repeatabilty to 3 because of difficulties with capturing images
 		params.minArea = 100;
-		params.maxArea = 70000;
+		params.maxArea = 100000;
 		params.minInertiaRatio = 0.3;
 		params.minCircularity = 0.8f;
 		params.minConvexity = 0.8f;
@@ -708,7 +708,7 @@ public:
 		params.filterByColor = false;
 		params.filterByCircularity = true;
 		params.filterByInertia = true;
-		params.filterByArea = true; 
+		params.filterByArea = true;
 		params.filterByConvexity = true;
 	}
 

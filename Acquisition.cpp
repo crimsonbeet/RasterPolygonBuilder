@@ -548,49 +548,6 @@ bool GetImagesFromFile(Mat& left_image, Mat& right_image, std::vector<cv::Point2
 	return true;
 }
 
-void matCV_8UC1_memcpy(Mat& dst, const Mat& src) {
-	if(src.type() != CV_8UC1) {
-		throw "matCV_8UC1_memcpy src is not CV_8UC1";
-	}
-	int width = src.cols;
-	int height = src.rows;
-	if(dst.rows != height || dst.cols != width || dst.type() != CV_8UC1) {
-		dst = Mat(height, width, CV_8UC1);
-	}
-	memcpy(&dst.at<uchar>(0, 0), &src.at<uchar>(0, 0), height * width * sizeof(uchar));
-}
-
-void matCV_8UC3_memcpy(Mat& dst, const Mat& src) {
-	if (src.empty()) {
-		return;
-	}
-	if (src.type() != CV_8UC3) {
-		throw "matCV_8UC3_memcpy src is not CV_8UC3";
-	}
-	int width = src.cols;
-	int height = src.rows;
-	if (dst.rows != height || dst.cols != width || dst.type() != CV_8UC3) {
-		dst = Mat(height, width, CV_8UC3);
-	}
-	typedef Vec<uchar, 3> Vec3c;
-	memcpy(&dst.at<Vec3c>(0, 0), &src.at<Vec3c>(0, 0), height * width * sizeof(Vec3c));
-}
-
-void matCV_16UC1_memcpy(Mat& dst, const Mat& src) {
-	if (src.empty()) {
-		return;
-	}
-	if(src.type() != CV_16UC1) {
-		throw "matCV_16UC1_memcpy src is not CV_16UC1"; 
-	}
-	int width = src.cols;
-	int height = src.rows;
-	if(dst.rows != height || dst.cols != width || dst.type() != CV_16UC1) {
-		dst = Mat(height, width, CV_16UC1);
-	}
-	memcpy(&dst.at<ushort>(0, 0), &src.at<ushort>(0, 0), height * width * sizeof(ushort));
-}
-
 
 
 
@@ -809,6 +766,8 @@ void Process_CameraBayerFilterImage(AndroidBayerFilterImage* obj) {
 
 	Mat frame;  
 	cv::demosaicing(image, frame, cv::COLOR_BayerBGGR2RGB, 3);
+
+	frame -= 64;
 	frame.convertTo(image, CV_8UC3);
 
 	TransferImage2StereoFrame(image, obj->_isFirst);
