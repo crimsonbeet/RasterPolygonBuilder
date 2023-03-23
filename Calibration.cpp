@@ -391,7 +391,7 @@ void ClassBlobDetector::detectImpl(const cv::Mat& image, std::vector<cv::KeyPoin
 
 		vector < Center > curCenters;
 		try {
-			double scale = 600.0 / binarizedImage.rows;
+			double scale = 1100.0 / binarizedImage.rows;
 			if (scale < 0.95) {
 				cv::resize(binarizedImage, binarizedImage, cv::Size(0, 0), scale, scale, INTER_AREA);
 				params.minArea *= scale * scale;
@@ -936,11 +936,15 @@ return_t __stdcall BuildChessGridCorners(LPVOID lp) {
 					if (one.x < another.x) return true;
 					return false;
 				});
-				partitionEx(cornersBufMapped, dist_levels, [dist](const Point2f& one, const Point2f& another) -> bool {
-					return std::max(abs(one.y - another.y), abs(one.x - another.x)) < dist;
-				});
-				clusters_count = *(std::max_element(dist_levels.begin(), dist_levels.end())) + 1;
-				if (clusters_count != centroids_count) {
+				//partitionEx(cornersBufMapped, dist_levels, [dist](const Point2f& one, const Point2f& another) -> bool {
+				//	return std::max(abs(one.y - another.y), abs(one.x - another.x)) < dist;
+				//});
+				//clusters_count = *(std::max_element(dist_levels.begin(), dist_levels.end())) + 1;
+				//if (clusters_count != centroids_count) {
+				//	continue;
+				//}
+
+				if (cornersBufMapped.size() < centroids_count) {
 					continue;
 				}
 
@@ -953,7 +957,7 @@ return_t __stdcall BuildChessGridCorners(LPVOID lp) {
 						cornersMat.push_back(corner);
 					}
 					kmeans(cornersMat, centroids_count, dist_levels,
-						TermCriteria(TermCriteria::EPS + TermCriteria::COUNT, 50, 0.1), 3/*random number generator state*/, KMEANS_USE_INITIAL_LABELS, kmeans_centers);
+						TermCriteria(TermCriteria::EPS + TermCriteria::COUNT, 50, 0.1), 3/*random number generator state*/, KMEANS_PP_CENTERS/*KMEANS_USE_INITIAL_LABELS*/, kmeans_centers);
 
 					for (int k = 0; k < kmeans_centers.rows; ++k) {
 						edgesMapped.push_back(Point2f(kmeans_centers.at<float>(k, 0), kmeans_centers.at<float>(k, 1)));
@@ -1554,7 +1558,7 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 			if (aux.rows > pt.y) {
 				double seedReference[3];
 
-				BuildIdealChannels_Likeness(aux, pt, seedReference);
+				BuildIdealChannels_Likeness(aux, pt, seedReference, 7);
 				double grayWorldMean = 0;
 				for (int j = 0; j < 3; ++j) {
 					if (seedReference[j] == 0) {
