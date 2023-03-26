@@ -662,7 +662,7 @@ bool GetLastFrame(Mat& left, Mat& right, int64_t* time_received, int64_t expirat
 		}
 	}
 
-	bool ok = count > 0 && !left.empty() && !right.empty();
+	bool ok = !left.empty() && !right.empty();
 	return ok;
 }
 
@@ -732,23 +732,28 @@ void TransferImage2StereoFrame(Mat &image, bool isFirst) {
 
 	sframe.frames[idxs[isFirst ? 0 : 1]].cv_image = image;
 
-	if (sframe.isActive) {
-		sframe.isActive = false;
+	if (sframe.isInTransition) {
+		SStereoFrame& sNframe = NextWriteFrame(); // also locks the frame
+		sNframe = sframe;
+		sNframe.isActive = true;
+		sNframe.isInTransition = false;
+		sNframe.gate.unlock();
 
-		SStereoFrame& snframe = NextWriteFrame();
-		snframe = sframe;
-		snframe.isActive = true;
+		sframe.isActive = true;
+		sframe.isInTransition = false;
 
-		snframe.gate.unlock();
+		sframe.gate.unlock();
 
 		if (g_event_SFrameIsAvailable != INVALID_HANDLE_VALUE) {
 			SetEvent(g_event_SFrameIsAvailable);
 		}
 	}
 	else {
-		sframe.isActive = true;
+		sframe.isInTransition = true;
+		sframe.isActive = false;
+
+		sframe.gate.unlock();
 	}
-	sframe.gate.unlock();
 }
 
 

@@ -4244,7 +4244,7 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 	int64_t image_localtime = 0;
 
 
-	Mat cv_image[4];
+	Mat cv_image[6];
 	std::vector<ABox> boxes[2];
 	std::vector<ClusteredPoint> cv_points[2];
 	std::vector<cv::Point2d> in_points[2];
@@ -4275,17 +4275,15 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 		}
 		else {
 			if (!image_isok) {
-				image_isok = GetImages(cv_image[0], cv_image[1], &image_localtime, 1);
+				image_isok = GetImages(cv_image[4], cv_image[5], &image_localtime, 1);
 				if (ctl->_calibration_exists) {
-					Mat undistorted;
-					remap(cv_image[0], undistorted, ctl->_map_l[0], ctl->_map_l[1], INTER_CUBIC/*INTER_LINEAR*//*INTER_NEAREST*/, BORDER_CONSTANT);
-					cv_image[0] = undistorted;
-					undistorted = Mat();
-					remap(cv_image[1], undistorted, ctl->_map_r[0], ctl->_map_r[1], INTER_CUBIC/*INTER_LINEAR*//*INTER_NEAREST*/, BORDER_CONSTANT);
-					cv_image[1] = undistorted;
-					undistorted = Mat();
+					remap(cv_image[4], cv_image[0], ctl->_map_l[0], ctl->_map_l[1], INTER_CUBIC/*INTER_LINEAR*//*INTER_NEAREST*/, BORDER_CONSTANT);
+					remap(cv_image[5], cv_image[1], ctl->_map_r[0], ctl->_map_r[1], INTER_CUBIC/*INTER_LINEAR*//*INTER_NEAREST*/, BORDER_CONSTANT);
 				}
-				//Sleep(20);
+				else {
+					cv_image[0] = cv_image[4].clone();
+					cv_image[1] = cv_image[5].clone();
+				}
 			}
 		}
 		_g_images_frame->Invalidate();
@@ -4702,8 +4700,8 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 		std::string file_name;
 		std::string path_name;
 
-		if (g_configuration._frames_acquisition_mode < 0) {
-			image_isok = GetLastFrame(cv_image[0], cv_image[1], &image_localtime);
+		if (g_configuration._frames_acquisition_mode != 1) {
+			image_isok = GetLastFrame(cv_image[0], cv_image[1], &image_localtime, 200);
 		}
 
 		final_contours.resize(0);
@@ -4716,30 +4714,30 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 				continue;
 			}
 
+			Mat undistorted[2];
 			if (ctl->_calibration_exists) {
-				Mat undistorted;
-				remap(cv_image[0], undistorted, ctl->_map_l[0], ctl->_map_l[1], INTER_CUBIC/*INTER_LINEAR*//*INTER_NEAREST*/, BORDER_CONSTANT);
-				cv_image[0] = undistorted;
-				undistorted = Mat();
-				remap(cv_image[1], undistorted, ctl->_map_r[0], ctl->_map_r[1], INTER_CUBIC/*INTER_LINEAR*//*INTER_NEAREST*/, BORDER_CONSTANT);
-				cv_image[1] = undistorted;
-				undistorted = Mat();
+				remap(cv_image[0], undistorted[0], ctl->_map_l[0], ctl->_map_l[1], INTER_CUBIC/*INTER_LINEAR*//*INTER_NEAREST*/, BORDER_CONSTANT);
+				remap(cv_image[1], undistorted[1], ctl->_map_r[0], ctl->_map_r[1], INTER_CUBIC/*INTER_LINEAR*//*INTER_NEAREST*/, BORDER_CONSTANT);
+			}
+			else {
+				undistorted[0] = cv_image[0].clone();
+				undistorted[1] = cv_image[1].clone();
 			}
 
-			cv_image[2] = cv_image[0].clone();
-			cv_image[3] = cv_image[1].clone();
+			cv_image[2] = undistorted[0].clone();
+			cv_image[3] = undistorted[1].clone();
 
 
-			cv_edges[0] = cv_image[0].clone();
-			cv_edges[1] = cv_image[1].clone();
+			cv_edges[0] = undistorted[0].clone();
+			cv_edges[1] = undistorted[1].clone();
 
 
-			unchangedImage = cv_image[0].clone();
+			unchangedImage = undistorted[0].clone();
 
-			finalContoursImage = cv_image[targetWindow].clone();
+			finalContoursImage = undistorted[targetWindow].clone();
 			cv::circle(finalContoursImage, detectedPoint, 10, Scalar(0, 255, 0), -1);
 
-			g_imageSize = cv_image[0].size();
+			g_imageSize = undistorted[0].size();
 
 
 			auto submitGraphics = [&](Mat& originalImage, bool data_is_valid = false) {
@@ -4912,6 +4910,12 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 					for (size_t c = 0; c < ARRAY_NUM_ELEMENTS(rgbSelected); ++c) {
 						point4D._rgb_normalized[c] = rgbSelected[c] / 255;
 					}
+					double dist = 0;
+					for (int j = 0; j < 3; ++j) {
+						dist += std::pow(point4D(j), 2);
+					}
+					dist = std::sqrt(dist);
+					std::cout << "detected distance " << dist << std::endl;
 				}
 
 				break;

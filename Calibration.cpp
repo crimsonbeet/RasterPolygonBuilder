@@ -680,6 +680,7 @@ return_t __stdcall BuildChessMinEnclosingQuadrilateral(LPVOID lp) {
 			std::vector<Point> hull;
 			cv::convexHull(blobs, hull, true/*will be counter-clockwise because Y is pointing down*/, true/*do return points*/);
 
+			// minimize the number of points
 			vector<Point> approx;
 			cv::approxPolyDP(Mat(hull), approx, arcLength(Mat(hull), true) * 0.02, true);
 
@@ -692,8 +693,9 @@ return_t __stdcall BuildChessMinEnclosingQuadrilateral(LPVOID lp) {
 				// 3. Use homography to build the min. enclosing rectangle. 
 				// 4. Transform back to create the min. enclosing quadrilateral. 
 
-				// 1. The first point must be the most remote point. 
-				// Remove (in iterations) two most proximate points until two or one is left. 
+				// 1. The first point must be the most remote point, the one that corresponds to top right. 
+
+				// Remove (in iterations) two closest points until two or one is left. 
 				vector<int> approx_idx(approx.size());
 				for (int j = 0; j < approx_idx.size(); ++j) {
 					approx_idx[j] = j;
@@ -724,12 +726,28 @@ return_t __stdcall BuildChessMinEnclosingQuadrilateral(LPVOID lp) {
 
 				int idx = approx_idx[0];
 
-				// points need to be reversed if the next point is also a remote point. 
+				//int idx = 0;
+				//// Find a pair of most distant points. Take the one that is higher, i.e. smaller y. 
+				//{
+				//	int max_idx[2] = { 0, 1 };
+				//	double max_dist = std::numeric_limits<double>::min();
+				//	const int N = (int)approx.size();
+				//	for (int j = 0; j < N; ++j) {
+				//		for (int k = 0; k < N; ++k) {
+				//			double dist = cv::norm(approx[j] - approx[k]);
+				//			if (dist > max_dist) {
+				//				max_dist = dist;
+				//				max_idx[0] = j;
+				//				max_idx[1] = k;
+				//			}
+				//		}
+				//	}
+				//	if (approx[max_idx[0]].y > approx[max_idx[1]].y) {
+				//		max_idx[0] = max_idx[1];
+				//	}
 
-				if (cv::norm(approx[(idx + 1) % approx.size()] - approx[(idx + 2) % approx.size()]) > cv::norm(approx[(idx - 1) % approx.size()] - approx[(idx - 2) % approx.size()])) {
-					std::reverse(approx.begin(), approx.end());
-					idx = (int)approx.size() - 1 - idx;
-				}
+				//	idx = max_idx[0];
+				//}
 
 				if (idx > 0) {
 					std::rotate(approx.begin(), approx.begin() + idx, approx.end());
@@ -1082,7 +1100,7 @@ return_t __stdcall BuildChessGridCorners(LPVOID lp) {
 			compression_params.push_back(IMWRITE_PNG_COMPRESSION); // Mar.4 2015.
 			compression_params.push_back(0);
 
-			cv::imwrite(std::string(g_path_calib_images_dir) + "ST3-" + ctl->_outputWindow + "-ChessPattern-Mapped.png", image1, compression_params);
+			cv::imwrite(CalibrationDirName() + "ST3-" + ctl->_outputWindow + "-ChessPattern-Mapped.png", image1, compression_params);
 
 
 			if (edgesMapped.size() == (g_boardChessCornersSize.width * g_boardChessCornersSize.height)) {
@@ -1102,6 +1120,11 @@ return_t __stdcall BuildChessGridCorners(LPVOID lp) {
 					putText(grayscale, std::to_string(k).c_str(), edgesBuf[k], FONT_HERSHEY_SCRIPT_SIMPLEX, 1, Scalar(0, 0, 255), 2);
 				}
 				cv::imwrite(std::string(CalibrationDirName()) + "ST3-" + ctl->_outputWindow + "-ChessPattern-Labeled.png", grayscale, compression_params);
+				ctl->_gate.lock();
+				ctl->_image2visualize = grayscale;
+				ctl->_image_isvalid = true;
+				ctl->_last_image_timestamp = OSDayTimeInMilliseconds();
+				ctl->_gate.unlock();
 			}
 			else {
 				static int x = 0;
@@ -1247,28 +1270,29 @@ bool buildPointsFromImages(Mat* images, vector<Point2d>* pointBufs, const size_t
 	const int tartgetNumberOfCorners = g_boardChessCornersSize.width * g_boardChessCornersSize.height;
 	ClassBlobDetector blobDetector = ClassBlobDetector(min_confidence, min_repeatability, 40, ctl._pattern_is_whiteOnBlack, ctl._pattern_is_chessBoard);
 	bool found = false;
+	for (size_t x = 0; x < N; ++x) pointBufs[x].clear();
 	if (images[0].data) {
 		g_imageSize = images[0].size();
-		double saturationFactors[6] = { 1.0, 1.1, 1.2, 1.3, 1.4, 1.5 };
+		double saturationFactors[6] = { 1.0, 0.9, 1.1, 1.2, 0.8, 1.3 };
 		std::vector<vector<Point2d>> foundBufs(N);
 		for (auto saturationFactor : saturationFactors) {
-			found = DetectChessGrid(images, pointBufs, N, saturationFactor, blobDetector);
+			found = DetectChessGrid(images, foundBufs.data(), N, saturationFactor, blobDetector);
+			for (size_t j = 0; j < N; ++j) {
+				if (foundBufs[j].size() == tartgetNumberOfCorners) {
+					pointBufs[j] = foundBufs[j];
+				}
+			}
 			if (found) {
 				break;
 			}
 
-			for (size_t j = 0; j < N; ++j) {
-				if (pointBufs[j].size() == tartgetNumberOfCorners) {
-					foundBufs[j] = pointBufs[j];
-				}
-			}
 			int okCount = 0;
 			for (size_t j = 0; j < N; ++j) {
-				if (foundBufs[j].size() == tartgetNumberOfCorners) {
+				if (pointBufs[j].size() == tartgetNumberOfCorners) {
 					++okCount;
 				}
 			}
-			found == okCount == N;
+			found = okCount == N;
 			if (found) {
 				break;
 			}
@@ -1301,7 +1325,7 @@ double calc_betweenimages_rmse(vector<Point2d>& image1, vector<Point2d>& image2)
 
 
 
-std::vector<bool> EvaluateImagePoints(cv::Mat cv_images[2], std::vector<std::vector<cv::Point2d>> imagePoints[2], SImageAcquisitionCtl& ctl, double min_confidence = 0.4, size_t min_repeatability = 2) {
+std::vector<bool> EvaluateImagePoints(cv::Mat cv_images[2], std::vector<std::vector<cv::Point2d>> imagePoints[2], SImageAcquisitionCtl& ctl, double aposteriory_minsdistance, double min_confidence = 0.4, size_t min_repeatability = 2) {
 	constexpr int N = 2;
 
 	static double min_rmse = std::numeric_limits<double>::max();
@@ -1325,19 +1349,19 @@ std::vector<bool> EvaluateImagePoints(cv::Mat cv_images[2], std::vector<std::vec
 					if (min_image_rmse[j] > rmse) {
 						min_image_rmse[j] = rmse;
 					}
-					if (min_rmse > rmse && rmse > g_aposteriory_minsdistance) {
+					if (min_rmse > rmse && rmse > aposteriory_minsdistance) {
 						min_rmse = rmse;
-						std::cout << "min_rmse " << min_rmse << std::endl;
 					}
 				}
 			}
 		}
 		for (int j = 0; j < N; ++j) {
-			if (min_image_rmse[j] < g_aposteriory_minsdistance) {
+			if (min_image_rmse[j] < aposteriory_minsdistance) {
 				for (int k = j + 1; k < N; ++k) {
-					if (min_image_rmse[k] < g_aposteriory_minsdistance) {
+					if (min_image_rmse[k] < aposteriory_minsdistance) {
 						is_ok[j] = false;
 						is_ok[k] = false;
+						std::cout << "rejected by min_rmse=" << min_rmse << " vs. aposteriory_minsdistance=" << aposteriory_minsdistance << std::endl;
 					}
 				}
 			}
@@ -1662,7 +1686,8 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 
 		std::vector<bool> imagePoints_ok = { imagePoints[0][nl].size() != 0, imagePoints[1][nr].size() != 0 };
 		if (!imagePoints_ok[0] && !imagePoints_ok[1]) {
-			imagePoints_ok = EvaluateImagePoints(images, imagePoints, *ctl, g_configuration._calib_min_confidence);
+			double rmse = g_aposteriory_minsdistance;
+			imagePoints_ok = EvaluateImagePoints(images, imagePoints, *ctl, imagesFromFilesAreOk? rmse * 0.8: rmse, g_configuration._calib_min_confidence);
 		}
 		else {
 			pointsAreFromFile = true;
@@ -1756,6 +1781,8 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 				if (!pointsAreFromFile) {
 					lambda_Save_Images(std::max((int)current_N, std::max(nl, nr)), nl, nr);
 				}
+			}
+			if (nl > 0 || nr > 0 || imagesFromFilesAreOk) {
 				++current_N;
 			}
 
@@ -1914,7 +1941,7 @@ bool ReEvaluateUndistortImagePoints(vector<Mat>& imageRaw, vector<vector<Point2d
 		auto& image = imageRaw[j];
 		image = ShowUndistortedImageAndPoints(image, imagePoints[j], map, cv_window, std::to_string(j + 1));
 
-		if (!buildPointsFromImages(&image, &imagePoints[j], 1, ctl, g_configuration._calib_min_confidence, 3)) {
+		if (!buildPointsFromImages(&image, &imagePoints[j], 1, ctl, g_configuration._calib_min_confidence, 2)) {
 			std::cout << "image number " << j << " has failed" << std::endl;
 			imagePoints.erase(imagePoints.begin() + j);
 			imageRaw.erase(imageRaw.begin() + j);

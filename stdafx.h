@@ -1470,9 +1470,11 @@ struct SStereoFrame {
 
 	uint64 local_timestamp;
 	bool isActive;
+	bool isInTransition;
 	SStereoFrame() {
 		local_timestamp = 0;
 		isActive = false;
+		isInTransition = false;
 		for (int j = 0; j < NUMBER_OF_CAMERAS; ++j) {
 			frames[j].camera_index = j;
 		}
@@ -1481,6 +1483,7 @@ struct SStereoFrame {
 	SStereoFrame& operator=(const SStereoFrame& other) {
 		local_timestamp = other.local_timestamp;
 		isActive = other.isActive;
+		isInTransition = other.isInTransition;
 		for (size_t j = 0; j < ARRAY_NUM_ELEMENTS(other.frames); ++j) {
 			frames[j] = other.frames[j];
 		}
