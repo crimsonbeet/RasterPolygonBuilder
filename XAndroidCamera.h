@@ -199,4 +199,21 @@ AndroidCameraRaw10Image* Process_Raw10Image(AndroidCameraRaw10Image* obj);
 
 
 
+struct AndroidCaptureStillImageRequest {
+    int64_t _timestamp = 0;
+};
+
+
+BEGIN_WSI_SERIALIZATION_OBJECT(AndroidCaptureStillImageRequest)
+    CONTAINS_FLAT_MEMBER(_timestamp, T)
+END_WSI_SERIALIZATION_OBJECT()
+
+
+AUTOCREATE_WSI_SERIALIZATION_OBJECT(AndroidCaptureStillImageRequest)
+
+void Process_AndroidCaptureStillImageRequest(AndroidCaptureStillImageRequest* obj);
+
+
+
+
 #endif //AndroidCamera_wsiclassesH

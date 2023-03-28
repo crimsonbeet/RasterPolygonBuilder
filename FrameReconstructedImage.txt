@@ -24,19 +24,19 @@ $
 $ 
 
 >< $ Canvas DataType='openCV_Container' 
->< $ Situation Left=660 Right=1000 Top=70 Bottom=535 IsAbsolute=1 FontFace='Segoe UI' FontHeight=10 Name='Camera1' >< BackColor Hex=D3D3D3 $ 
+>< $ Situation Left=330 Right=660 Top=70 Bottom=535 IsAbsolute=1 FontFace='Segoe UI' FontHeight=10 Name='Camera1' >< BackColor Hex=D3D3D3 $ 
 $ 
 
 >< $ Canvas DataType='openCV_Container' 
->< $ Situation Left=660 Right=1000 Top=535 Bottom=1000 IsAbsolute=1 FontFace='Segoe UI' FontHeight=10 Name='Camera1Fit' >< BackColor Hex=D3D3D3 $ 
+>< $ Situation Left=330 Right=660 Top=535 Bottom=1000 IsAbsolute=1 FontFace='Segoe UI' FontHeight=10 Name='Camera1Fit' >< BackColor Hex=D3D3D3 $ 
 $ 
 
 >< $ Canvas DataType='openCV_Container' 
->< $ Situation Left=330 Right=660 Top=70 Bottom=535 IsAbsolute=1 FontFace='Segoe UI' FontHeight=10 Name='Camera2' >< BackColor Hex=D3D3D3 $ 
+>< $ Situation Left=660 Right=1000 Top=70 Bottom=535 IsAbsolute=1 FontFace='Segoe UI' FontHeight=10 Name='Camera2' >< BackColor Hex=D3D3D3 $ 
 $ 
 
 >< $ Canvas DataType='openCV_Container' 
->< $ Situation Left=330 Right=660 Top=535 Bottom=1000 IsAbsolute=1 FontFace='Segoe UI' FontHeight=10 Name='Camera2Fit' >< BackColor Hex=D3D3D3 $ 
+>< $ Situation Left=660 Right=1000 Top=535 Bottom=1000 IsAbsolute=1 FontFace='Segoe UI' FontHeight=10 Name='Camera2Fit' >< BackColor Hex=D3D3D3 $ 
 $ 
 
 >< $ Canvas DataType='openCV_Container' 

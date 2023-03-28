@@ -1,6 +1,7 @@
 #include "stdafx.h"
 
 #include "XConfiguration.h"
+#include "XAndroidCamera.h"
 
 #include "FrameMain.h"
 
@@ -52,8 +53,6 @@ vector<Mat> imageRaw_right;
 vector<Mat> stereoImageRaw_left;
 vector<Mat> stereoImageRaw_right;
 
-
-vector<vector<Point3f> > g_objectPoints;
 
 std::string cv_windows[6];
 
@@ -1453,7 +1452,7 @@ return_t __stdcall GetImagesWorkItem(LPVOID lp) {
 	g_imageGetter();
 	return 0;
 }
-bool GetImagesEx(Mat& left, Mat& right, int64_t* time_spread, const int N/*min_frames_2_consider*/) {
+bool GetImagesEx(Mat& left, Mat& right, int64_t* time_spread, const int N/*min_frames_2_consider*/, bool& new_images) {
 	g_sync_button_pressed = false;
 	QueueWorkItem(ShowSynchronizationButton);
 
@@ -1493,6 +1492,8 @@ bool GetImagesEx(Mat& left, Mat& right, int64_t* time_spread, const int N/*min_f
 	if (click_has_occured) {
 		SetEvent(g_event_SeedPointIsAvailable);
 	}
+
+	new_images = imagesOk;
 
 	if (!g_sync_button_pressed) {
 		HWND msgbox = FindWindowA(NULL, "Synchronization");
@@ -1552,6 +1553,8 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 	g_aposteriory_minsdistance *= (ctl->_calib_images_from_files? 1: 1.01);
 
 	Mat images[2];
+
+	bool new_unprocessed_images_inprogress = false;
 
 	while(!g_bTerminated && !ctl->_terminated && stereoImagePoints_left.size() < max_images && !_g_calibrationimages_frame->_stop_capturing) {
 		if(ProcessWinMessages(10)) {
@@ -1670,10 +1673,23 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 		}
 		else
 		if (!imagesFromFilesAreOk) {
-			if (!GetImagesEx(left_image, right_image, &image_localtime, 1)) {
-				continue;
+			bool new_images;
+			bool images_ok = GetImagesEx(left_image, right_image, &image_localtime, 1, new_images);
+
+			if (images_ok && new_images) {
+				new_unprocessed_images_inprogress = true;
 			}
 
+			if (!new_images && !new_unprocessed_images_inprogress) {
+				AndroidCaptureStillImageRequest request;
+				PostObject(request);
+				new_unprocessed_images_inprogress = true;
+				images_ok = false;
+			}
+
+			if (!images_ok) {
+				continue;
+			}
 		}
 
 		if (_g_calibrationimages_frame->_stop_capturing) {
@@ -1688,6 +1704,7 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 		if (!imagePoints_ok[0] && !imagePoints_ok[1]) {
 			double rmse = g_aposteriory_minsdistance;
 			imagePoints_ok = EvaluateImagePoints(images, imagePoints, *ctl, imagesFromFilesAreOk? rmse * 0.8: rmse, g_configuration._calib_min_confidence);
+			new_unprocessed_images_inprogress = false;
 		}
 		else {
 			pointsAreFromFile = true;
@@ -1873,54 +1890,6 @@ void SampleImagepoints(const size_t N, vector<vector<Point2d>>& imagePoints_src,
 
 
 
-double CalibrateSingleCamera(vector<vector<Point2f>>& imagePoints, Mat& cameraMatrix, Mat& distortionCoeffs, int flag = cv::CALIB_RATIONAL_MODEL, bool reprojectPoints = false) {
-	double pattern_distance = g_pattern_distance;
-	cv::Size boardSize;
-	if (imagePoints[0].size() == (g_boardSize.height * g_boardSize.width)) {
-		boardSize = g_boardSize;
-	}
-	else
-		if (imagePoints[0].size() == (g_boardQuadSize.height * g_boardQuadSize.width)) {
-			boardSize = g_boardQuadSize;
-			pattern_distance /= 2.0;
-		}
-		else
-			if (imagePoints[0].size() == (g_boardChessCornersSize.height * g_boardChessCornersSize.width)) {
-				boardSize = g_boardChessCornersSize;
-				pattern_distance = pattern_distance /= 2.0; //3.0 + 2.5 / 8.0;
-			}
-
-	vector<vector<Point3f> > objectPoints(1);
-	for (int i = 0; i < boardSize.height; ++i) {
-		for (int j = 0; j < boardSize.width; ++j) {
-			objectPoints[0].push_back(Point3f(float(j * pattern_distance), float(i * pattern_distance), 0));
-		}
-	}
-	objectPoints.resize(imagePoints.size(), objectPoints[0]);
-
-	cameraMatrix = Mat::eye(3, 3, CV_64F);
-	cameraMatrix.at<double>(0, 0) = 1.0;
-
-	distortionCoeffs = Mat::zeros(8, 1, CV_64F); // distortion coefficient matrix. Initialize with zero. 
-
-	vector<Mat> rvecs;
-	vector<Mat> tvecs;
-
-
-	double rms = calibrateCamera(objectPoints, imagePoints, g_imageSize, cameraMatrix, distortionCoeffs, rvecs, tvecs, flag);
-
-	for (size_t j = 0; j < objectPoints.size(); ++j) {
-		projectPoints(objectPoints[j], rvecs[j], tvecs[j], cameraMatrix, distortionCoeffs, imagePoints[j]);
-	}
-
-	g_objectPoints = objectPoints;
-
-	return rms;
-}
-
-
-
-
 Mat ShowUndistortedImageAndPoints(Mat& image, vector<Point2d>& imagePoints, Mat map[2], const std::string& cv_window, const std::string& text) {
 	Mat undistorted;
 	remap(image, undistorted, map[0], map[1], INTER_CUBIC/*INTER_LINEAR*//*INTER_NEAREST*/, BORDER_CONSTANT);
@@ -1931,140 +1900,6 @@ Mat ShowUndistortedImageAndPoints(Mat& image, vector<Point2d>& imagePoints, Mat 
 
 	return undistorted;
 }
-
-bool ReEvaluateUndistortImagePoints(vector<Mat>& imageRaw, vector<vector<Point2d>>& imagePoints, Mat& cameraMatrix, Mat& distortionCoeffs, SImageAcquisitionCtl& ctl, std::string& cv_window, vector<vector<Point2d>>* imagePoints_paired = 0, vector<Mat>* imageRaw_paired = 0) {
-	Mat map[2];
-
-	cv::initUndistortRectifyMap(cameraMatrix, distortionCoeffs, cv::Mat(), cv::getOptimalNewCameraMatrix(cameraMatrix, distortionCoeffs, g_imageSize, 0), g_imageSize, CV_32FC2, map[0], map[1]);
-
-	for (int j = 0; j < imagePoints.size(); ++j) {
-		auto& image = imageRaw[j];
-		image = ShowUndistortedImageAndPoints(image, imagePoints[j], map, cv_window, std::to_string(j + 1));
-
-		if (!buildPointsFromImages(&image, &imagePoints[j], 1, ctl, g_configuration._calib_min_confidence, 2)) {
-			std::cout << "image number " << j << " has failed" << std::endl;
-			imagePoints.erase(imagePoints.begin() + j);
-			imageRaw.erase(imageRaw.begin() + j);
-			if (imagePoints_paired) {
-				imagePoints_paired->erase(imagePoints_paired->begin() + j);
-			}
-			if (imageRaw_paired) {
-				imageRaw_paired->erase(imageRaw_paired->begin() + j);
-			}
-			--j;
-		}
-	}
-	return imagePoints.size() >= g_min_images;
-}
-
-
-
-
-std::function<void()> g_boostCalibrateLambda = nullptr;
-return_t __stdcall BoostCalibrateWorkItem(LPVOID lp) {
-	g_boostCalibrateLambda();
-	return 0;
-}
-
-void BoostCalibrate(const std::string& msg, size_t number_of_iterations, Mat& cameraMatrixL, Mat& cameraMatrixR, Mat& distortionCoeffsL, Mat& distortionCoeffsR, double rms[2]) {
-	g_boostCalibrateLambda = [&]() {
-		std::cout << msg << std::endl;
-
-		std::vector<Mat> CMVec2(number_of_iterations * 2), DCVec2(number_of_iterations * 2);
-		if (number_of_iterations > 1) {
-			vector<vector<Point2f>> imagePoints_left1(g_min_images);
-			vector<vector<Point2f>> imagePoints_right1(g_min_images);
-
-			double iteration_rms[256];
-			::memset(iteration_rms, 0, sizeof(iteration_rms));
-
-			double average_rms = 0;
-			size_t rms_cnt = 0;
-
-			double max_rms = 0;
-
-			size_t iter_num;
-			for (iter_num = 0; !g_bTerminated && iter_num < number_of_iterations; ++iter_num) {
-				SampleImagepoints(g_min_images, imagePoints_left, imagePoints_left1);
-				SampleImagepoints(g_min_images, imagePoints_right, imagePoints_right1);
-
-				try {
-					rms[0] = CalibrateSingleCamera(imagePoints_left1, CMVec2[iter_num * 2], DCVec2[iter_num * 2]);
-					rms[1] = CalibrateSingleCamera(imagePoints_right1, CMVec2[iter_num * 2 + 1], DCVec2[iter_num * 2 + 1]);
-
-					iteration_rms[iter_num] = std::max(rms[0], rms[1]);
-					if (max_rms < iteration_rms[iter_num]) {
-						max_rms = iteration_rms[iter_num];
-					}
-					average_rms += iteration_rms[iter_num];
-					++rms_cnt;
-				}
-				catch (...) {
-					rms[0] = rms[1] = 100;
-				}
-
-				std::cout << iter_num << ' ' << "Pre-Re-projection error for left camera: " << rms[0] << std::endl;
-				std::cout << iter_num << ' ' << "Pre-Re-projection error for right camera: " << rms[1] << std::endl;
-			}
-			average_rms /= rms_cnt;
-			average_rms = (average_rms + max_rms) / 2;
-
-			const size_t max_iter = iter_num;
-
-			for (iter_num = 0; iter_num < max_iter; ++iter_num) {
-				if (iteration_rms[iter_num] <= average_rms) {
-					cameraMatrixL = CMVec2[iter_num * 2]; cameraMatrixR = CMVec2[iter_num * 2 + 1]; distortionCoeffsL = DCVec2[iter_num * 2]; distortionCoeffsR = DCVec2[iter_num * 2 + 1];
-					break;
-				}
-				else {
-					--number_of_iterations;
-				}
-			}
-
-			for (++iter_num; iter_num < max_iter; ++iter_num) {
-				if (iteration_rms[iter_num] <= average_rms) {
-					cameraMatrixL = cameraMatrixL + CMVec2[iter_num * 2];
-					cameraMatrixR = cameraMatrixR + CMVec2[iter_num * 2 + 1];
-					distortionCoeffsL = distortionCoeffsL + DCVec2[iter_num * 2];
-					distortionCoeffsR = distortionCoeffsR + DCVec2[iter_num * 2 + 1];
-				}
-				else {
-					--number_of_iterations;
-				}
-			}
-			if (number_of_iterations > 0) {
-				cameraMatrixL = cameraMatrixL / (double)number_of_iterations;
-				cameraMatrixR = cameraMatrixR / (double)number_of_iterations;
-				distortionCoeffsL = distortionCoeffsL / (double)number_of_iterations;
-				distortionCoeffsR = distortionCoeffsR / (double)number_of_iterations;
-			}
-		}
-
-		if (number_of_iterations <= 1 && !g_bTerminated) {
-			vector<vector<Point2f>> imagePoints_left1(imagePoints_left.size());
-			vector<vector<Point2f>> imagePoints_right1(imagePoints_right.size());
-
-			SampleImagepoints(imagePoints_left.size(), imagePoints_left, imagePoints_left1);
-			SampleImagepoints(imagePoints_right.size(), imagePoints_right, imagePoints_right1);
-
-			rms[0] = CalibrateSingleCamera(imagePoints_left1, cameraMatrixL, distortionCoeffsL);
-			rms[1] = CalibrateSingleCamera(imagePoints_right1, cameraMatrixR, distortionCoeffsR);
-
-			std::cout << "Pre-Re-projection error for left camera: " << rms[0] << std::endl;
-			std::cout << "Pre-Re-projection error for right camera: " << rms[1] << std::endl;
-		}
-
-		g_boostCalibrateLambda = nullptr;
-	};
-
-	QueueWorkItem(BoostCalibrateWorkItem);
-
-	while (g_boostCalibrateLambda != nullptr) {
-		ProcessWinMessages(10);
-	}
-
-}
-
 
 
 
@@ -2105,13 +1940,14 @@ return_t __stdcall BuildSeedSelection(LPVOID lp) {
 
 			int calibrateFlags = 0;// CALIB_FIX_INTRINSIC;// CALIB_USE_INTRINSIC_GUESS;
 
-			g_objectPoints.resize(seedPoints_left.size(), objectPoints);
+			vector<vector<Point3f>> _objectPoints;
+			_objectPoints.resize(seedPoints_left.size(), objectPoints);
 
 			CMVec[0] = cameraMatrix[0].clone();
 			CMVec[1] = cameraMatrix[1].clone();
 			DCVec[0] = distortionCoeffs[0].clone();
 			DCVec[1] = distortionCoeffs[1].clone();
-			rms_s = stereoCalibrate(g_objectPoints, seedPoints_left, seedPoints_right,
+			rms_s = stereoCalibrate(_objectPoints, seedPoints_left, seedPoints_right,
 				CMVec[0], DCVec[0],
 				CMVec[1], DCVec[1],
 				g_imageSize,
@@ -2194,9 +2030,10 @@ return_t __stdcall TryPointsSelection(LPVOID lp) {
 		auto sampleCalibrate = [&]() {
 			int calibrateFlags = 0;// CALIB_FIX_INTRINSIC;// CALIB_USE_INTRINSIC_GUESS;
 
-			g_objectPoints.resize(seedPoints_left.size(), objectPoints);
+			vector<vector<Point3f>> _objectPoints;
+			_objectPoints.resize(seedPoints_left.size(), objectPoints);
 
-			rms_s = stereoCalibrate(g_objectPoints, seedPoints_left, seedPoints_right,
+			rms_s = stereoCalibrate(_objectPoints, seedPoints_left, seedPoints_right,
 				cameraMatrix[0], cameraMatrix[0],
 				distortionCoeffs[1], distortionCoeffs[1],
 				g_imageSize,
@@ -2222,7 +2059,7 @@ return_t __stdcall TryPointsSelection(LPVOID lp) {
 
 		sampleCalibrate();
 
-		if (rms_s < 2) {
+		if (rms_s < 1) {
 			ctl->_pos_ok = true;
 		}
 		else {
@@ -2542,7 +2379,9 @@ return_t __stdcall ConductCalibration(LPVOID lp) {
 
 
 	average_rms /= rms_cnt;
-	average_rms = (average_rms + 2 * max_rms) / 3;
+	double barrier_rms = (average_rms + 2 * max_rms) / 3;
+
+	barrier_rms = average_rms;
 
 
 
@@ -2557,7 +2396,7 @@ return_t __stdcall ConductCalibration(LPVOID lp) {
 	size_t number_of_significant_iterations = number_of_iterations;
 
 	for (iter_num = 0; iter_num < number_of_iterations; ++iter_num) {
-		if (iteration_rms[iter_num] <= average_rms) {
+		if (iteration_rms[iter_num] <= barrier_rms) {
 			R = RVec[iter_num]; T = TVec[iter_num]; E = EVec[iter_num]; F = FVec[iter_num];
 			cameraMatrix[0] = CMVec[iter_num * 2]; cameraMatrix[1] = CMVec[iter_num * 2 + 1]; distortionCoeffs[0] = DCVec[iter_num * 2]; distortionCoeffs[1] = DCVec[iter_num * 2 + 1];
 			break;
@@ -2568,7 +2407,7 @@ return_t __stdcall ConductCalibration(LPVOID lp) {
 	}
 
 	for (++iter_num; iter_num < number_of_iterations; ++iter_num) {
-		if (iteration_rms[iter_num] <= average_rms) {
+		if (iteration_rms[iter_num] <= barrier_rms) {
 			R = R + RVec[iter_num];
 			T = T + TVec[iter_num];
 			E = E + EVec[iter_num];

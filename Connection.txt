@@ -5,9 +5,9 @@
 
 ><$Connector ResponseTimeoutSecs=10 UseClones=1 
 
->< Listener Name=PolyMorpher Address='0.0.0.0:18221' Datatypes={AndroidBayerFilterImage AndroidCameraJpegImage}
+>< Listener Name=PolyMorpher Address='0.0.0.0:18221' Datatype={AndroidBayerFilterImage AndroidCameraJpegImage AndroidCaptureStillImageRequest}
 
->< Producer Address='192.168.5.146:18211' Name=AndroidLS Parser=CWSIParser IsLogServer=1 Returns={AndroidBayerFilterImage AndroidCameraJpegImage}
+>< Producer Address='192.168.5.146:18211' Name=AndroidLS Parser=CWSIParser IsLogServer=1 Returns={AndroidBayerFilterImage AndroidCameraJpegImage} Datatype={AndroidCaptureStillImageRequest}
 
 $
 

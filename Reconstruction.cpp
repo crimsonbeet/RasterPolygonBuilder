@@ -430,7 +430,7 @@ double FindBestAlignment(const Mat& crop, const Mat& strip2search, int row2searc
 		q.pop();
 
 		size_t nStart = n;
-		std::cout << "starting case number " << nStart << std::endl;
+		//std::cout << "starting case number " << nStart << std::endl;
 
 		int caseType = T[m][n];
 		caseCost = std::numeric_limits<int64_t>::max();
@@ -469,7 +469,7 @@ double FindBestAlignment(const Mat& crop, const Mat& strip2search, int row2searc
 			pos = Y;
 			caseCostMin = caseCost;
 			std::cout << "Changed position to " << pos << "; case cost " << caseCost << "; starting case number " << nStart << std::endl;
-			break;
+			//break;
 		}
 	}
 
@@ -4718,6 +4718,8 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 			if (ctl->_calibration_exists) {
 				remap(cv_image[0], undistorted[0], ctl->_map_l[0], ctl->_map_l[1], INTER_CUBIC/*INTER_LINEAR*//*INTER_NEAREST*/, BORDER_CONSTANT);
 				remap(cv_image[1], undistorted[1], ctl->_map_r[0], ctl->_map_r[1], INTER_CUBIC/*INTER_LINEAR*//*INTER_NEAREST*/, BORDER_CONSTANT);
+				//undistorted[0] = cv_image[0].clone();
+				//undistorted[1] = cv_image[1].clone();
 			}
 			else {
 				undistorted[0] = cv_image[0].clone();
@@ -4868,7 +4870,7 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 					continue;
 				}
 
-				detectedPoint.x = pt.x + direction * pos + 0.45;
+				detectedPoint.x = strip2searchRect.x + pos + 0.45;
 				detectedPoint.y = pt.y;
 
 				cv::line(crop, cv::Point(patternHalfWidth, 0), cv::Point(patternHalfWidth, blurHeight - 1), Scalar(0, 255, 0));
