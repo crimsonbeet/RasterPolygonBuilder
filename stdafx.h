@@ -953,6 +953,7 @@ struct SImageAcquisitionCtl {
 	bool _calib_images_from_files; 
 	bool _save_all_calibration_images; 
 	bool _two_step_calibration;
+	bool _use_uncalibrated_cameras;
 	bool _pattern_is_chessBoard;
 	bool _pattern_is_gridOfSquares;
 	bool _pattern_is_whiteOnBlack; 
@@ -974,6 +975,7 @@ struct SImageAcquisitionCtl {
 		_calib_images_from_files = false; 
 		_save_all_calibration_images = false;
 		_two_step_calibration = true;
+		_use_uncalibrated_cameras = false;
 		_pattern_is_gridOfSquares = true;
 		_pattern_is_whiteOnBlack = true; 
 		_pattern_is_chessBoard = false; 
@@ -1111,6 +1113,9 @@ Mat mat_loginvert2byte(const Mat& src, const int bytedepth_scalefactor = g_byted
 
 
 void RGB_TO_HSV(cv::Vec<uchar, 3> rgb, double hsv[3], const double maxMinThreshold = 3);
+
+template<typename T>
+void WhiteBalance(Mat& image, double whiteFactor[3]);
 
 double GetFScore(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2);
 
@@ -1349,6 +1354,11 @@ struct SPointsReconstructionCtl {
 	Mat _cameraMatrix[4];
 	Mat _distortionCoeffs[4];
 
+	Mat _default_Intrinsic[2];
+	Mat _default_Pl;
+	Mat _default_Pr;
+	Mat _default_F;
+
 	Mat _R, _T, _E, _F;
 
 	Mat _Rl, _Rr, _Pl, _Pr, _Q;
@@ -1359,6 +1369,7 @@ struct SPointsReconstructionCtl {
 	cv::Size _rectified_image_size;
 
 	bool _calibration_exists = false;
+	bool _use_uncalibrated_cameras = false;
 
 
 	cv::Matx44d _world_transform; // a transform matrix that maps to coord. system of 3d features of a detected object. 

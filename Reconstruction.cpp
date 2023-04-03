@@ -349,11 +349,9 @@ double RadiusOfRectangle(const std::vector<Point2d>& points) {
 
 
 
-double FindBestAlignment(const Mat& crop, const Mat& strip2search, int row2search) { // returns center point of alignment
+double FindBestAlignment(const Mat& crop, const Mat& strip2search) { // returns center point of alignment
 	const size_t M = crop.cols + 1;
 	const size_t N = strip2search.cols + 1;
-
-	const size_t X = M / 2;
 
 	std::vector<std::vector<int64_t>> A(M);
 	for (auto& v : A) {
@@ -374,102 +372,148 @@ double FindBestAlignment(const Mat& crop, const Mat& strip2search, int row2searc
 	}
 
 
-	const int r = row2search;
+	const int X = M / 2;
 
-	const int gapCost = 20000;
-	const double scoreWeight = 2 * gapCost;
-
-	for (size_t i = 1; i < M; ++i) {
-		for (size_t j = 1; j < N; ++j) {
-			const size_t i_1 = i - 1;
-			const size_t j_1 = j - 1;
-			double fscore = GetFScore(crop.at<cv::Vec<uchar, 3>>(r, i_1), strip2search.at<cv::Vec<uchar, 3>>(r, j_1));
-			int64_t case1Cost = A[i_1][j_1] + scoreWeight * (1 - fscore) + 0.45;
-			int64_t case2Cost = A[i_1][j] + gapCost;
-			int64_t case3Cost = A[i][j_1] + gapCost;
-			if (case1Cost < case2Cost && case1Cost < case3Cost) {
-				T[i][j] = 1;
-				A[i][j] = case1Cost;
-			}
-			else
-			if (case2Cost < case3Cost) {
-				T[i][j] = 2;
-				A[i][j] = case2Cost;
-			}
-			else {
-				T[i][j] = 3;
-				A[i][j] = case3Cost;
-			}
-		}
-	}
-
-	size_t m = M - 1;
-	size_t n = N - 1;
-
-	int64_t caseCost = A[m][n];
-	int64_t caseCostMin = caseCost + 1;
-
-	std::stack<size_t> q;
-	q.push(n);
-
-	for (size_t j = n; j > (M + (M >> 1)); --j) {
-		if (T[m][j] != 3) {
-			if (A[m][j] <= caseCost) {
-				n = j;
-				q.push(n);
-				caseCost = A[m][j];
-			}
-		}
-	}
+	const double log2_X = approx_log2(X + 1);
 
 	double pos = 0;
 
-	while (!q.empty()) {
-		m = M - 1;
-		n = q.top();
-		q.pop();
+	for (int w = 1; pos <= 0 && w < 4; ++w) {
 
-		size_t nStart = n;
-		//std::cout << "starting case number " << nStart << std::endl;
-
-		int caseType = T[m][n];
-		caseCost = std::numeric_limits<int64_t>::max();
-
-		double Y = 0; // yet unknown
-
-		while (caseType != 0) {
-			switch (caseType) {
-			case 1:
-				--m;
-				--n;
-				break;
-			case 2:
-				--m; // case of allignment matches entry from pattern and gap from strip2search
-				break;
-			case 3:
-				--n;
-				break;
-			}
-
-			caseType = T[m][n];
-
-			if (m == X) {
-				caseCost = A[m][n];
-				Y = n;
-				if (caseType != 2) {
-					break;
+		for (int i = 2; i < M; ++i) {
+			const int i_1 = i - 1;
+			const double X_abs_i_1 = std::abs(double(X - i_1));
+			const double log2_X_i = approx_log2(X_abs_i_1 < 1 ? 1 : X_abs_i_1); // 0 - at the center of crop, log2_X, ~5, at the ends of crop
+			const double distanceFactor = 1 + approx_log2(1 + log2_X - log2_X_i);
+			//const double distanceFactor = 1 + approx_log2(1 + approx_log2(1 + log2_X - log2_X_i));
+			//const double distanceFactor = 1;
+			const int gapCost = 20000 * distanceFactor;
+			const double scoreWeight = w * gapCost;
+			for (size_t j = 1; j < N; ++j) {
+				const size_t j_1 = j - 1;
+				double fscore = 0;
+				for (int r = 0; r < crop.rows; ++r) {
+					fscore += GetFScore(crop.at<cv::Vec<uchar, 3>>(r, i_1), strip2search.at<cv::Vec<uchar, 3>>(r, j_1));
 				}
-				else {
-					std::cout << "position detected " << Y << "; gap from strip2search" << std::endl;
+				fscore /= crop.rows;
+				int64_t case1Cost = A[i_1][j_1] + scoreWeight * (1 - fscore) + 0.45;
+				int64_t case2Cost = A[i_1][j] + gapCost;
+				int64_t case3Cost = A[i][j_1] + gapCost;
+				if (case1Cost < case2Cost && case1Cost < case3Cost) {
+					T[i][j] = 1;
+					A[i][j] = case1Cost;
+				}
+				else
+					if (case2Cost < case3Cost) {
+						T[i][j] = 2;
+						A[i][j] = case2Cost;
+					}
+					else {
+						T[i][j] = 3;
+						A[i][j] = case3Cost;
+					}
+			}
+		}
+
+		size_t m = M - 1;
+		size_t n = N - 1;
+
+		int64_t caseCost = A[m][n];
+		int64_t caseCostMax = caseCost + 1;
+		if (caseCostMax <= 0) {
+			continue;
+		}
+
+		std::stack<size_t> q;
+		q.push(n);
+
+		for (size_t j = n; j > (M + (M >> 1)); --j) {
+			if (T[m][j] != 3) {
+				if (A[m][j] <= caseCost) {
+					n = j;
+					q.push(n);
+					caseCost = A[m][j];
 				}
 			}
 		}
 
-		if (caseCost < caseCostMin) {
-			pos = Y;
-			caseCostMin = caseCost;
-			std::cout << "Changed position to " << pos << "; case cost " << caseCost << "; starting case number " << nStart << std::endl;
-			//break;
+		int64_t caseCostMin = caseCostMax;
+		while (!q.empty()) {
+			m = M - 1;
+			n = q.top();
+			q.pop();
+
+			size_t nStart = n;
+			//std::cout << "starting case number " << nStart << std::endl;
+
+			int caseType = T[m][n];
+			caseCost = A[m][n];
+
+			double Y = 0; // yet unknown
+			//int cnt = 0;
+
+			while (caseType != 0) {
+				switch (caseType) {
+				case 1:
+					--m;
+					--n;
+					break;
+				case 2:
+					--m; // case of allignment matches entry from pattern and gap from strip2search
+					break;
+				case 3:
+					--n;
+					break;
+				}
+
+				caseType = T[m][n];
+
+				//if ((m - 1) <= X) {
+				//	if (caseType != 3) {
+				//		caseCost = A[m][n];
+				//		Y += n;
+				//		++cnt;
+				//	}
+
+				//	//if (caseType != 2 && m == X) {
+				//	//	break;
+				//	//}
+
+				//	if (m < X) {
+				//		break;
+				//	}
+				//}
+
+				if (m == X) {
+					caseCost = A[m][n];
+					Y = n;
+					if (caseType != 2) {
+						break;
+					}
+				}
+
+				if (m < X) {
+					break;
+				}
+			}
+
+			//if (Y > 0) {
+			//	Y /= cnt;
+			//	caseCost /= cnt;
+
+			//	if (caseCost < caseCostMin) {
+			//		pos = Y;
+			//		caseCostMin = caseCost;
+			//		//std::cout << "Changed position to " << pos << "; case cost " << caseCost << "; starting case number " << nStart << std::endl;
+			//		//break;
+			//	}
+			//}
+
+			if (caseCost < caseCostMin) {
+				pos = Y;
+				caseCostMin = caseCost;
+				break;
+			}
 		}
 	}
 
@@ -4715,11 +4759,9 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 			}
 
 			Mat undistorted[2];
-			if (ctl->_calibration_exists) {
+			if (ctl->_calibration_exists && !ctl->_use_uncalibrated_cameras) {
 				remap(cv_image[0], undistorted[0], ctl->_map_l[0], ctl->_map_l[1], INTER_CUBIC/*INTER_LINEAR*//*INTER_NEAREST*/, BORDER_CONSTANT);
 				remap(cv_image[1], undistorted[1], ctl->_map_r[0], ctl->_map_r[1], INTER_CUBIC/*INTER_LINEAR*//*INTER_NEAREST*/, BORDER_CONSTANT);
-				//undistorted[0] = cv_image[0].clone();
-				//undistorted[1] = cv_image[1].clone();
 			}
 			else {
 				undistorted[0] = cv_image[0].clone();
@@ -4804,7 +4846,8 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 				targetWindow = windowNumber - direction;
 
 
-				Mat aux = cv_image[2 + windowNumber].clone();
+				Mat aux = cv_image[2 + windowNumber];
+				Mat aux2 = cv_image[2 + targetWindow];
 
 				auto checkPoint = [&aux](cv::Point& pt) {
 					if (pt.x < 0) {
@@ -4820,7 +4863,7 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 						pt.y = aux.rows;
 					}
 				};
-				auto checkRectangle = [&aux, &checkPoint](cv::Rect& rect) {
+				auto checkRectangle = [&checkPoint](cv::Rect& rect) {
 					cv::Point pt1(rect.x, rect.y);
 					cv::Point pt2(rect.x + rect.width, rect.y + rect.height);
 					checkPoint(pt1);
@@ -4835,43 +4878,102 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 					cv_points[1][0]._crop = imread(IMG_DELETEDOCUMENT_H, cv::IMREAD_ANYCOLOR);
 				};
 
-				int strip2searchWidth = 0.35 * aux.cols;
-				const int patternHalfWidth = ((strip2searchWidth / 35) >> 1) << 1; //40
-				const int blurHeight = 11;
 
-				Mat cropAux(aux, cv::Rect(pt.x - patternHalfWidth, pt.y - blurHeight / 2, 2 * patternHalfWidth + 1, blurHeight));
+				int strip2searchWidth = std::floor(0.35 * aux.cols); //1400
+				const int patternHalfWidth = ((strip2searchWidth / 35) >> 1) << 2; //80
+				const int blurHeight = 9;
+
+				
 				Mat crop;
-				cv::blur(cropAux, crop, cv::Size(1, blurHeight));
-
-
-				cv::Rect strip2searchRect(pt.x, pt.y - blurHeight / 2, strip2searchWidth, blurHeight);
-				if (direction == -1) {
-					strip2searchRect.x -= strip2searchWidth;
-				}
-				checkRectangle(strip2searchRect);
-
-
-				Mat strip2searchAux(cv_image[2 + windowNumber - direction], strip2searchRect);
 				Mat strip2search;
-				cv::blur(strip2searchAux, strip2search, cv::Size(1, blurHeight));
 
 
-				double rgbSelected[3];
+				cv::Scalar cropMean = cv::mean(aux);
+				cv::Scalar strip2searchMean = cv::mean(aux2);
 
-				cv::Point patternCenter(patternHalfWidth, blurHeight / 2);
+				double cropIntensity = (cropMean(0) * 0.114 + cropMean(1) * 0.587 + cropMean(2) * 0.299);
+				double strip2searchIntensity = (strip2searchMean(0) * 0.114 + strip2searchMean(1) * 0.587 + strip2searchMean(2) * 0.299);
 
-				BuildIdealChannels_Likeness(crop, patternCenter, rgbSelected, 0);
+				cv::Point originalPoint = pt;
+
+				int disparityError[3] = { 0, 0, 0 };
+				int iter = 0;
+				int pos = 0;
+				do {
+					disparityError[0] = disparityError[1];
+
+					auto disparityAlgorithm = [&](const Mat& left, const Mat& right, double leftIntensity, double rightIntensity) -> cv::Point {
+						cv::Rect cropRect(pt.x - patternHalfWidth, pt.y - blurHeight / 2, 2 * patternHalfWidth + 1, blurHeight);
+						cv::Rect strip2searchRect(pt.x - strip2searchWidth / 2, pt.y - blurHeight / 2, strip2searchWidth, blurHeight);
+
+						checkRectangle(cropRect);
+						checkRectangle(strip2searchRect);
 
 
-				int pos = FindBestAlignment(crop, strip2search, blurHeight / 2) + 0.45;
-				if (pos <= 0) {
-					std::cout << "Unable to determnine match for the selected point" << std::endl; 
+
+
+						crop = Mat(left, cropRect);
+						strip2search = Mat(right, strip2searchRect);
+
+
+						cv::Scalar cropMean = cv::mean(crop);
+						cv::Scalar strip2searchMean = cv::mean(strip2search);
+						double seedReference[3];
+						BuildIdealChannels_Likeness(crop, cv::Point(patternHalfWidth, blurHeight / 2), seedReference, 3);
+						double cropFactor[3];
+						double strip2searchFactor[3];
+						for (int j = 0; j < 3; ++j) {
+							if (seedReference[j] == 0) {
+								seedReference[j] = 1;
+							}
+							cropFactor[j] = cropMean(j) / seedReference[j];
+							strip2searchFactor[j] = strip2searchMean(j) / seedReference[j];
+						}
+
+						WhiteBalance<uchar>(crop, cropFactor);
+						WhiteBalance<uchar>(strip2search, strip2searchFactor);
+
+
+						//if (leftIntensity > rightIntensity) {
+						//	strip2search *= (leftIntensity / rightIntensity);
+						//}
+						//else {
+						//	crop *= (rightIntensity / leftIntensity);
+						//}
+
+
+
+						pos = FindBestAlignment(crop, strip2search) + 0.45;
+
+						cv::Point detectedPoint;
+						detectedPoint.x = strip2searchRect.x + pos + 0.45;
+						detectedPoint.y = pt.y;
+
+						return detectedPoint;
+					};
+
+					detectedPoint = disparityAlgorithm(aux, aux2, cropIntensity, strip2searchIntensity);
+
+					Point pt2 = pt;
+					pt = detectedPoint;
+
+					pt = disparityAlgorithm(aux2, aux, strip2searchIntensity, cropIntensity);
+
+					disparityError[1] = std::abs(pt2.x - pt.x);
+
+				} while (++iter < 5 && (disparityError[1] - disparityError[0] > 2) && disparityError[1] > 2 && pos > 0);
+
+				
+				disparityError[2] = std::abs(originalPoint.x - pt.x);
+
+
+				if (pos <= 0 || ((disparityError[1] - disparityError[0] > 2) && disparityError[1] > 2) || disparityError[2] > patternHalfWidth) {
+					std::cout << "Unable to determnine match for the selected point; errors: " << disparityError[0] << ' ' << disparityError[1] << ' ' << disparityError[2] << std::endl;
 					default_cv_points();
 					continue;
 				}
 
-				detectedPoint.x = strip2searchRect.x + pos + 0.45;
-				detectedPoint.y = pt.y;
+				std::cout << "Used " << iter << " iterations; errors: " << disparityError[0] << ' ' << disparityError[1] << ' ' << disparityError[2] << std::endl;
 
 				cv::line(crop, cv::Point(patternHalfWidth, 0), cv::Point(patternHalfWidth, blurHeight - 1), Scalar(0, 255, 0));
 				cv::line(strip2search, cv::Point(pos, 0), cv::Point(pos, blurHeight - 1), Scalar(0, 255, 0));
@@ -4897,17 +4999,34 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 
 				size_t newPointIdx = points4D.size();
 
-				reconstruct4DPoints(
-					cv_points, 
-					ctl->_F, /*in*/
-					ctl->_cameraMatrix[0], /*in*/
-					ctl->_cameraMatrix[1], /*in*/
-					ctl->_Pl, /*in*/
-					ctl->_Pr, /*in*/
-					points4D /*out*/ // the _id member of each point links to the point in cv_point array. 
-				);
+				if (ctl->_use_uncalibrated_cameras) {
+					reconstruct4DPoints(
+						cv_points,
+						ctl->_default_F, /*in*/
+						ctl->_default_Intrinsic[0], /*in*/
+						ctl->_default_Intrinsic[1], /*in*/
+						ctl->_default_Pl, /*in*/
+						ctl->_default_Pr, /*in*/
+						points4D /*out*/ // the _id member of each point links to the point in cv_point array. 
+					);
+				}
+				else {
+					reconstruct4DPoints(
+						cv_points,
+						ctl->_F, /*in*/
+						ctl->_cameraMatrix[0], /*in*/
+						ctl->_cameraMatrix[1], /*in*/
+						ctl->_Pl, /*in*/
+						ctl->_Pr, /*in*/
+						points4D /*out*/ // the _id member of each point links to the point in cv_point array. 
+					);
+				}
 
 				if (newPointIdx < points4D.size()) {
+					double rgbSelected[3];
+					cv::Point patternCenter(patternHalfWidth, blurHeight / 2);
+					BuildIdealChannels_Likeness(crop, patternCenter, rgbSelected, 0);
+
 					auto& point4D = points4D[newPointIdx];
 					for (size_t c = 0; c < ARRAY_NUM_ELEMENTS(rgbSelected); ++c) {
 						point4D._rgb_normalized[c] = rgbSelected[c] / 255;
@@ -4918,6 +5037,9 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 					}
 					dist = std::sqrt(dist);
 					std::cout << "detected distance " << dist << std::endl;
+				}
+				else {
+					std::cout << "NO calculated distance" << std::endl;
 				}
 
 				break;
@@ -4964,10 +5086,10 @@ void launch_reconstruction(SImageAcquisitionCtl& image_acquisition_ctl, SPointsR
 		fs["cameraMatrix_r"] >> ctl->_cameraMatrix[1];
 		fs["distCoeffs_l"] >> ctl->_distortionCoeffs[0];
 		fs["distCoeffs_r"] >> ctl->_distortionCoeffs[1];
-		fs["cameraMatrix_l_first"] >> ctl->_cameraMatrix[2]; // undistort on first step of calibration
-		fs["cameraMatrix_r_first"] >> ctl->_cameraMatrix[3];
-		fs["distCoeffs_l_first"] >> ctl->_distortionCoeffs[2];
-		fs["distCoeffs_r_first"] >> ctl->_distortionCoeffs[3];
+		//fs["cameraMatrix_l_first"] >> ctl->_cameraMatrix[2]; // undistort on first step of calibration
+		//fs["cameraMatrix_r_first"] >> ctl->_cameraMatrix[3];
+		//fs["distCoeffs_l_first"] >> ctl->_distortionCoeffs[2];
+		//fs["distCoeffs_r_first"] >> ctl->_distortionCoeffs[3];
 		fs["R"] >> ctl->_R;
 		fs["T"] >> ctl->_T;
 		fs["E"] >> ctl->_E;
@@ -4991,6 +5113,32 @@ void launch_reconstruction(SImageAcquisitionCtl& image_acquisition_ctl, SPointsR
 		fs["rectified_image_size"] >> ctl->_rectified_image_size;
 
 		fs.release();
+
+
+
+		double default_Intrinsic[9] = { 3035.7144, 0, 0,   0, 3035.7144, 0,   0, 0, 0 };
+
+		ctl->_default_Intrinsic[0] = cv::Mat(3, 3, CV_64F, default_Intrinsic).clone();
+		ctl->_default_Intrinsic[1] = cv::Mat(3, 3, CV_64F, default_Intrinsic).clone();
+
+		double defaultProjection[12] = { 1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1., 0. };
+
+		ctl->_default_Pl = cv::Mat(3, 4, CV_64F, defaultProjection).clone();
+
+		defaultProjection[3] = -0.5e+004;
+		ctl->_default_Pr = cv::Mat(3, 4, CV_64F, defaultProjection).clone();
+
+		double infinity[4] = { 0., 0., 0., 1. };
+		cv::Mat e2 = ctl->_default_Pr * cv::Mat(4, 1, CV_64F, infinity);
+
+		double e2_cross[9] = { 0, -e2.at<double>(2, 0), e2.at < double>(1, 0), e2.at < double>(2, 0), 0, -e2.at < double>(0, 0), -e2.at < double>(1, 0), e2.at < double>(0, 0), 0 };
+
+		Mat invPl;
+		cv::transpose(ctl->_default_Pl, invPl);
+
+		ctl->_default_F = cv::Mat(3, 3, CV_64F, e2_cross) * ctl->_default_Pr * invPl;
+
+
 
 
 		ctl->_calibration_exists = ctl->_cameraMatrix[0].cols > 0 && ctl->_cameraMatrix[1].cols > 0;

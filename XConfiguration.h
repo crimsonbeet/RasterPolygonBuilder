@@ -77,6 +77,7 @@ struct StereoConfiguration {
 
 	int _frames_acquisition_mode; // is used to input from files the frames for reconstruction; value of >1 means expect incoming frames from external cameras; -N means read from cameras with N threads. 
 	int _evaluate_contours = 0;
+	int _use_uncalibrated_cameras = 0;
 
 	int _visual_diagnostics; 
 
@@ -224,6 +225,8 @@ private:
 
 		_frames_acquisition_mode = other._frames_acquisition_mode;
 
+		_use_uncalibrated_cameras = other._use_uncalibrated_cameras;
+
 		_use_ellipse_fit = other._use_ellipse_fit; 
 		_file_log = other._file_log; 
 
@@ -272,6 +275,7 @@ CONTAINS_FLAT_MEMBER(_use_center_of_gravity, UseCenterOfGravity)
 CONTAINS_FLAT_MEMBER(_supervised_LoG, SupervisedLoG)
 CONTAINS_FLAT_MEMBER(_frames_acquisition_mode, FramesAcquisitionMode)
 CONTAINS_FLAT_MEMBER(_evaluate_contours, EvaluateContours)
+CONTAINS_FLAT_MEMBER(_use_uncalibrated_cameras, UseUncalibratedCameras)
 CONTAINS_FLAT_MEMBER(_visual_diagnostics, VisualDiagnostics)
 CONTAINS_FLAT_MEMBER(_continuous_capture, ContinuousCapture)
 CONTAINS_FLAT_MEMBER(_engine_features_requested, FeaturesRequested)

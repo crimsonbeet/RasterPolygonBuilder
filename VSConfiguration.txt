@@ -40,6 +40,7 @@ MaxBoxsizePixels=25
 SupervisedLoG=1
 
 EvaluateContours=0
+UseUncalibratedCameras=0
 
 $
 

@@ -224,8 +224,10 @@ bool ProcessWinMessages(DWORD dwMilliseconds) {
 	return rc;
 }
 
-void AcceptNewGlobalConfiguration(StereoConfiguration& configuration/*out - local config*/,
-	SImageAcquisitionCtl& image_acquisition_ctl, SPointsReconstructionCtl* reconstruction_ctl, vs_callback_launch_workerthreads* launch_workerthreads) {
+void AcceptNewGlobalConfiguration(StereoConfiguration& configuration/*out - local config*/, 
+	SImageAcquisitionCtl& image_acquisition_ctl, 
+	SPointsReconstructionCtl* reconstruction_ctl, 
+	vs_callback_launch_workerthreads* launch_workerthreads) {
 	if (g_bTerminated) {
 		return;
 	}
@@ -310,6 +312,7 @@ void AcceptNewGlobalConfiguration(StereoConfiguration& configuration/*out - loca
 
 	image_acquisition_ctl._two_step_calibration = configuration._two_step_calibration != 0;
 	image_acquisition_ctl._save_all_calibration_images = configuration._save_all_calibration_images != 0;
+	image_acquisition_ctl._use_uncalibrated_cameras = configuration._use_uncalibrated_cameras != 0;
 
 	image_acquisition_ctl._pattern_is_whiteOnBlack = configuration._pattern_is_whiteOnBlack != 0;
 	image_acquisition_ctl._pattern_is_gridOfSquares = configuration._pattern_is_gridOfSquares != 0;
@@ -320,6 +323,7 @@ void AcceptNewGlobalConfiguration(StereoConfiguration& configuration/*out - loca
 
 	if (reconstruction_ctl) {
 		reconstruction_ctl->_pixel_threshold = configuration._pixel_threshold;
+		reconstruction_ctl->_use_uncalibrated_cameras = configuration._use_uncalibrated_cameras;
 	}
 
 	configuration._is_active = true;
@@ -1078,8 +1082,7 @@ int main() {
 
 
 
-	bool do_calibration = !(g_bCalibrationExists = CalibrationFileExists()) && !g_configuration._evaluate_contours;
-	
+	bool do_calibration = !(g_bCalibrationExists = CalibrationFileExists()) && !g_configuration._evaluate_contours && !g_configuration._use_uncalibrated_cameras;
 	image_acquisition_ctl._calib_images_from_files = do_calibration && g_configuration._frames_acquisition_mode == 1;
 
 

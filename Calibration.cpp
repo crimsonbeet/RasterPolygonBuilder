@@ -40,7 +40,7 @@ Size g_imageSize = Size(1280, 1024);
 
 double g_pattern_distance = 2.5; // 3 for grid of squares, 3.875 for chess board
 
-size_t g_min_images = 12;
+size_t g_min_images = 16;
 double g_aposteriory_minsdistance = 100;
 
 
@@ -905,7 +905,7 @@ return_t __stdcall BuildChessGridCorners(LPVOID lp) {
 		if (approx2fminQuad.size()) {
 			Mat image = imageInp.clone();
 
-			double color2gray[3] = { 0.299, 0.587, 0.114 };
+			double color2gray[3] = { 0.114, 0.587, 0.299 }; // opencv has BGR
 			ConvertColoredImage2Mono(image, color2gray, [](double ch) {
 				return std::min(ch * 256, 256.0 * 256.0);
 			});
@@ -1525,6 +1525,27 @@ return_t __stdcall GetImagesImagesWorkItem(LPVOID lp) {
 }
 
 
+template<typename T>
+void WhiteBalance(Mat& image, double whiteFactor[3]) {
+	typedef cv::Vec<T, 3> Vec3t;
+	for (int r = 0; r < image.rows; ++r) {
+		for (int c = 0; c < image.cols; ++c) {
+			Vec3t pixImage(image.at<T>(r, c));
+			for (int j = 0; j < 3; ++j) {
+				pixImage[j] = cv::saturate_cast<T>(pixImage[j] * whiteFactor[j]);
+			}
+		}
+	}
+}
+
+void WhiteBalance(Mat_<float>& image, double whiteFactor[3]) {
+	WhiteBalance<float>(image, whiteFactor);
+}
+
+void WhiteBalance(Mat_<uchar>& image, double whiteFactor[3]) {
+	WhiteBalance<uchar>(image, whiteFactor);
+}
+
 
 return_t __stdcall AcquireImagepoints(LPVOID lp) {
 	SImageAcquisitionCtl *ctl = (SImageAcquisitionCtl*)lp;
@@ -1615,15 +1636,7 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 					}
 				}
 
-				typedef Vec<float, 3> Vec3f;
-				for (int r = 0; r < image.rows; ++r) {
-					for (int c = 0; c < image.cols; ++c) {
-						Vec3f& pixImage = image.at<Vec3f>(r, c);
-						for (int j = 0; j < 3; ++j) {
-							pixImage[j] *= whiteFactor[j];
-						}
-					}
-				}
+				WhiteBalance<float>(image, whiteFactor);
 
 				image.convertTo(aux, CV_8UC3);
 
@@ -2112,6 +2125,9 @@ return_t __stdcall StereoCalibrateIteration(LPVOID lp) {
 		SampleImagepoints(sample_size, stereoImagePoints_left, stereoImagePoints_left1, nullptr, &stereoImagePoints_right, &stereoImagePoints_right1);
 
 		int calibrateFlags = 0;// CALIB_FIX_INTRINSIC;// CALIB_USE_INTRINSIC_GUESS;
+		if (!ctl->_cameraMatrix1->empty() && !ctl->_cameraMatrix2->empty()) {
+			calibrateFlags = CALIB_FIX_FOCAL_LENGTH;
+		}
 
 		*ctl->_rms_s = stereoCalibrate(vectorObjectPoints,
 			stereoImagePoints_left1, stereoImagePoints_right1,
@@ -2358,6 +2374,14 @@ return_t __stdcall ConductCalibration(LPVOID lp) {
 
 			ctl._sample_size = min_images;
 
+			////double intrinsicLeft[9] = { 1553.5714, 0, 0, 0, 1553.5714, 0, 0, 0, 0 };
+			//double intrinsicLeft[9] = { 3035.7144, 0, 0, 0, 3035.7144, 0, 0, 0, 0 };
+			//double intrinsicRight[9] = { 3035.7144, 0, 0, 0, 3035.7144, 0, 0, 0, 0 };
+
+			//*ctl._cameraMatrix1 = cv::Mat(3, 3, CV_64F, intrinsicLeft).clone();
+			//*ctl._cameraMatrix2 = cv::Mat(3, 3, CV_64F, intrinsicRight).clone();
+
+
 			ctl._status = 1;
 			QueueWorkItem(StereoCalibrateIteration, &ctl);
 		}
@@ -2380,9 +2404,6 @@ return_t __stdcall ConductCalibration(LPVOID lp) {
 
 	average_rms /= rms_cnt;
 	double barrier_rms = (average_rms + 2 * max_rms) / 3;
-
-	barrier_rms = average_rms;
-
 
 
 	Mat cameraMatrix[2];

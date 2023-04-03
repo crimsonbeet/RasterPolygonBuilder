@@ -75,8 +75,18 @@ double GetFScore(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2) {
 	double fscore = 1;
 	for (int j = 0; j < 3; ++j) {
 		if (ch1[j] > 0 && ch2[j] > 0) {
-			fscore *= (2.0 * (double)ch1[j] * (double)ch2[j]) / (pow(ch1[j], 2) + pow(ch2[j], 2));
+			const double div = pow(ch1[j], 2) + pow(ch2[j], 2);
+			const double num = (double)ch1[j] * (double)ch2[j];
+			if (div > 100 && num > 10) {
+				fscore *= (2.0 * num) / div;
+			}
+			else {
+				fscore *= 0.01;
+			}
 		}
+	}
+	if (isnan(fscore)) {
+		fscore = 0;
 	}
 	return fscore;
 }
@@ -394,7 +404,7 @@ bool ConvertColoredImage2Mono_HSV_Likeness(Mat& image, double rgbIdeal[3]) {
 	const double saturationIdeal = hsvIdeal[1];
 	const double valueIdeal = hsvIdeal[2];
 
-	const double y_componentIdeal = rgbIdeal[0] * 0.299 + rgbIdeal[1] * 0.587 + rgbIdeal[2] * 0.114;
+	const double y_componentIdeal = rgbIdeal[0] * 0.114 + rgbIdeal[1] * 0.587 + rgbIdeal[2] * 0.299;
 
 	if (y_componentIdeal < 40) {
 		return false;
