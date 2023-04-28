@@ -149,6 +149,11 @@ extern const char *IMG_UNDODELETEDOCUMENT;
 extern const char *IMG_UNDODELETEDOCUMENT_D;
 extern const char *IMG_UNDODELETEDOCUMENT_H;
 
+extern const char* IMG_CAMERA;
+extern const char* IMG_CAMERA_D;
+extern const char* IMG_CAMERA_H;
+
+
 
 #define APPLICATION_INITIALIZED "initialized"
 #define APPLICATION_ACTIVE "active"

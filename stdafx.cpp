@@ -43,6 +43,10 @@ const char *IMG_UNDODELETEDOCUMENT_D = "Bitmaps\\delete_24_d.bmp";
 const char *IMG_UNDODELETEDOCUMENT_H = "Bitmaps\\undodelete_24_h.bmp";
 
 
+const char* IMG_CAMERA = "Bitmaps\\camera_24.bmp";
+const char* IMG_CAMERA_D = "Bitmaps\\camera_24_d.bmp";
+const char* IMG_CAMERA_H = "Bitmaps\\camera_24_h.bmp";
+
 
 std::string itostdstring(int j) {
 	std::ostringstream ostr;

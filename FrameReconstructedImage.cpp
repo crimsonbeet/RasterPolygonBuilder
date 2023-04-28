@@ -5,22 +5,25 @@
 #include "FrameReconstructedImage.h"
 #include "FrameMain.h"
 
+#include "XAndroidCamera.h"
+
+
 //#pragma comment(lib, "comctl32.lib")
 
 
 const std::string _g_document_images[2] = { 
 	IMG_NEWDOCUMENT, 
-	IMG_DELETEDOCUMENT
+	IMG_CAMERA
 }; 
 
 const std::string _g_document_images_disabled[2] = { 
 	IMG_NEWDOCUMENT_D, 
-	IMG_DELETEDOCUMENT_D 
+	IMG_CAMERA_D 
 }; 
 
 const std::string _g_document_images_hot[2] = { 
 	IMG_NEWDOCUMENT_H, 
-	IMG_DELETEDOCUMENT_H 
+	IMG_CAMERA_H 
 }; 
 
 
@@ -127,19 +130,23 @@ void FrameReconstructedImage::ProcessToolBarCommand(SReBar& rebar) {
 		switch(rebar._wparam) {
 			case 203/*new document*/: 
 			break; 
-			case 204/*delete document*/: 
+			case 204/*camera or recover calibration*/: 
 			if(_toolbar->_piml->_images[1] == _g_altdocument_images[1]) {
 				path_file_from = g_path_calibrate_file_backup;
 				path_file_to = CalibrationFileName();
-			}
-			ReadTextFile(path_file_from, str);
-			if(str.size()) {
-				WriteTextFile(path_file_to, str);
-				str.resize(0); 
-				WriteTextFile(path_file_from, str);
+				ReadTextFile(path_file_from, str);
+				if (str.size()) {
+					WriteTextFile(path_file_to, str);
+					str.resize(0);
+					WriteTextFile(path_file_from, str);
 
-				g_bRestart = true;
-				g_bTerminated = true;
+					g_bRestart = true;
+					g_bTerminated = true;
+				}
+			}
+			else {
+				AndroidCaptureStillImageRequest request;
+				PostObject(request);
 			}
 
 			break;
@@ -216,7 +223,7 @@ void FrameReconstructedImage::ProcessToolBarNotify(SReBar& rebar) {
 						strncpy(tipinfo->pszText, (str[0] + '|' + str[1] + '|' + str[2]).c_str(), tipinfo->cchTextMax);
 						break; 
 						case 204: 
-						GetStringentity(_toolbar->_piml->_images[1] == _g_document_images[1] ? Delete_Calibration : Restore_Calibration, str[0]);
+						GetStringentity(_toolbar->_piml->_images[1] == _g_document_images[1] ? CaptureImage_Action : Restore_Calibration, str[0]);
 						strncpy(tipinfo->pszText, str[0].c_str(), tipinfo->cchTextMax); 
 						break; 
 					} 

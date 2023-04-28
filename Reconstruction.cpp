@@ -380,13 +380,11 @@ double FindBestAlignment(const Mat& crop, const Mat& strip2search) { // returns 
 
 	for (int w = 1; pos <= 0 && w < 4; ++w) {
 
-		for (int i = 2; i < M; ++i) {
+		for (int i = 1; i < M; ++i) {
 			const int i_1 = i - 1;
 			const double X_abs_i_1 = std::abs(double(X - i_1));
 			const double log2_X_i = approx_log2(X_abs_i_1 < 1 ? 1 : X_abs_i_1); // 0 - at the center of crop, log2_X, ~5, at the ends of crop
 			const double distanceFactor = 1 + approx_log2(1 + log2_X - log2_X_i);
-			//const double distanceFactor = 1 + approx_log2(1 + approx_log2(1 + log2_X - log2_X_i));
-			//const double distanceFactor = 1;
 			const int gapCost = 20000 * distanceFactor;
 			const double scoreWeight = w * gapCost;
 			for (size_t j = 1; j < N; ++j) {
@@ -419,38 +417,42 @@ double FindBestAlignment(const Mat& crop, const Mat& strip2search) { // returns 
 		size_t n = N - 1;
 
 		int64_t caseCost = A[m][n];
-		int64_t caseCostMax = caseCost + 1;
+		int64_t caseCostMax = caseCost;
 		if (caseCostMax <= 0) {
 			continue;
 		}
 
-		std::stack<size_t> q;
-		q.push(n);
+		std::stack<size_t> st;
+		st.push(n);
 
-		for (size_t j = n; j > (M + (M >> 1)); --j) {
+		for (size_t j = n; j > M/*(M + (M >> 1))*/; --j) {
 			if (T[m][j] != 3) {
 				if (A[m][j] <= caseCost) {
 					n = j;
-					q.push(n);
+					st.push(n);
 					caseCost = A[m][j];
 				}
 			}
 		}
 
 		int64_t caseCostMin = caseCostMax;
-		while (!q.empty()) {
+		int64_t caseCostTotalMin = caseCostMax;
+		while (!st.empty()) {
 			m = M - 1;
-			n = q.top();
-			q.pop();
+			n = st.top();
+			st.pop();
 
 			size_t nStart = n;
-			//std::cout << "starting case number " << nStart << std::endl;
 
 			int caseType = T[m][n];
 			caseCost = A[m][n];
 
+			int64_t caseCostTotal = caseCost;
+			if (caseCostTotal > caseCostTotalMin) {
+				break;
+			}
+
 			double Y = 0; // yet unknown
-			//int cnt = 0;
 
 			while (caseType != 0) {
 				switch (caseType) {
@@ -468,22 +470,6 @@ double FindBestAlignment(const Mat& crop, const Mat& strip2search) { // returns 
 
 				caseType = T[m][n];
 
-				//if ((m - 1) <= X) {
-				//	if (caseType != 3) {
-				//		caseCost = A[m][n];
-				//		Y += n;
-				//		++cnt;
-				//	}
-
-				//	//if (caseType != 2 && m == X) {
-				//	//	break;
-				//	//}
-
-				//	if (m < X) {
-				//		break;
-				//	}
-				//}
-
 				if (m == X) {
 					caseCost = A[m][n];
 					Y = n;
@@ -497,22 +483,10 @@ double FindBestAlignment(const Mat& crop, const Mat& strip2search) { // returns 
 				}
 			}
 
-			//if (Y > 0) {
-			//	Y /= cnt;
-			//	caseCost /= cnt;
-
-			//	if (caseCost < caseCostMin) {
-			//		pos = Y;
-			//		caseCostMin = caseCost;
-			//		//std::cout << "Changed position to " << pos << "; case cost " << caseCost << "; starting case number " << nStart << std::endl;
-			//		//break;
-			//	}
-			//}
-
 			if (caseCost < caseCostMin) {
 				pos = Y;
 				caseCostMin = caseCost;
-				break;
+				caseCostTotalMin = caseCostTotal;
 			}
 		}
 	}
@@ -4881,6 +4855,7 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 
 				int strip2searchWidth = std::floor(0.35 * aux.cols); //1400
 				const int patternHalfWidth = ((strip2searchWidth / 35) >> 1) << 2; //80
+				//const int patternHalfWidth = strip2searchWidth >> 2;
 				const int blurHeight = 9;
 
 				
@@ -4919,15 +4894,12 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 						cv::Scalar cropMean = cv::mean(crop);
 						cv::Scalar strip2searchMean = cv::mean(strip2search);
 						double seedReference[3];
-						BuildIdealChannels_Likeness(crop, cv::Point(patternHalfWidth, blurHeight / 2), seedReference, 3);
+						BuildIdealChannels_Likeness(crop, cv::Point(patternHalfWidth, blurHeight / 2), seedReference, blurHeight);
 						double cropFactor[3];
 						double strip2searchFactor[3];
 						for (int j = 0; j < 3; ++j) {
-							if (seedReference[j] == 0) {
-								seedReference[j] = 1;
-							}
-							cropFactor[j] = cropMean(j) / seedReference[j];
-							strip2searchFactor[j] = strip2searchMean(j) / seedReference[j];
+							cropFactor[j] = cropMean(j) / std::max(seedReference[j], 1.0);
+							strip2searchFactor[j] = strip2searchMean(j) / std::max(seedReference[j], 1.0);
 						}
 
 						WhiteBalance<uchar>(crop, cropFactor);
@@ -4961,6 +4933,8 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 
 					disparityError[1] = std::abs(pt2.x - pt.x);
 
+					std::cout << "Disparity iteration " << iter << "; errors: " << disparityError[0] << ' ' << disparityError[1] << ' ' << disparityError[2] << std::endl;
+
 				} while (++iter < 5 && (disparityError[1] - disparityError[0] > 2) && disparityError[1] > 2 && pos > 0);
 
 				
@@ -4975,8 +4949,8 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 
 				std::cout << "Used " << iter << " iterations; errors: " << disparityError[0] << ' ' << disparityError[1] << ' ' << disparityError[2] << std::endl;
 
-				cv::line(crop, cv::Point(patternHalfWidth, 0), cv::Point(patternHalfWidth, blurHeight - 1), Scalar(0, 255, 0));
-				cv::line(strip2search, cv::Point(pos, 0), cv::Point(pos, blurHeight - 1), Scalar(0, 255, 0));
+				cv::line(crop, cv::Point(patternHalfWidth, 0), cv::Point(patternHalfWidth, crop.rows - 1), Scalar(0, 255, 0));
+				cv::line(strip2search, cv::Point(pos, 0), cv::Point(pos, strip2search.rows - 1), Scalar(0, 255, 0));
 
 				cv_points[windowNumber].resize(1);
 				cv_points[windowNumber][0]._crop = crop;
@@ -4984,7 +4958,7 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 				cv_points[windowNumber][0].y = pt.y;
 
 				cv::Point pt1(pos - patternHalfWidth, 0);
-				cv::Point pt2(pos + patternHalfWidth + 1, blurHeight);
+				cv::Point pt2(pos + patternHalfWidth + 1, strip2search.rows);
 				if (pt1.x < 0) {
 					pt1.x = 0;
 				}
