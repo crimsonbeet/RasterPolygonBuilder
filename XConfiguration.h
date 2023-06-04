@@ -75,7 +75,7 @@ struct StereoConfiguration {
 
 	int _supervised_LoG = 1; 
 
-	int _frames_acquisition_mode; // is used to input from files the frames for reconstruction; value of >1 means expect incoming frames from external cameras; -N means read from cameras with N threads. 
+	int _frames_acquisition_mode; // is used to input frames for reconstruction; == 1 reads from files sequentially, so just one thread; >1 means expect incoming frames from external cameras; -N means read from cameras with N threads. 
 	int _evaluate_contours = 0;
 	int _use_uncalibrated_cameras = 0;
 

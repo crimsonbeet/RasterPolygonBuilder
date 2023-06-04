@@ -4854,8 +4854,7 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 
 
 				int strip2searchWidth = std::floor(0.35 * aux.cols); //1400
-				const int patternHalfWidth = ((strip2searchWidth / 35) >> 1) << 2; //80
-				//const int patternHalfWidth = strip2searchWidth >> 2;
+				int patternHalfWidth = ((strip2searchWidth / 35) >> 1) << 2;
 				const int blurHeight = 9;
 
 				
@@ -4906,15 +4905,6 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 						WhiteBalance<uchar>(strip2search, strip2searchFactor);
 
 
-						//if (leftIntensity > rightIntensity) {
-						//	strip2search *= (leftIntensity / rightIntensity);
-						//}
-						//else {
-						//	crop *= (rightIntensity / leftIntensity);
-						//}
-
-
-
 						pos = FindBestAlignment(crop, strip2search) + 0.45;
 
 						cv::Point detectedPoint;
@@ -4924,6 +4914,10 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 						return detectedPoint;
 					};
 
+					if (patternHalfWidth > 8) {
+						patternHalfWidth >>= 1;
+					}
+
 					detectedPoint = disparityAlgorithm(aux, aux2, cropIntensity, strip2searchIntensity);
 
 					Point pt2 = pt;
@@ -4932,13 +4926,12 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 					pt = disparityAlgorithm(aux2, aux, strip2searchIntensity, cropIntensity);
 
 					disparityError[1] = std::abs(pt2.x - pt.x);
+					disparityError[2] = std::abs(originalPoint.x - pt.x);
 
 					std::cout << "Disparity iteration " << iter << "; errors: " << disparityError[0] << ' ' << disparityError[1] << ' ' << disparityError[2] << std::endl;
 
-				} while (++iter < 5 && (disparityError[1] - disparityError[0] > 2) && disparityError[1] > 2 && pos > 0);
+				} while (++iter < 5 && (std::abs(disparityError[1] - disparityError[0]) > 2) && disparityError[1] > 2 && pos > 0);
 
-				
-				disparityError[2] = std::abs(originalPoint.x - pt.x);
 
 
 				if (pos <= 0 || ((disparityError[1] - disparityError[0] > 2) && disparityError[1] > 2) || disparityError[2] > patternHalfWidth) {

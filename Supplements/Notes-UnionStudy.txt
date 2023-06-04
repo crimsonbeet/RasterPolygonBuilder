@@ -1,0 +1,38 @@
+
+
+struct TestUnion {
+	union {
+		std::shared_ptr<SPointsReconstructionCtl> obj1;
+		std::shared_ptr<std::vector<SImageAcquisitionCtl>> obj2;
+	};
+
+	TestUnion(SPointsReconstructionCtl *obj): obj1(obj) {
+	}
+	TestUnion(const TestUnion& u) : obj2(nullptr) {
+		obj1 = u.obj1;
+	}
+	TestUnion(TestUnion&& u) noexcept : obj2(nullptr) {
+		obj1 = u.obj1;
+	}
+	~TestUnion() {
+		obj1 = nullptr;
+	}
+};
+
+
+	{
+		TestUnion testObj(new SPointsReconstructionCtl());
+
+		testObj.obj1 = std::shared_ptr < SPointsReconstructionCtl >(new SPointsReconstructionCtl());
+		testObj.obj1->_calibration_exists = true;
+
+		TestUnion testObj2 = testObj;
+
+		std::queue<TestUnion> q;
+		q.push(testObj2);
+		q.push(testObj);
+
+		auto x = q.front();
+		q.pop();
+	}
+
