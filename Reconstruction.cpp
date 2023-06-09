@@ -1,4 +1,4 @@
-#include "stdafx.h"
+﻿#include "stdafx.h"
 #include <Mmsystem.h>
 
 #include "XConfiguration.h"
@@ -349,9 +349,9 @@ double RadiusOfRectangle(const std::vector<Point2d>& points) {
 
 
 
-double FindBestAlignment(const Mat& crop, const Mat& strip2search) { // returns center point of alignment
-	const size_t M = crop.cols + 1;
-	const size_t N = strip2search.cols + 1;
+double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int targetColumn) { // returns point of alignment in strip2search
+	const int M = cropIn.cols + 1;
+	const int N = strip2searchIn.cols + 1;
 
 	std::vector<std::vector<int64_t>> A(M);
 	for (auto& v : A) {
@@ -371,12 +371,32 @@ double FindBestAlignment(const Mat& crop, const Mat& strip2search) { // returns 
 		A[0][j] = 1;
 	}
 
+	Mat crop;
+	Mat strip2search;
 
-	const int X = M / 2;
+
+	int X;
+
+	const int W2 = cropIn.cols / 2;
+	if (targetColumn > W2) {
+		cv::flip(cropIn, crop, -1);
+		cv::flip(strip2searchIn, strip2search, -1);
+
+		X = crop.cols - targetColumn - 1;
+	}
+	else {
+		crop = cropIn;
+		strip2search = strip2searchIn;
+
+		X = targetColumn;
+	}
+
+	++X;
+
 
 	const double log2_X = approx_log2(X + 1);
 
-	double pos = 0;
+	double pos = -N;
 
 	for (int w = 1; pos <= 0 && w < 4; ++w) {
 
@@ -491,6 +511,9 @@ double FindBestAlignment(const Mat& crop, const Mat& strip2search) { // returns 
 		}
 	}
 
+	if (targetColumn > W2) {
+		pos = strip2search.cols - pos - 1;
+	}
 
 	return pos;
 }
@@ -1632,7 +1655,7 @@ bool RowsCenterEllipse(std::vector<ABoxedrow> rows, ClusteredPoint& point, Mat& 
 	}
 
 
-	//Khachiyan�s algorithm for the computation of minimum-volume enclosing ellipsoids
+	//Khachiyan’s algorithm for the computation of minimum-volume enclosing ellipsoids
 	if(pixels.size() > 14) {
 		int N = (int)pixels.size();
 		Mat_<double> Q(N, 3);
@@ -4666,6 +4689,18 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 }
 
 
+struct DisparityAlgorithmControl {
+	int _ancor_offset = 0;
+	int _result_offset = 0;
+
+	std::function<cv::Point2d(const Mat& left, const Mat& right, double leftIntensity, double rightIntensity)> disparityAlgorithm;
+};
+
+
+return_t __stdcall ExecuteDisparityAlgorithm(LPVOID lp) {
+	DisparityAlgorithmControl* ctl = (DisparityAlgorithmControl*)lp;
+	return 0;
+}
 
 
 return_t __stdcall RenderCameraImages(LPVOID lp) {
@@ -4814,13 +4849,13 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 				//pt.x = 1312;
 				//pt.y = 1608;
 
-				int windowNumber = g_LoG_seedPoint.params.windowNumber - 1;
-				int direction = windowNumber == 1 ? 1 : -1;
+				int selectedWindow = g_LoG_seedPoint.params.windowNumber - 1;
+				int direction = selectedWindow == 1 ? 1 : -1;
 
-				targetWindow = windowNumber - direction;
+				targetWindow = selectedWindow - direction;
 
 
-				Mat aux = cv_image[2 + windowNumber];
+				Mat aux = cv_image[2 + selectedWindow];
 				Mat aux2 = cv_image[2 + targetWindow];
 
 				auto checkPoint = [&aux](cv::Point& pt) {
@@ -4858,10 +4893,6 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 				const int blurHeight = 9;
 
 				
-				Mat crop;
-				Mat strip2search;
-
-
 				cv::Scalar cropMean = cv::mean(aux);
 				cv::Scalar strip2searchMean = cv::mean(aux2);
 
@@ -4870,94 +4901,137 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 
 				cv::Point originalPoint = pt;
 
-				int disparityError[3] = { 0, 0, 0 };
+				Mat crop_buffer[3][2];
+				Mat strip2search_buffer[3][2];
+				int disparityError[3][3] = { 0, 0, 0 };
+				Point resPoints[3];
+				Point mapPoints[3];
+
 				int iter = 0;
 				int pos = 0;
+
+				int best_pass = 0;
 				do {
-					disparityError[0] = disparityError[1];
-
-					auto disparityAlgorithm = [&](const Mat& left, const Mat& right, double leftIntensity, double rightIntensity) -> cv::Point {
-						cv::Rect cropRect(pt.x - patternHalfWidth, pt.y - blurHeight / 2, 2 * patternHalfWidth + 1, blurHeight);
-						cv::Rect strip2searchRect(pt.x - strip2searchWidth / 2, pt.y - blurHeight / 2, strip2searchWidth, blurHeight);
-
-						checkRectangle(cropRect);
-						checkRectangle(strip2searchRect);
-
-
-
-
-						crop = Mat(left, cropRect);
-						strip2search = Mat(right, strip2searchRect);
-
-
-						cv::Scalar cropMean = cv::mean(crop);
-						cv::Scalar strip2searchMean = cv::mean(strip2search);
-						double seedReference[3];
-						BuildIdealChannels_Likeness(crop, cv::Point(patternHalfWidth, blurHeight / 2), seedReference, blurHeight);
-						double cropFactor[3];
-						double strip2searchFactor[3];
-						for (int j = 0; j < 3; ++j) {
-							cropFactor[j] = cropMean(j) / std::max(seedReference[j], 1.0);
-							strip2searchFactor[j] = strip2searchMean(j) / std::max(seedReference[j], 1.0);
-						}
-
-						WhiteBalance<uchar>(crop, cropFactor);
-						WhiteBalance<uchar>(strip2search, strip2searchFactor);
-
-
-						pos = FindBestAlignment(crop, strip2search) + 0.45;
-
-						cv::Point detectedPoint;
-						detectedPoint.x = strip2searchRect.x + pos + 0.45;
-						detectedPoint.y = pt.y;
-
-						return detectedPoint;
-					};
+					pt = originalPoint;
 
 					if (patternHalfWidth > 8) {
 						patternHalfWidth >>= 1;
+						strip2searchWidth >>= 1;
 					}
 
-					detectedPoint = disparityAlgorithm(aux, aux2, cropIntensity, strip2searchIntensity);
-
-					Point pt2 = pt;
-					pt = detectedPoint;
-
-					pt = disparityAlgorithm(aux2, aux, strip2searchIntensity, cropIntensity);
-
-					disparityError[1] = std::abs(pt2.x - pt.x);
-					disparityError[2] = std::abs(originalPoint.x - pt.x);
-
-					std::cout << "Disparity iteration " << iter << "; errors: " << disparityError[0] << ' ' << disparityError[1] << ' ' << disparityError[2] << std::endl;
-
-				} while (++iter < 5 && (std::abs(disparityError[1] - disparityError[0]) > 2) && disparityError[1] > 2 && pos > 0);
 
 
 
-				if (pos <= 0 || ((disparityError[1] - disparityError[0] > 2) && disparityError[1] > 2) || disparityError[2] > patternHalfWidth) {
-					std::cout << "Unable to determnine match for the selected point; errors: " << disparityError[0] << ' ' << disparityError[1] << ' ' << disparityError[2] << std::endl;
+					auto disparityAlgorithm = [&](const int pass) {
+						int ancorOffset = patternHalfWidth * pass;
+
+						auto disparityAlgorithm_internal = [ancorOffset, patternHalfWidth, strip2searchWidth, &checkRectangle]
+							(const cv::Point &pt0, const Mat& left, const Mat& right, Mat& crop, Mat& strip2search, double leftIntensity, double rightIntensity) -> cv::Point {
+
+							//cv::Rect -> x≤pt.x<x+width, y≤pt.y<y+height
+
+							cv::Rect cropRect(pt0.x - ancorOffset, pt0.y - blurHeight / 2, 2 * patternHalfWidth + 1, blurHeight);
+							cv::Rect strip2searchRect(pt0.x - strip2searchWidth / 2, pt0.y - blurHeight / 2, strip2searchWidth, blurHeight);
+
+							checkRectangle(cropRect);
+							checkRectangle(strip2searchRect);
+
+
+							crop = Mat(left, cropRect);
+							strip2search = Mat(right, strip2searchRect);
+
+
+							cv::Scalar cropMean = cv::mean(crop);
+							cv::Scalar strip2searchMean = cv::mean(strip2search);
+							double seedReference[3];
+							BuildIdealChannels_Likeness(crop, cv::Point(patternHalfWidth, blurHeight / 2), seedReference, blurHeight);
+							double cropFactor[3];
+							double strip2searchFactor[3];
+							for (int j = 0; j < 3; ++j) {
+								cropFactor[j] = cropMean(j) / std::max(seedReference[j], 1.0);
+								strip2searchFactor[j] = strip2searchMean(j) / std::max(seedReference[j], 1.0);
+							}
+
+
+							WhiteBalance<uchar>(crop, cropFactor);
+							WhiteBalance<uchar>(strip2search, strip2searchFactor);
+
+
+							int pos = FindBestAlignment(crop, strip2search, ancorOffset) + 0.45;
+
+							cv::Point resPoint;
+							resPoint.x = strip2searchRect.x + pos - 1;
+							resPoint.y = pt0.y;
+
+							return resPoint;
+						};
+
+						resPoints[pass] = disparityAlgorithm_internal(pt, aux, aux2, crop_buffer[pass][0], strip2search_buffer[pass][0], cropIntensity, strip2searchIntensity);
+
+						mapPoints[pass] = disparityAlgorithm_internal(resPoints[pass], aux2, aux, crop_buffer[pass][1], strip2search_buffer[pass][1], strip2searchIntensity, cropIntensity);
+
+						disparityError[pass][1] = std::abs(pt.x - mapPoints[pass].x);
+						disparityError[pass][2] = std::abs(originalPoint.x - mapPoints[pass].x);
+					};
+
+
+
+					int min_error = std::numeric_limits<int>::max();
+
+					for (int pass = 0; pass < 3; ++pass) {
+						disparityError[pass][0] = disparityError[pass][1];
+						disparityAlgorithm(pass);
+
+						if (disparityError[pass][1] < min_error) {
+							best_pass = pass;
+							min_error = disparityError[pass][1];
+						}
+					}
+
+					pos = resPoints[best_pass].x - (pt.x - strip2searchWidth / 2);
+
+
+
+					std::cout << "Disparity iteration " << iter << "; errors: " << disparityError[best_pass][0] << ' ' << disparityError[best_pass][1] << ' ' << disparityError[best_pass][2] << std::endl;
+
+				} while (++iter < 5 && (std::abs(disparityError[best_pass][1] - disparityError[best_pass][0]) > 2) && disparityError[best_pass][1] > 2 && pos > 0);
+
+
+
+				if (pos <= 0 || ((std::abs(disparityError[best_pass][1] - disparityError[best_pass][0]) > 2) && disparityError[best_pass][1] > 2) || disparityError[best_pass][2] > patternHalfWidth) {
+					std::cout << "Unable to determnine match for the selected point; errors: " << disparityError[best_pass][0] << ' ' << disparityError[best_pass][1] << ' ' << disparityError[best_pass][2] << std::endl;
 					default_cv_points();
 					continue;
 				}
 
-				std::cout << "Used " << iter << " iterations; errors: " << disparityError[0] << ' ' << disparityError[1] << ' ' << disparityError[2] << std::endl;
 
-				cv::line(crop, cv::Point(patternHalfWidth, 0), cv::Point(patternHalfWidth, crop.rows - 1), Scalar(0, 255, 0));
-				cv::line(strip2search, cv::Point(pos, 0), cv::Point(pos, strip2search.rows - 1), Scalar(0, 255, 0));
 
-				cv_points[windowNumber].resize(1);
-				cv_points[windowNumber][0]._crop = crop;
-				cv_points[windowNumber][0].x = pt.x;
-				cv_points[windowNumber][0].y = pt.y;
+				detectedPoint = resPoints[best_pass];
+				pt = mapPoints[best_pass];
 
-				cv::Point pt1(pos - patternHalfWidth, 0);
-				cv::Point pt2(pos + patternHalfWidth + 1, strip2search.rows);
+				Mat crop = crop_buffer[best_pass][0];
+				Mat strip2search = strip2search_buffer[best_pass][0];
+
+				cv::Point pt1(pos - patternHalfWidth * best_pass, 0);
+				cv::Point pt2(pos + patternHalfWidth * (2 - best_pass) + 1, strip2search.rows);
 				if (pt1.x < 0) {
 					pt1.x = 0;
 				}
 				if (pt2.x > (strip2search.cols)) {
 					pt2.x = strip2search.cols;
 				}
+
+
+
+				std::cout << "Used " << iter << " iterations; errors: " << disparityError[best_pass][0] << ' ' << disparityError[best_pass][1] << ' ' << disparityError[best_pass][2] << std::endl;
+
+				cv::line(crop, cv::Point(patternHalfWidth*best_pass, 0), cv::Point(patternHalfWidth*best_pass, crop.rows - 1), Scalar(0, 255, 0));
+				cv::line(strip2search, cv::Point(pos, 0), cv::Point(pos, strip2search.rows - 1), Scalar(0, 255, 0));
+
+				cv_points[selectedWindow].resize(1);
+				cv_points[selectedWindow][0]._crop = crop;
+				cv_points[selectedWindow][0].x = pt.x;
+				cv_points[selectedWindow][0].y = pt.y;
 
 				cv_points[targetWindow].resize(1);
 				cv_points[targetWindow][0]._crop = Mat(strip2search, cv::Rect(pt1, pt2));
@@ -4991,7 +5065,7 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 
 				if (newPointIdx < points4D.size()) {
 					double rgbSelected[3];
-					cv::Point patternCenter(patternHalfWidth, blurHeight / 2);
+					cv::Point patternCenter(patternHalfWidth*best_pass, blurHeight / 2);
 					BuildIdealChannels_Likeness(crop, patternCenter, rgbSelected, 0);
 
 					auto& point4D = points4D[newPointIdx];
