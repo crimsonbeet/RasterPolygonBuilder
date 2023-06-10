@@ -4690,15 +4690,17 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 
 struct DisparityAlgorithmControl {
-	int _ancor_offset = 0;
-	int _result_offset = 0;
-
-	std::function<cv::Point2d(const Mat& left, const Mat& right, double leftIntensity, double rightIntensity)> disparityAlgorithm;
+	int _pass = 0;
+	int _status = 0; // 0 - unknown, 1 - started, 2 - completed.
+	std::function<void(int)> _disparityAlgorithm;
 };
 
 
 return_t __stdcall ExecuteDisparityAlgorithm(LPVOID lp) {
 	DisparityAlgorithmControl* ctl = (DisparityAlgorithmControl*)lp;
+	ctl->_status = 1;
+	ctl->_disparityAlgorithm(ctl->_pass);
+	ctl->_status = 2;
 	return 0;
 }
 
@@ -4901,14 +4903,24 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 
 				cv::Point originalPoint = pt;
 
-				Mat crop_buffer[3][2];
-				Mat strip2search_buffer[3][2];
-				int disparityError[3][3] = { 0, 0, 0 };
-				Point resPoints[3];
-				Point mapPoints[3];
+				struct iteration_result {
+					int ancorOffset = 0;
+					int pos = 0;
+					Mat crop_buffer[2];
+					Mat strip2search_buffer[2];
+					int disparityError[3] = { 0, 0, 0 };
+					Point resPoint;
+					Point mapPoint;
+				};
 
+				DisparityAlgorithmControl iter_ctl[3];
+
+				iteration_result iter_rs[3];
 				int iter = 0;
+
 				int pos = 0;
+
+				int good_count = 0;
 
 				int best_pass = 0;
 				do {
@@ -4916,10 +4928,10 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 
 					if (patternHalfWidth > 8) {
 						patternHalfWidth >>= 1;
-						strip2searchWidth >>= 1;
 					}
 
 
+					std::cout << "running Disparity iteration " << iter << "; patternHalfWidth: " << patternHalfWidth << "; strip2searchWidth: " << strip2searchWidth << std::endl;
 
 
 					auto disparityAlgorithm = [&](const int pass) {
@@ -4966,54 +4978,90 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 							return resPoint;
 						};
 
-						resPoints[pass] = disparityAlgorithm_internal(pt, aux, aux2, crop_buffer[pass][0], strip2search_buffer[pass][0], cropIntensity, strip2searchIntensity);
+						auto& it = iter_rs[pass];
 
-						mapPoints[pass] = disparityAlgorithm_internal(resPoints[pass], aux2, aux, crop_buffer[pass][1], strip2search_buffer[pass][1], strip2searchIntensity, cropIntensity);
+						it.resPoint = disparityAlgorithm_internal(pt, aux, aux2, it.crop_buffer[0], it.strip2search_buffer[0], cropIntensity, strip2searchIntensity);
 
-						disparityError[pass][1] = std::abs(pt.x - mapPoints[pass].x);
-						disparityError[pass][2] = std::abs(originalPoint.x - mapPoints[pass].x);
+						it.mapPoint = disparityAlgorithm_internal(it.resPoint, aux2, aux, it.crop_buffer[1], it.strip2search_buffer[1], strip2searchIntensity, cropIntensity);
+
+						it.disparityError[1] = std::abs(pt.x - it.mapPoint.x);
+						it.disparityError[2] = std::abs(originalPoint.x - it.mapPoint.x);
+
+						it.ancorOffset = ancorOffset;
+
+						it.pos = it.resPoint.x - (pt.x - strip2searchWidth / 2);
+
+						std::cout << "iteration pass " << pass << "; errors: " << it.disparityError[0] << ' ' << it.disparityError[1] << ' ' << it.disparityError[2] << std::endl;
 					};
+
 
 
 
 					int min_error = std::numeric_limits<int>::max();
 
 					for (int pass = 0; pass < 3; ++pass) {
-						disparityError[pass][0] = disparityError[pass][1];
-						disparityAlgorithm(pass);
+						auto& it = iter_rs[pass];
+						it.disparityError[0] = it.disparityError[1];
 
-						if (disparityError[pass][1] < min_error) {
-							best_pass = pass;
-							min_error = disparityError[pass][1];
+						iter_ctl[pass]._pass = pass;
+						iter_ctl[pass]._status = 0;
+						iter_ctl[pass]._disparityAlgorithm = disparityAlgorithm;
+
+						QueueWorkItem(ExecuteDisparityAlgorithm, &iter_ctl[pass]);
+					}
+
+					int active_count = 0;
+					while (active_count < 3) {
+						ProcessWinMessages(10);
+
+						active_count = 0;
+						for (int pass = 0; pass < 3; ++pass) {
+							if (iter_ctl[pass]._status == 2) {
+								++active_count;
+							}
 						}
 					}
 
-					pos = resPoints[best_pass].x - (pt.x - strip2searchWidth / 2);
+					good_count = 0;
+
+					for (int pass = 0; pass < 3; ++pass) {
+						auto& it = iter_rs[pass];
+						if (it.disparityError[1] < min_error) {
+							best_pass = pass;
+							min_error = it.disparityError[1];
+						}
+						if (it.disparityError[1] <= 2) {
+							if (it.pos > 0) {
+								++good_count;
+							}
+						}
+					}
+
+				} while (++iter < 3 && good_count < 2 && (std::abs(iter_rs[best_pass].disparityError[1] - iter_rs[best_pass].disparityError[0]) > 2));
 
 
-
-					std::cout << "Disparity iteration " << iter << "; errors: " << disparityError[best_pass][0] << ' ' << disparityError[best_pass][1] << ' ' << disparityError[best_pass][2] << std::endl;
-
-				} while (++iter < 5 && (std::abs(disparityError[best_pass][1] - disparityError[best_pass][0]) > 2) && disparityError[best_pass][1] > 2 && pos > 0);
+				auto& best_it = iter_rs[best_pass];
 
 
-
-				if (pos <= 0 || ((std::abs(disparityError[best_pass][1] - disparityError[best_pass][0]) > 2) && disparityError[best_pass][1] > 2) || disparityError[best_pass][2] > patternHalfWidth) {
-					std::cout << "Unable to determnine match for the selected point; errors: " << disparityError[best_pass][0] << ' ' << disparityError[best_pass][1] << ' ' << disparityError[best_pass][2] << std::endl;
+				if (best_it.pos <= 0 || ((std::abs(best_it.disparityError[1] - best_it.disparityError[0]) > 2) && best_it.disparityError[1] > 2) || best_it.disparityError[2] > patternHalfWidth) {
+					std::cout << "Unable to determnine match for the selected point; errors: " << best_it.disparityError[0] << ' ' << best_it.disparityError[1] << ' ' << best_it.disparityError[2] << std::endl;
 					default_cv_points();
 					continue;
 				}
 
 
+				std::cout << "Used " << iter << " iterations; errors: " << best_it.disparityError[0] << ' ' << best_it.disparityError[1] << ' ' << best_it.disparityError[2] << std::endl;
 
-				detectedPoint = resPoints[best_pass];
-				pt = mapPoints[best_pass];
 
-				Mat crop = crop_buffer[best_pass][0];
-				Mat strip2search = strip2search_buffer[best_pass][0];
+				pos = best_it.pos;
+				detectedPoint = best_it.resPoint;
+				pt = best_it.mapPoint;
 
-				cv::Point pt1(pos - patternHalfWidth * best_pass, 0);
-				cv::Point pt2(pos + patternHalfWidth * (2 - best_pass) + 1, strip2search.rows);
+				Mat crop = best_it.crop_buffer[0];
+				Mat strip2search = best_it.strip2search_buffer[0];
+
+				cv::Point pt1(pos - best_it.ancorOffset, 0);
+				cv::Point pt2(pos + 2 * patternHalfWidth - best_it.ancorOffset + 1, strip2search.rows);
 				if (pt1.x < 0) {
 					pt1.x = 0;
 				}
@@ -5023,9 +5071,7 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 
 
 
-				std::cout << "Used " << iter << " iterations; errors: " << disparityError[best_pass][0] << ' ' << disparityError[best_pass][1] << ' ' << disparityError[best_pass][2] << std::endl;
-
-				cv::line(crop, cv::Point(patternHalfWidth*best_pass, 0), cv::Point(patternHalfWidth*best_pass, crop.rows - 1), Scalar(0, 255, 0));
+				cv::line(crop, cv::Point(best_it.ancorOffset, 0), cv::Point(best_it.ancorOffset, crop.rows - 1), Scalar(0, 255, 0));
 				cv::line(strip2search, cv::Point(pos, 0), cv::Point(pos, strip2search.rows - 1), Scalar(0, 255, 0));
 
 				cv_points[selectedWindow].resize(1);
@@ -5065,8 +5111,7 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 
 				if (newPointIdx < points4D.size()) {
 					double rgbSelected[3];
-					cv::Point patternCenter(patternHalfWidth*best_pass, blurHeight / 2);
-					BuildIdealChannels_Likeness(crop, patternCenter, rgbSelected, 0);
+					BuildIdealChannels_Likeness(crop, cv::Point(best_it.ancorOffset, blurHeight / 2), rgbSelected, 0);
 
 					auto& point4D = points4D[newPointIdx];
 					for (size_t c = 0; c < ARRAY_NUM_ELEMENTS(rgbSelected); ++c) {
