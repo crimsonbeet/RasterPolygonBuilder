@@ -512,7 +512,7 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 	}
 
 	if (targetColumn > W2) {
-		pos = strip2search.cols - pos - 1;
+		pos = strip2search.cols - pos + 1;
 	}
 
 	return pos;
@@ -5037,7 +5037,7 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 						}
 					}
 
-				} while (++iter < 3 && good_count < 2 && (std::abs(iter_rs[best_pass].disparityError[1] - iter_rs[best_pass].disparityError[0]) > 2));
+				} while (++iter < 3 && (good_count < 2 || (std::abs(iter_rs[best_pass].disparityError[1] - iter_rs[best_pass].disparityError[0]) > 2)));
 
 
 				auto& best_it = iter_rs[best_pass];
