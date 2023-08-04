@@ -11,3 +11,11 @@
 /opencv/bin
 /Problem_2020_10_02
 /VSStatistics
+*.html
+*.vsidx
+*.lock
+*.suo
+*.bin
+*.ipch
+*.exe
+*.ssv
