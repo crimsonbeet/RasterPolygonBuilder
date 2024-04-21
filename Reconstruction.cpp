@@ -6,6 +6,7 @@
 #include "FrameMain.h"
 #include "LoGSeedPoint.h"
 
+
 #pragma warning(disable : 26451)
 
 
@@ -2265,6 +2266,62 @@ static double fir_h_lowpass7 = 1;
 //	}
 //}
 
+
+template<typename T>
+Point2d applyFirFilter(const std::vector<Point_<T>>& contour, const int k, const int N) {
+	double* l_fir_h = fir_h6;
+	const double l_fir_h_gain = fir_h_gain6;
+	const int NFilter = ARRAY_NUM_ELEMENTS(fir_h6);
+	const int NFilter2 = NFilter / 2;
+
+	Point2d Movement(0, 0);
+	for (int j = 0, i = k + NFilter - 1; j < NFilter; ++j, --i) {
+		Movement += Point2d(contour[i % N]) * l_fir_h[j];
+	}
+
+	Movement.x /= l_fir_h_gain;
+	Movement.y /= l_fir_h_gain;
+
+	return Movement;
+}
+
+
+Point_<double> operator + (const Point_<int>& a, const Point2d& b) {
+	return Point_<double>(saturate_cast<double>(a.x + b.x), saturate_cast<double>(a.y + b.y));
+}
+Point_<double> operator + (const Point2d& b, const Point_<int>& a) {
+	return Point_<double>(saturate_cast<double>(a.x + b.x), saturate_cast<double>(a.y + b.y));
+}
+
+
+template<typename T>
+Point2d applyIIRFilter(const Point_<T>& point, const std::vector<double>& A, const std::vector<double> D[2], std::vector<Point_<double>> W[3], const int N, const double eps = 1.0) {
+	Point2d Movement(point.x, point.y);
+
+	for (int i = 0; i < N; ++i) {
+		W[0][i] = D[0][i] * W[1][i] + D[1][i] * W[2][i] + Movement;
+
+		Movement = A[i] * (W[0][i] + 2.0 * W[1][i] + W[2][i]);
+
+		W[2][i] = W[1][i];
+		W[1][i] = W[0][i];
+	}
+
+	if (eps != 1.0) {
+		return Movement * eps;
+	}
+
+	return Movement;
+}
+
+
+template<typename T>
+Point2d applyButterworthFilter(const Point_<T>& point, const std::vector<double>& A, const std::vector<double> D[2], std::vector<Point_<double>> W[3], const int N) {
+	return applyIIRFilter(point, A, D, W, N);
+}
+
+
+
 template<typename T>
 void filterContour(std::vector<Point_<T>>& contour, std::vector<Point2d>& shocks) {
 	double* l_fir_h = fir_h6;
@@ -2280,6 +2337,53 @@ void filterContour(std::vector<Point_<T>>& contour, std::vector<Point2d>& shocks
 		shocks.resize(L);
 		return; 
 	}
+
+	//// Fpass 1.0, Fstop 2.0, Fs 25
+	//double FrequencyBands[2] = { 2.0 / 25 * 2, 3.0 / 25 * 2 }; //these values are as a ratio of f/fs, where fs is sampling rate, and f is cutoff frequency
+	////and therefore should lie in the range [0 1]
+
+	//Filter Order
+	const int FiltOrd = 4;
+
+	////Create the variables for the numerator and denominator coefficients
+	//std::vector<double> a;
+	//std::vector<double> b;
+	////Pass Numerator Coefficients and Denominator Coefficients arrays into function, will return the same
+
+	//a = ComputeDenCoeffs(FiltOrd, FrequencyBands[0], FrequencyBands[1]);
+	//b = ComputeNumCoeffs(FiltOrd, FrequencyBands[0], FrequencyBands[1], a);
+
+	double fs = 25;
+	double f = 3.5;
+	double a = tan(M_PI * f / fs); //a ratio of f / fs, where fs is sampling rate, and f is cutoff frequency
+	double a2 = a * a;
+	std::vector<double> A(FiltOrd / 2);
+	std::vector<double> d[2] = { std::vector<double>(FiltOrd / 2), std::vector<double>(FiltOrd / 2) };
+	std::vector<Point2d> w[3] = { std::vector<Point2d>(FiltOrd / 2), std::vector<Point2d>(FiltOrd / 2), std::vector<Point2d>(FiltOrd / 2) };
+
+	for (int i = 0; i < (FiltOrd / 2); ++i) {
+		double r = sin(M_PI * (2.0 * i + 1.0) / (4.0 * FiltOrd / 2));
+		double s = a2 + 2.0 * a * r + 1.0;
+		A[i] = a2 / s;
+		d[0][i] = 2.0 * (1 - a2) / s;
+		d[1][i] = -(a2 - 2.0 * a * r + 1.0) / s;
+	}
+
+	//double ep = 0.05;
+	//double u = log((1.0 + sqrt(1.0 + ep * ep)) / ep);
+	//double su = sinh(u / (double)FiltOrd);
+	//double cu = cosh(u / (double)FiltOrd);
+
+	//for (int i = 0; i < (FiltOrd / 2); ++i) {
+	//	double b = sin(M_PI * (2.0 * i + 1.0) / (2.0 * FiltOrd)) * su;
+	//	double c = cos(M_PI * (2.0 * i + 1.0) / (2.0 * FiltOrd)) * cu;
+	//	c = b * b + c * c;
+	//	double s = a2 * c + 2.0 * a * b + 1.0;
+	//	A[i] = a2 / (4.0 * s); // 4.0
+	//	d[0][i] = 2.0 * (1 - a2 * c) / s;
+	//	d[1][i] = -(a2 * c - 2.0 * a * b + 1.0) / s;
+	//}
+
 
 	std::vector<Point_<T>> aux(L);
 	std::vector<Point2d> aux_shocks(L);
@@ -2316,27 +2420,34 @@ void filterContour(std::vector<Point_<T>>& contour, std::vector<Point2d>& shocks
 
 	double max_kval = 1;
 
+	//std::vector<Point_<double>> z(b.size());
+
 	for (int k = 0, m = NFilter2; k < N + NFilter2; ++k, ++m) {
 		Point2d point(contour[m % N]);
 		Point2d shock; 
 
-		Point2d futurePoint(contour[(k + NFilter + /*NFilter2 + */1) % N]);
+		Point2d futurePoint(contour[(k + NFilter + 1) % N]);
 		futureMovements(m % NFilter2, 0) = futurePoint.x;
 		futureMovements(m % NFilter2, 1) = futurePoint.y;
 
-		Point2d measurement(0, 0);
-		//l_fir_h_gain = 0;
-		for (int j = 0, i = k + NFilter - 1; j < NFilter; ++j, --i) {
-			measurement += Point2d(contour[i % N]) * l_fir_h[j];
-			//measurement += Point2d(contour[i % N]);
-			//++l_fir_h_gain;
-		}
+		//Point2d measurement(0, 0);
+		////l_fir_h_gain = 0;
+		//for (int j = 0, i = k + NFilter - 1; j < NFilter; ++j, --i) {
+		//	measurement += Point2d(contour[i % N]) * l_fir_h[j];
+		//	//measurement += Point2d(contour[i % N]);
+		//	//++l_fir_h_gain;
+		//}
 
-		measurement.x /= l_fir_h_gain;
-		measurement.y /= l_fir_h_gain;
+		//measurement.x /= l_fir_h_gain;
+		//measurement.y /= l_fir_h_gain;
 
-		pastMeasurements(m % NFilter2, 0) = measurement.x;
-		pastMeasurements(m % NFilter2, 1) = measurement.y;
+
+		//Point2d measurement = applyFirFilter(contour, k, N);
+		Point2d measurement = applyButterworthFilter(point, A, d, w, FiltOrd / 2);
+		//Point2d measurement = applyIIRFilter(point, A, d, w, FiltOrd / 2, 2.0 / ep);
+
+		pastMeasurements(m % NFilter2, 0) = point.x;// measurement.x;
+		pastMeasurements(m % NFilter2, 1) = point.y;// measurement.y;
 
 		shock = -point + measurement;
 
@@ -2388,8 +2499,8 @@ void filterContour(std::vector<Point_<T>>& contour, std::vector<Point2d>& shocks
 					}
 					//max_kval = 1;
 				}
-				K(0, 1) = 0;
-				K(1, 0) = 0;
+				//K(0, 1) = 0;
+				//K(1, 0) = 0;
 
 				//ostr << "K(0,0):" << K(0, 0) << " K(1,1):" << K(1, 1) << std::endl;
 
@@ -2416,7 +2527,6 @@ void filterContour(std::vector<Point_<T>>& contour, std::vector<Point2d>& shocks
 		else {
 			point = measurement;
 		}
-		//point = measurement;
 
 
 		if (T(1 + 0.1) == T(1)) {
@@ -2440,13 +2550,326 @@ void filterContour(std::vector<Point_<T>>& contour, std::vector<Point2d>& shocks
 	shocks.swap(aux_shocks); 
 }
 
+
+
+
+
+
+template<typename T>
+void kalmanFilterContour(std::vector<Point_<T>>& contour, std::vector<Point2d>& shocks) {
+	double* l_fir_h = fir_h6;
+	double l_fir_h_gain = fir_h_gain6;
+	const int NFilter = ARRAY_NUM_ELEMENTS(fir_h6);
+	const int NFilter2 = NFilter / 2;
+
+
+	const int L = (int)contour.size();
+	const int N = (contour[0] == contour[L - 1]) ? (L - 1) : L;
+
+	if (L < NFilter) {
+		shocks.resize(L);
+		return;
+	}
+
+	const int FiltOrd = 4;
+	double fs = 25;
+	double f = 4.5;
+
+	double a = tan(M_PI * f / fs); //a ratio of f / fs, where fs is sampling rate, and f is cutoff frequency
+	double a2 = a * a;
+	double r;
+	std::vector<double> A(FiltOrd / 2);
+	std::vector<double> d[2] = { std::vector<double>(FiltOrd / 2), std::vector<double>(FiltOrd / 2) };
+	std::vector<Point2d> w[3] = { std::vector<Point2d>(FiltOrd / 2), std::vector<Point2d>(FiltOrd / 2), std::vector<Point2d>(FiltOrd / 2) };
+
+	for (int i = 0; i < (FiltOrd / 2); ++i) {
+		r = sin(M_PI * (2.0 * i + 1.0) / (4.0 * FiltOrd / 2));
+		double s = a2 + 2.0 * a * r + 1.0;
+		A[i] = a2 / s;
+		d[0][i] = 2.0 * (1 - a2) / s;
+		d[1][i] = -(a2 - 2.0 * a * r + 1.0) / s;
+	}
+
+
+	std::vector<Point_<T>> aux(L);
+	std::vector<Point2d> aux_shocks(L);
+
+	// movement: apply FIR filter. 
+	// calculated point is in the center of filter's transfer function. 
+	// NFilter/2 future points, and NFilter/2 past points. 
+
+	// measurement: use original point. 
+	// location of point corresponds to the calculated movement. 
+
+	Mat_<double> I(2, 2);
+	I(0, 1) = 0;
+	I(1, 0) = 0;
+	I(0, 0) = 1;
+	I(1, 1) = 1;
+
+	Mat_<double> Zet(2, 2);  // movement variance
+	Zet(0, 0) = 0;
+	Zet(1, 1) = 0;
+	Zet(0, 1) = 0;
+	Zet(1, 0) = 0;
+
+	Mat_<double> maux;
+	Mat_<double> Q;
+	Mat_<double> R;
+	Mat_<double> K(2, 2);
+	Mat_<double> X(2, 2);
+	Mat_<double> Z(2, 1);
+
+	Mat_<double> pastMovements((int)NFilter2, 2);
+
+	Mat_<double> futureMeasurements((int)NFilter2, 2);
+
+	double max_kval = 1;
+
+	for (int k = 0, m = NFilter2; k < N + NFilter2; ++k, ++m) {
+		Point2d point(contour[m % N]);
+		Point2d shock;
+
+		Point2d futurePoint(contour[(k + NFilter2 + 1) % N]);
+		futureMeasurements(m % NFilter2, 0) = futurePoint.x;
+		futureMeasurements(m % NFilter2, 1) = futurePoint.y;
+
+		//Point2d Movement(0, 0);
+		//for (int j = 0, i = k + NFilter - 1; j < NFilter; ++j, --i) {
+		//	Movement += Point2d(contour[i % N]) * l_fir_h[j];
+		//}
+
+		//Movement.x /= l_fir_h_gain;
+		//Movement.y /= l_fir_h_gain;
+
+		//Point2d Movement = applyFirFilter(contour, k, N);
+		Point2d Movement = applyButterworthFilter(point, A, d, w, FiltOrd / 2);
+
+		pastMovements(m % NFilter2, 0) = Movement.x;
+		pastMovements(m % NFilter2, 1) = Movement.y;
+
+		shock = -point + Movement;
+
+		if (m >= (NFilter - 1)) {
+
+			cv::calcCovarMatrix(pastMovements, Q, maux = Mat(), CovarFlags::COVAR_NORMAL | CovarFlags::COVAR_ROWS);
+			cv::calcCovarMatrix(futureMeasurements, R, maux = Mat(), CovarFlags::COVAR_NORMAL | CovarFlags::COVAR_ROWS);
+
+			Zet += Q;
+
+			double invConditionNumber = cv::invert(Zet + R, X, DECOMP_SVD);
+			if (invConditionNumber < 0.001) {
+				point = Movement;
+			}
+			else {
+				K = Zet * X;
+
+
+				Z(0, 0) = shock.x;
+				Z(1, 0) = shock.y;
+
+				Z = K * Z;
+
+				shock.x = Z(0, 0);
+				shock.y = Z(1, 0);
+
+				point.x += shock.x;
+				point.y += shock.y;
+
+				Zet = (I - K) * Zet;
+			}
+		}
+		else {
+			point = Movement;
+		}
+
+
+		if (T(1 + 0.1) == T(1)) {
+			aux[m % N].x = (T)(point.x + 0.49999);
+			aux[m % N].y = (T)(point.y + 0.49999);
+		}
+		else {
+			aux[m % N].x = (T)(point.x);
+			aux[m % N].y = (T)(point.y);
+		}
+
+		aux_shocks[m % N] = shock;
+	}
+
+	if (L > N) {
+		aux[N] = aux[0];
+		aux_shocks[N] = aux_shocks[0];
+	}
+
+	contour.swap(aux);
+	shocks.swap(aux_shocks);
+}
+
+
+
+
+
+
+template<typename T>
+void kalmanSmooting(std::vector<Point_<T>>& contour, std::vector<Point2d>& shocks) {
+	// starting recursion
+	// 1. forecast based on no observation
+
+	Point2d Xi_1_0[2] = { contour[0], contour[0] };
+
+	Matx22d F(1 - 0.618, 0.618, 1, 0);
+	Matx21d H(1, 0);
+	Matx22d Q(1, 0, 0, 0);
+
+	Matx22d R[2];
+	R[0] = Matx22d(1.5, 0, 0, 0.1);
+	R[1] = Matx22d(1.5, 0, 0, 0.1);
+
+	Matx12d HT;
+	transpose(H, HT);
+
+	Matx22d FT;
+	transpose(F, FT);
+
+	// 2. variance-covariance of state
+	// 
+	// calculate in R
+	// F <- matrix(c(1-0.618, 1, 0.618, 0), 2, 2)
+	// # kronecker(X, Y, FUN = "*", make.dimnames = FALSE, ...)
+	// # X % x % Y
+	// matrix(ginv(diag(4) - F%x%F) %*% c(1, 0, 0, 1), 2, 2)
+
+	Matx22d P_1_0(0.4044365, -0.7662509, -0.7662509, 1.1280653);
+
+	// Arrays to fill for backtracking
+
+	std::vector<std::vector<Point2d>> Xi(contour.size(), std::vector<Point2d>(2)); // state corrected; from 1 to T
+	std::vector< std::vector<Point2d>> Xi_1(contour.size(), std::vector<Point2d>(2)); // state forecasted; from 0 to T-1
+	std::vector< std::vector<Matx22d>> P(contour.size(), std::vector<Matx22d>(2));
+	std::vector< std::vector<Matx22d>> P_1(contour.size(), std::vector<Matx22d>(2));
+
+	Xi_1[0][0] = Xi_1_0[0];
+	Xi_1[0][1] = Xi_1_0[1];
+
+	Xi[0][0] = Xi_1_0[0];
+	Xi[0][1] = Xi_1_0[1];
+
+	P_1[0][0] = P_1_0;
+	P_1[0][1] = P_1_0;
+
+	//std::queue<Point2d> q_wt;
+	//Point2d sum_R(0, 0); 
+
+	for (int t = 1, i = 0; t < contour.size(); ++t, ++i) {
+
+		Xi[t][1] = Xi[i][0];
+
+		Point2d y_1 = Xi_1[i][0]; // 3. forecasting y(t) -> y(t|t-1)
+
+		// 4. measuring y(t)
+		Point2d y_t = contour[t];
+
+		// 5. updating state 
+		Point2d y_t_error = y_t - y_1;
+
+		Matx22d X[2];
+		Matx21d K[2];
+		for (int j = 0; j < 2; ++j) {
+			auto proj = P_1[i][j] * H;
+
+			auto qf = HT * proj;
+
+			cv::invert(Matx22d(qf(0, 0), qf(0, 0), qf(0, 0), qf(0, 0)) + R[j], X[j], DECOMP_SVD);
+
+			K[j] = proj * X[j](0, 0);
+
+			P[t][j] = P_1[i][j] -  K[j] * (HT * P_1[i][j]);
+		}
+
+		Xi[t][0].x = Xi_1[i][0].x + K[0](0, 0) * y_t_error.x;
+		Xi[t][0].y = Xi_1[i][0].y + K[1](0, 0) * y_t_error.y;
+
+
+		//// 6. R, variance of y(t), is updated dynamically
+
+		//Point2d wt = y_t_error - (Xi[t][0] - Xi_1[i][0]);
+		//wt.x *= wt.x;
+		//wt.y *= wt.y;
+
+		//sum_R += wt;
+
+		//q_wt.push(wt);
+		//if (q_wt.size() > 5) {
+		//	sum_R -= q_wt.front();
+		//	q_wt.pop();
+		//}
+
+		//R[0](1, 1) = R[0](0, 0);
+		//R[0](0, 0) = sum_R.x / q_wt.size();
+
+		//R[1](1, 1) = R[1](0, 0);
+		//R[1](0, 0) = sum_R.y / q_wt.size();
+
+		// 7. forecasting state
+
+		Xi_1[t][0].x = Xi[t][0].x * F(0, 0) + Xi[t][1].x * F(0, 1);
+		Xi_1[t][0].y = Xi[t][0].y * F(0, 0) + Xi[t][1].y * F(0, 1);
+
+		Xi_1[t][1] = Xi[t][0];
+
+		for (int j = 0; j < 2; ++j) {
+			P_1[t][j] = (F * P[t][j]) * FT + Q;
+		}
+	}
+
+	for (int t = contour.size() - 2, i = contour.size() - 1; t >= 0; --t, --i) {
+		Matx22d X[2];
+		Matx22d J[2];
+		for (int j = 0; j < 2; ++j) {
+			cv::invert(P_1[i][j], X[j], DECOMP_SVD);
+
+			J[j] = P[t][j] * (FT * X[j]);
+		}
+
+		Matx21d xxx(
+			Xi_1[i][0].x - Xi_1[t][0].x,
+			Xi_1[i][1].x - Xi_1[t][1].x);
+		Xi[t][0].x = Xi[t][0].x + (J[0] * xxx)(0, 0);
+
+		Matx21d yyy(
+			Xi_1[i][0].y - Xi_1[t][0].y,
+			Xi_1[i][1].y - Xi_1[t][1].y);
+		Xi[t][0].y = Xi[t][0].y + (J[0] * yyy)(0, 0);
+	}
+
+	const int L = (int)contour.size();
+
+	if (contour[0] == contour[L - 1]) {
+		Xi[0][0] = Xi[L - 1][0];
+	}
+
+	std::vector<Point_<T>> aux(L);
+	std::vector<Point2d> aux_shocks(L);
+
+	for (int i = 0; i < L; ++i) {
+		aux[i] = Xi[i][0];
+		aux_shocks[i] = contour[i] - aux[i];
+	}
+
+	contour.swap(aux);
+	shocks.swap(aux_shocks);
+}
+
+
+
+
 template<typename T>
 void smoothContour(std::vector<Point_<T>>& contour) {
 	for (int j = 1; j < contour.size(); ++j) {
 		while (contour[j] == contour[j - 1]) {
-			contour.erase(contour.begin() + j); 
+			contour.erase(contour.begin() + j);
 			if (j == contour.size()) {
-				break; 
+				break;
 			}
 		}
 	}
@@ -2454,15 +2877,22 @@ void smoothContour(std::vector<Point_<T>>& contour) {
 
 	std::vector<Point_<T>> contour_reversed(contour.crbegin(), contour.crend());
 
-	filterContour(contour, shocks[0]);
-	filterContour(contour_reversed, shocks[1]);
+	//filterContour(contour, shocks[0]);
+	//filterContour(contour_reversed, shocks[1]);
+
+	//kalmanFilterContour(contour, shocks[0]);
+	//kalmanFilterContour(contour_reversed, shocks[1]);
+
+	kalmanSmooting(contour, shocks[0]);
+	kalmanSmooting(contour_reversed, shocks[1]);
 
 	const size_t L = contour.size();
 	for (int j = 0; j < L; ++j) {
 		int k = L - j - 1;
-		if (cv::norm(shocks[0][j]) > cv::norm(shocks[1][k])) {
-			contour[j] = contour_reversed[k];
-		}
+		contour[j] = (contour[j] + contour_reversed[k]) / 2;
+		//if (cv::norm(shocks[0][j]) > cv::norm(shocks[1][k])) {
+		//	contour[j] = contour_reversed[k];
+		//}
 	}
 }
 
@@ -2470,10 +2900,13 @@ template<typename T>
 void projectContour(std::vector<Point_<T>>& contour) {
 	smoothContour(contour);
 	for (size_t c = contour.size(), nc = c - 1; c > nc && nc > 0; nc = contour.size()) {
-		c = nc; 
-		linearizeContour(contour, 1, 7);
+		c = nc;
+		linearizeContourImpl(contour, 1, 7);
 	}
 }
+
+
+
 
 
 
@@ -2566,7 +2999,7 @@ void projectContour2(std::vector<Point_<T>>& contour) {
 
 	for (size_t c = contour.size(), nc = c - 1; c > nc && nc > 0; nc = contour.size()) {
 		c = nc;
-		linearizeContour(contour, 1, 7);
+		linearizeContourImpl(contour, 1, 7);
 	}
 }
 
@@ -2653,7 +3086,7 @@ void fitLine2Segment(std::vector<Point2d> &segment, std::vector<Point_<T>>& aux)
 }
 
 template<typename T>
-void linearizeContour(std::vector<Point_<T>>&contour, double stepSize, const size_t maxSegmentSize) {
+void linearizeContourImpl(std::vector<Point_<T>>&contour, double stepSize, const size_t maxSegmentSize) {
 	// find first point that has its both neighbours farther than stepSize
 	if (contour.size() < 3) {
 		contour.resize(0); 
@@ -2716,7 +3149,7 @@ void linearizeContour(std::vector<Point_<T>>&contour, double stepSize, const siz
 					aux.push_back(round2dPoint((aFirst + aPoint) * 0.5));
 				}
 				else
-				if (abs(cos_N1_N2) > 0.3) { //  < 70, > 110
+				if (abs(cos_N1_N2) > 0.3) { //0.5: < 60, > 120 //0.3:  < 70, > 110
 					if (segment.size() == 2) {
 						aux.push_back(round2dPoint((aFirst + aPoint) * 0.5));
 					}
@@ -2804,7 +3237,7 @@ void linearizeContour(std::vector<long>& x, std::vector<long>& y, double stepSiz
 	}
 	for (size_t c = contour.size(), nc = c - 1; c > nc && nc > 0; nc = contour.size()) {
 		c = nc;
-		linearizeContour(contour, stepSize, maxSegmentSize);
+		linearizeContourImpl(contour, stepSize, maxSegmentSize);
 	}
 	N = contour.size(); 
 	x.resize(N);
@@ -4244,7 +4677,7 @@ size_t ConductOverlapEliminationEx(const std::vector<std::vector<cv::Point2d>>& 
 				}
 				for (size_t c = aux[j].size(), nc = c - 1; c > nc && nc > 0; nc = aux[j].size()) {
 					c = nc;
-					linearizeContour(aux[j], 2.25, 7);
+					linearizeContourImpl(aux[j], 2.25, 7);
 				}
 				if (!size_increment) {
 					final_contours.push_back(aux[j]);
@@ -4620,12 +5053,13 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 					int pass_number = 0;
 					int size_increment = 1; 
 					int iteration_number = 0; 
-					int max_passes = 3; 
+					int max_passes = g_configuration._polymorphic_size;
 
 					max_scale_factor = 0;
 
 					finalContoursImage = unchangedImage.clone();
-					while (0<1) {
+
+					while (pass_number <= max_passes) {
 						submitGraphics(finalContoursImage, true);
 
 						if (boxes_selected.size() == 0) {
@@ -4650,24 +5084,30 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 							}
 						}
 
-						std::vector<std::vector<cv::Point2d>> local_contours;
+						if (max_passes > 0) {
+							std::vector<std::vector<cv::Point2d>> local_contours;
 
-						std::ostringstream ostr;
-						ostr << "---" << "size_increment=" << size_increment << ' ' << "pass_number=" << pass_number << ' ' << "max_passes=" << max_passes << std::endl;
-						printf(ostr.str().c_str());
+							std::ostringstream ostr;
+							ostr << "---" << "size_increment=" << size_increment << ' ' << "pass_number=" << pass_number << ' ' << "max_passes=" << max_passes << std::endl;
+							printf(ostr.str().c_str());
 
-						size_t count = ConductOverlapEliminationEx(contours, local_contours, false, max_scale_factor, true, size_increment, g_LoG_seedPoint.eventValue == 3/*central button*/);
+							size_t count = ConductOverlapEliminationEx(contours, local_contours, false, max_scale_factor, true, size_increment, g_LoG_seedPoint.eventValue == 3/*central button*/);
 
-						if (count == 0) {
-							contours.resize(1);
-							CopyVector(contours[0], boxes_selected[0].contour);
-							pass_number == max_passes;
-							iteration_number = 3; 
-							continue;
+							if (count == 0) {
+								contours.resize(1);
+								CopyVector(contours[0], boxes_selected[0].contour);
+								pass_number == max_passes;
+								iteration_number = 3;
+								continue;
+							}
+
+							contours.swap(local_contours);
+							contours_count = count;
+						}
+						else {
+							contours_count = contours.size();
 						}
 
-						contours.swap(local_contours);
-						contours_count = count;
 
 						ctl->_gate.lock();
 						ClusteredPoint& point = cv_points[windowNumber][0];
@@ -4675,6 +5115,8 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 						CopyVector(point._contour_notsmoothed, boxes_selected[0].contour_notsmoothed);
 						ctl->_gate.unlock();
 					}
+
+					submitGraphics(finalContoursImage, true);
 				}
 			}
 		}

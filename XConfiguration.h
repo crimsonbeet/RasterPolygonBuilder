@@ -73,10 +73,11 @@ struct StereoConfiguration {
 
 	int _use_center_of_gravity; 
 
-	int _supervised_LoG = 1; 
+	int _supervised_LoG = 1; // not used; is evaluated locally in BlobCentersLoG()
 
 	int _frames_acquisition_mode; // is used to input frames for reconstruction; == 1 reads from files sequentially, so just one thread; >1 means expect incoming frames from external cameras; -N means read from cameras with N threads. 
 	int _evaluate_contours = 0;
+	int _polymorphic_size = 3;
 	int _use_uncalibrated_cameras = 0;
 
 	int _visual_diagnostics; 
@@ -275,6 +276,7 @@ CONTAINS_FLAT_MEMBER(_use_center_of_gravity, UseCenterOfGravity)
 CONTAINS_FLAT_MEMBER(_supervised_LoG, SupervisedLoG)
 CONTAINS_FLAT_MEMBER(_frames_acquisition_mode, FramesAcquisitionMode)
 CONTAINS_FLAT_MEMBER(_evaluate_contours, EvaluateContours)
+CONTAINS_FLAT_MEMBER(_polymorphic_size, PolyMorphicSize)
 CONTAINS_FLAT_MEMBER(_use_uncalibrated_cameras, UseUncalibratedCameras)
 CONTAINS_FLAT_MEMBER(_visual_diagnostics, VisualDiagnostics)
 CONTAINS_FLAT_MEMBER(_continuous_capture, ContinuousCapture)
