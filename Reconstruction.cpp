@@ -2719,11 +2719,11 @@ void kalmanSmooting(std::vector<Point_<T>>& contour, std::vector<Point2d>& shock
 
 	Matx22d F(1 - 0.618, 0.618, 1, 0);
 	Matx21d H(1, 0);
-	Matx22d Q(1, 0, 0, 0);
+	Matx22d Q(1, 0, 0, 0.7);
 
 	Matx22d R[2];
-	R[0] = Matx22d(1.5, 0, 0, 0.1);
-	R[1] = Matx22d(1.5, 0, 0, 0.1);
+	R[0] = Matx22d(1.5, 0, 0, 0.2);
+	R[1] = Matx22d(1.5, 0, 0, 0.2);
 
 	Matx12d HT;
 	transpose(H, HT);
@@ -2739,7 +2739,12 @@ void kalmanSmooting(std::vector<Point_<T>>& contour, std::vector<Point2d>& shock
 	// # X % x % Y
 	// matrix(ginv(diag(4) - F%x%F) %*% c(1, 0, 0, 1), 2, 2)
 
-	Matx22d P_1_0(0.4044365, -0.7662509, -0.7662509, 1.1280653);
+	//Matx22d P_1_0(0.4044365, -0.7662509, -0.7662509, 1.1280653); // matrix(ginv(diag(4) - F%x%F) %*% c(1, 0, 0, 1), 2, 2)
+	//Matx22d P_1_0(0.4735691, -0.3735740, -0.3735740, 0.2735789); // matrix(ginv(diag(4) - F%x%F) %*% c(1, 0, 0, 0), 2, 2)
+	//Matx22d P_1_0(0.3353039, -1.158928, -1.1589278, 1.982552); // matrix(ginv(diag(4) - F % x % F) % *%c(1, 0, 0, 2), 2, 2)
+	//Matx22d P_1_0(0.3906100, -0.8447863, -0.8447863, 1.2989626); // matrix(ginv(diag(4) - F % x % F) % *%c(1, 0, 0, 1.2), 2, 2)
+	//Matx22d P_1_0(0.4390028, -0.5699125, -0.5699125, 0.7008221); // matrix(ginv(diag(4) - F % x % F) % *%c(1, 0, 0, 0.5), 2, 2)
+	Matx22d P_1_0(0.4251763, -0.6484478, -0.6484478, 0.8717194); // matrix(ginv(diag(4) - F % x % F) % *%c(1, 0, 0, 0.7), 2, 2)
 
 	// Arrays to fill for backtracking
 
@@ -2757,8 +2762,8 @@ void kalmanSmooting(std::vector<Point_<T>>& contour, std::vector<Point2d>& shock
 	P_1[0][0] = P_1_0;
 	P_1[0][1] = P_1_0;
 
-	//std::queue<Point2d> q_wt;
-	//Point2d sum_R(0, 0); 
+	std::queue<Point2d> q_wt;
+	Point2d sum_R(0, 0); 
 
 	for (int t = 1, i = 0; t < contour.size(); ++t, ++i) {
 
@@ -2789,28 +2794,24 @@ void kalmanSmooting(std::vector<Point_<T>>& contour, std::vector<Point2d>& shock
 		Xi[t][0].x = Xi_1[i][0].x + K[0](0, 0) * y_t_error.x;
 		Xi[t][0].y = Xi_1[i][0].y + K[1](0, 0) * y_t_error.y;
 
+		// ?. R, variance of y(t), is updated dynamically
 
-		//// 6. R, variance of y(t), is updated dynamically
+		Point2d wt = y_t_error - (Xi[t][0] - Xi_1[i][0]);
+		wt.x *= wt.x;
+		wt.y *= wt.y;
 
-		//Point2d wt = y_t_error - (Xi[t][0] - Xi_1[i][0]);
-		//wt.x *= wt.x;
-		//wt.y *= wt.y;
+		sum_R += wt;
 
-		//sum_R += wt;
+		q_wt.push(wt);
+		if (q_wt.size() > 3) {
+			sum_R -= q_wt.front();
+			q_wt.pop();
+		}
 
-		//q_wt.push(wt);
-		//if (q_wt.size() > 5) {
-		//	sum_R -= q_wt.front();
-		//	q_wt.pop();
-		//}
+		R[0](1, 1) = sum_R.x / q_wt.size();
+		R[1](1, 1) = sum_R.y / q_wt.size();
 
-		//R[0](1, 1) = R[0](0, 0);
-		//R[0](0, 0) = sum_R.x / q_wt.size();
-
-		//R[1](1, 1) = R[1](0, 0);
-		//R[1](0, 0) = sum_R.y / q_wt.size();
-
-		// 7. forecasting state
+		// 6. forecasting state
 
 		Xi_1[t][0].x = Xi[t][0].x * F(0, 0) + Xi[t][1].x * F(0, 1);
 		Xi_1[t][0].y = Xi[t][0].y * F(0, 0) + Xi[t][1].y * F(0, 1);
@@ -2897,11 +2898,13 @@ void smoothContour(std::vector<Point_<T>>& contour) {
 }
 
 template<typename T>
-void projectContour(std::vector<Point_<T>>& contour) {
+void projectContour(std::vector<Point_<T>>& contour, bool linearize = false) {
 	smoothContour(contour);
-	for (size_t c = contour.size(), nc = c - 1; c > nc && nc > 0; nc = contour.size()) {
-		c = nc;
-		linearizeContourImpl(contour, 1, 7);
+	if (linearize) {
+		for (size_t c = contour.size(), nc = c - 1; c > nc && nc > 0; nc = contour.size()) {
+			c = nc;
+			linearizeContourImpl(contour, 1, 7);
+		}
 	}
 }
 
@@ -3235,10 +3238,11 @@ void linearizeContour(std::vector<long>& x, std::vector<long>& y, double stepSiz
 		contour[j].x = x[j]; 
 		contour[j].y = y[j];
 	}
-	for (size_t c = contour.size(), nc = c - 1; c > nc && nc > 0; nc = contour.size()) {
-		c = nc;
-		linearizeContourImpl(contour, stepSize, maxSegmentSize);
-	}
+	projectContour(contour, true);
+	//for (size_t c = contour.size(), nc = c - 1; c > nc && nc > 0; nc = contour.size()) {
+	//	c = nc;
+	//	linearizeContourImpl(contour, stepSize, maxSegmentSize);
+	//}
 	N = contour.size(); 
 	x.resize(N);
 	y.resize(N);
@@ -4672,13 +4676,16 @@ size_t ConductOverlapEliminationEx(const std::vector<std::vector<cv::Point2d>>& 
 			if (contour.size()) {
 				aux[j].resize(contour.size());
 				std::reverse_copy(contour.cbegin(), contour.cend(), aux[j].begin());
-				if (!size_increment) {
-					smoothContour(aux[j]);
-				}
-				for (size_t c = aux[j].size(), nc = c - 1; c > nc && nc > 0; nc = aux[j].size()) {
-					c = nc;
-					linearizeContourImpl(aux[j], 2.25, 7);
-				}
+				//if (!size_increment) {
+				//	projectContour(aux[j], true);
+				//}
+				//for (size_t c = aux[j].size(), nc = c - 1; c > nc && nc > 0; nc = aux[j].size()) {
+				//	c = nc;
+				//	linearizeContourImpl(aux[j], 2.25, 7);
+				//}
+
+				projectContour(aux[j], true);
+
 				if (!size_increment) {
 					final_contours.push_back(aux[j]);
 				}
