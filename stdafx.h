@@ -5,6 +5,8 @@
 
 #pragma once
 
+#pragma warning(disable : 4244 67 75)
+
 #define _CRT_SECURE_NO_WARNINGS
 #define _USE_MATH_DEFINES
 #define _HAS_AUTO_PTR_ETC 1
@@ -1384,6 +1386,7 @@ struct SPointsReconstructionCtl {
 
 	bool volatile _data_isvalid;
 	bool volatile _image_isvalid;
+	bool volatile _image_isprocessed;
 
 	bool volatile _local_acquisition_hasfinished;
 
@@ -1427,6 +1430,7 @@ struct SPointsReconstructionCtl {
 		_foreground_extraction_isvalid = false;
 		_coordsystem_label = -1; 
 		_draw_epipolar_lines = true;
+		_image_isprocessed = false;
 	}
 
 	~SPointsReconstructionCtl() {

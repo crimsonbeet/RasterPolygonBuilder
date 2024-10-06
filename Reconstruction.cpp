@@ -2797,8 +2797,8 @@ void kalmanSmooting(std::vector<Point_<T>>& contour, std::vector<Point2d>& shock
 		// ?. R, variance of y(t), is updated dynamically
 
 		Point2d wt = y_t_error - (Xi[t][0] - Xi_1[i][0]);
-		wt.x *= wt.x;
-		wt.y *= wt.y;
+		wt.x *= wt.x * 0.618;
+		wt.y *= wt.y * 0.618;
 
 		sum_R += wt;
 
@@ -2808,8 +2808,24 @@ void kalmanSmooting(std::vector<Point_<T>>& contour, std::vector<Point2d>& shock
 			q_wt.pop();
 		}
 
-		R[0](1, 1) = sum_R.x / q_wt.size();
-		R[1](1, 1) = sum_R.y / q_wt.size();
+
+		wt = sum_R / (double)q_wt.size();
+
+		if (wt.x < 0.2) {
+			wt.x = 0.2;
+		}
+		//if (wt.x > 2) {
+		//	wt.x = 2;
+		//}
+		if (wt.y < 0.2) {
+			wt.y = 0.2;
+		}
+		//if (wt.y > 2) {
+		//	wt.y = 2;
+		//}
+
+		R[0](1, 1) = wt.x;
+		R[1](1, 1) = wt.y;
 
 		// 6. forecasting state
 
@@ -2898,12 +2914,14 @@ void smoothContour(std::vector<Point_<T>>& contour) {
 }
 
 template<typename T>
-void projectContour(std::vector<Point_<T>>& contour, bool linearize = false) {
-	smoothContour(contour);
-	if (linearize) {
+void projectContour(std::vector<Point_<T>>& contour, double linearizeStepSize = 0, bool smooth = true) {
+	if (smooth) {
+		smoothContour(contour);
+	}
+	if (linearizeStepSize > 0) {
 		for (size_t c = contour.size(), nc = c - 1; c > nc && nc > 0; nc = contour.size()) {
 			c = nc;
-			linearizeContourImpl(contour, 1, 7);
+			linearizeContourImpl(contour, linearizeStepSize, 7);
 		}
 	}
 }
@@ -3238,11 +3256,7 @@ void linearizeContour(std::vector<long>& x, std::vector<long>& y, double stepSiz
 		contour[j].x = x[j]; 
 		contour[j].y = y[j];
 	}
-	projectContour(contour, true);
-	//for (size_t c = contour.size(), nc = c - 1; c > nc && nc > 0; nc = contour.size()) {
-	//	c = nc;
-	//	linearizeContourImpl(contour, stepSize, maxSegmentSize);
-	//}
+	projectContour(contour, stepSize);
 	N = contour.size(); 
 	x.resize(N);
 	y.resize(N);
@@ -4560,8 +4574,15 @@ size_t ConductOverlapElimination(
 	int size_increment = -1, 
 	bool log_graph = false) {
 
+	if (log_graph) {
+		MASAddLogGraphMessage(__FUNCTION__, __LINE__, "enter. total contours", itostdstring((int)contours.size()));
+	}
+
 	if (contours.size() == 0) {
-		return 0; 
+		if (log_graph) {
+			MASAddLogGraphMessage(__FUNCTION__, __LINE__, "exit. no input.");
+		}
+		return 0;
 	}
 
 	MASInitialize(1, 1);
@@ -4572,6 +4593,10 @@ size_t ConductOverlapElimination(
 	for (auto& contour : contours) {
 		if (contour.size() < 3) {
 			continue; 
+		}
+
+		if (log_graph) {
+			MASAddLogGraphMessage(__FUNCTION__, __LINE__, "processing contour.");
 		}
 
 		std::string out_name;
@@ -4610,24 +4635,42 @@ size_t ConductOverlapElimination(
 	}
 
 	if (cntrNmbr == 0) {
-		return 0; 
+		if (log_graph) {
+			MASAddLogGraphMessage(__FUNCTION__, __LINE__, "exit. no valid input.");
+		}
+		return 0;
 	}
 
 	bool ok = true; 
 	if (size_increment != 0) {
+		if (log_graph) {
+			MASAddLogGraphMessage(__FUNCTION__, __LINE__, "size_increment", itostdstring(size_increment));
+		}
 		ok = MASSize(cl.c_str()/*"out"*/, "out", size_increment, log_graph, preserve_scale_factor);
 		if (ok) {
 			cl = "out";
 			if (!conduct_size) {
+				if (log_graph) {
+					MASAddLogGraphMessage(__FUNCTION__, __LINE__, "sizing back");
+				}
 				ok = MASSize("out", "out", -size_increment, log_graph, preserve_scale_factor);
 			}
 		}
 	}
 
-	MASEvaluate1(MAS_ActivateLayer, cl.c_str()/*"out"*/);
+	if (log_graph) {
+		MASAddLogGraphMessage(__FUNCTION__, __LINE__, "MAS_ActivateLayer", cl);
+	}
+
+	MASEvaluate1(MAS_ActivateLayer, cl.c_str(), cl.c_str()/*"out"*/, log_graph);
 
 	size_t nFirst = 0;
 	long nPolygons = MASLayerCountRTPolygons(cl.c_str()/*"out"*/, &nFirst);
+
+	if (log_graph) {
+		MASAddLogGraphMessage(__FUNCTION__, __LINE__, "MASLayerCountRTPolygons produced polygons", itostdstring(nPolygons));
+	}
+
 
 	size_t count = 0;
 	for (size_t n = nFirst; count < nPolygons && n < ((size_t)nPolygons << 2); ++n) {
@@ -4658,7 +4701,11 @@ size_t ConductOverlapElimination(
 		}
 	}
 
-	return ok? count: 0; 
+	if (log_graph) {
+		MASAddLogGraphMessage(__FUNCTION__, __LINE__, "exit.", cl);
+	}
+
+	return ok? count: 0;
 }
 
 size_t ConductOverlapEliminationEx(const std::vector<std::vector<cv::Point2d>>& contours, std::vector<std::vector<cv::Point2d>>& final_contours, 
@@ -4670,21 +4717,17 @@ size_t ConductOverlapEliminationEx(const std::vector<std::vector<cv::Point2d>>& 
 
 	size_t count = ConductOverlapElimination(contours, final_contours, preserve_scale_factor, scale_factor, conduct_size, size_increment, log_graph);
 	if (count == 0) {
-		size_t j = 0; 
+		if (log_graph) {
+			MASAddLogGraphMessage(__FUNCTION__, __LINE__, "failed on first attempt. retrying with smoothContour.");
+		}
+		size_t j = 0;
 		std::vector<std::vector<cv::Point2d>> aux(contours.size());
 		for (auto& contour : contours) {
 			if (contour.size()) {
 				aux[j].resize(contour.size());
 				std::reverse_copy(contour.cbegin(), contour.cend(), aux[j].begin());
-				//if (!size_increment) {
-				//	projectContour(aux[j], true);
-				//}
-				//for (size_t c = aux[j].size(), nc = c - 1; c > nc && nc > 0; nc = aux[j].size()) {
-				//	c = nc;
-				//	linearizeContourImpl(aux[j], 2.25, 7);
-				//}
 
-				projectContour(aux[j], true);
+				projectContour(aux[j], 1.0/*2.25*/, !size_increment);
 
 				if (!size_increment) {
 					final_contours.push_back(aux[j]);
@@ -4835,6 +4878,9 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 
 			auto submitGraphics = [&](Mat& originalImage, bool data_is_valid = false) {
+				while (!ctl->_image_isprocessed) {
+					ProcessWinMessages(10);
+				}
 				ctl->_gate.lock();
 				//ctl->_cv_image[0] = cv_image[0].clone();
 				//ctl->_cv_image[1] = cv_image[1].clone();
@@ -4843,6 +4889,7 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 				ctl->_pixel_threshold = 91;
 				ctl->_data_isvalid = false;
 				ctl->_image_isvalid = true;
+				ctl->_image_isprocessed = false;
 				ctl->_last_image_timestamp = image_localtime;
 				ctl->_unchangedImage[0] = originalImage.clone();
 				ctl->_unchangedImage[1] = unchangedImage.clone();
@@ -4950,9 +4997,13 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 					pt.y = roi.y + roi.height / 2;
 
 
+					bool invert_image = g_LoG_seedPoint.eventValue == 2/*right button*/;
+					bool log_graph = g_LoG_seedPoint.eventValue == 3/*central button*/;
+
+
 					int windowNumber = g_LoG_seedPoint.params.windowNumber - 1;
 
-					if (g_LoG_seedPoint.eventValue == 2/*right button*/) {
+					if (invert_image) {
 						Mat aux = cv_image[2 + windowNumber].clone();
 
 						Mat mean;
@@ -5054,7 +5105,45 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 					CopyVector(contours[0], boxes_selected[0].contour);
 
 
+					// generate circle
+
+					//double max_x = contours[0][0].x;
+					//double max_y = contours[0][0].y;
+					//double min_x = contours[0][0].x;
+					//double min_y = contours[0][0].y;
+
+					//for (auto& point : contours[0]) {
+					//	if (max_x < point.x) max_x = point.x;
+					//	if (max_y < point.y) max_y = point.y;
+					//	if (min_x > point.x) min_x = point.x;
+					//	if (min_y > point.y) min_y = point.y;
+					//}
+
+					//contours[0].resize(0);
+
+					//double step_x = (max_x - min_x) / 100.0;
+					//double zpx = (max_x - min_x) / 2.0;
+					//double zpy = (max_y - min_y) / 2.0;
+					//double rp = std::max(zpx, zpy);
+					//zpx = max_x - zpx;
+					//zpy = max_y - zpy;
+					//double rp2 = rp * rp;
+					//double xp = min_x;
+					//for (int s = 1; s >= -1; s -= 2) {
+					//	while (xp <= max_x && xp >= min_x) {
+					//		double cx = xp - zpx;
+					//		double yp = s*sqrt(rp2 - cx * cx) + zpy;
+					//		contours[0].push_back({xp, yp});
+					//		xp += s*step_x;
+					//	}
+					//	xp -= s * step_x;
+					//}
+
+
 					printf("\n\n");
+
+
+					MASInitializeStarttime(log_graph);
 
 
 					int pass_number = 0;
@@ -5095,15 +5184,21 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 							std::vector<std::vector<cv::Point2d>> local_contours;
 
 							std::ostringstream ostr;
-							ostr << "---" << "size_increment=" << size_increment << ' ' << "pass_number=" << pass_number << ' ' << "max_passes=" << max_passes << std::endl;
+							ostr << "---" << "size_increment=" << size_increment << ' ' << "pass_number=" << pass_number << ' ' << "max_passes=" << max_passes;
+							if (log_graph) {
+								MASAddLogGraphMessage(__FUNCTION__, __LINE__, ostr.str());
+							}
+							ostr << std::endl;
+
 							printf(ostr.str().c_str());
 
-							size_t count = ConductOverlapEliminationEx(contours, local_contours, false, max_scale_factor, true, size_increment, g_LoG_seedPoint.eventValue == 3/*central button*/);
+
+							size_t count = ConductOverlapEliminationEx(contours, local_contours, false, max_scale_factor, true, size_increment, log_graph);
 
 							if (count == 0) {
 								contours.resize(1);
 								CopyVector(contours[0], boxes_selected[0].contour);
-								pass_number == max_passes;
+								pass_number = max_passes;
 								iteration_number = 3;
 								continue;
 							}
@@ -5123,7 +5218,7 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 						ctl->_gate.unlock();
 					}
 
-					submitGraphics(finalContoursImage, true);
+					//submitGraphics(finalContoursImage, true);
 				}
 			}
 		}
@@ -5250,6 +5345,7 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 				ctl->_cv_edges[1] = cv_edges[1].clone();
 				ctl->_data_isvalid = false;
 				ctl->_image_isvalid = true;
+				ctl->_image_isprocessed = false;
 				ctl->_last_image_timestamp = image_localtime;
 				ctl->_unchangedImage[0] = originalImage.clone();
 				ctl->_unchangedImage[1] = unchangedImage.clone();

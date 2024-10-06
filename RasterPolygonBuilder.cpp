@@ -351,11 +351,14 @@ void OnMouseCallback(int event, int x, int y, int flags, void* userdata) {
 	if (event == 0) {
 		return;
 	}
+	if (event > 4) {
+		return;
+	}
 	if (flags == 1) {
 		return;
 	}
 	/*
-	event - 1: left button
+	event - 4: left button
 	event - 2: right button
 	event - 3: central button
 	*/
@@ -912,6 +915,12 @@ bool DisplayReconstructionData(SPointsReconstructionCtl& reconstruction_ctl, int
 		time_average = (time_average * 20 + (int)(OSDayTimeInMilliseconds() - time_start)) / 21;
 		stereodata_statistics_changed = true;
 	}
+
+
+	reconstruction_ctl._gate.lock();
+	reconstruction_ctl._image_isprocessed = true;
+	reconstruction_ctl._gate.unlock();
+
 
 
 	gate.unlock();

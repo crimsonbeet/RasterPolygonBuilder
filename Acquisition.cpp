@@ -271,9 +271,9 @@ bool BuildIdealChannels_Distribution(Mat& image, Point& pt, Mat& mean, Mat& stdD
 				return cv::invert(Q, invCholesky, DECOMP_LU) != 0.0;
 			}
 		}
-
-		return false;
 	}
+
+	return false;
 }
 
 void BuildIdealChannels_Likeness(Mat& image, Point& pt, double chIdeal[3], int radius) {
