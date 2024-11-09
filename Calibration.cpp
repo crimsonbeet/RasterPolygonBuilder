@@ -1646,8 +1646,8 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 
 
 
-		int nl = imagePoints[0].size() - 1;
-		int nr = imagePoints[1].size() - 1;
+		int nl = static_cast<int>(imagePoints[0].size()) - 1;
+		int nr = static_cast<int>(imagePoints[1].size()) - 1;
 
 
 		bool imagesFromFilesAreOk = false;
@@ -1727,8 +1727,8 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 		
 
 
-		nl = imagePoints_ok[0]? imagePoints [0].size() : -1;
-		nr = imagePoints_ok[1]? imagePoints [1].size() : -1;
+		nl = imagePoints_ok[0]? static_cast<int>(imagePoints [0].size()) : -1;
+		nr = imagePoints_ok[1]? static_cast<int>(imagePoints [1].size()) : -1;
 
 
 
@@ -1773,10 +1773,10 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 			}
 
 			if (nl < 0) {
-				nl = imagePoints[0].size();
+				nl = static_cast<int>(imagePoints[0].size());
 			}
 			if (nr < 0) {
-				nr = imagePoints[1].size();
+				nr = static_cast<int>(imagePoints[1].size());
 			}
 
 			std::string xml_name = std::string(CalibrationDirName()) + std::to_string(N) + ".xml";
@@ -2101,7 +2101,7 @@ return_t __stdcall StereoCalibrateIteration(LPVOID lp) {
 
 	ctl->_status = 2;
 
-	srand(ctl->_iter_num);
+	srand(static_cast<unsigned int>(ctl->_iter_num));
 
 	try {
 		size_t sample_size = ctl->_sample_size;

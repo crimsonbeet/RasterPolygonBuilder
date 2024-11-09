@@ -408,14 +408,28 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 			const double distanceFactor = 1 + approx_log2(1 + log2_X - log2_X_i);
 			const int gapCost = 20000 * distanceFactor;
 			const double scoreWeight = w * gapCost;
-			for (size_t j = 1; j < N; ++j) {
-				const size_t j_1 = j - 1;
+			for (int j = 1; j < N; ++j) {
+				const int j_1 = j - 1;
+
 				double fscore = 0;
+				int fscore_count = 0;
 				for (int r = 0; r < crop.rows; ++r) {
-					fscore += GetFScore(crop.at<cv::Vec<uchar, 3>>(r, i_1), strip2search.at<cv::Vec<uchar, 3>>(r, j_1));
+					for (int c = -1; c < 1; ++c) {
+						const int i_c = i_1 + c;
+						if (i_c < 0 || i_c >= M) {
+							continue;
+						}
+						const int j_c = j_1 + c;
+						if (j_c < 0 || j_c >= N) {
+							continue;
+						}
+						fscore += GetFScore(crop.at<cv::Vec<uchar, 3>>(r, i_c), strip2search.at<cv::Vec<uchar, 3>>(r, j_c));
+						++fscore_count;
+					}
 				}
-				fscore /= crop.rows;
-				int64_t case1Cost = A[i_1][j_1] + scoreWeight * (1 - fscore) + 0.45;
+				fscore /= fscore_count;
+
+				int64_t case1Cost = A[i_1][j_1] + scoreWeight * (0.9 - fscore) + 0.45;
 				int64_t case2Cost = A[i_1][j] + gapCost;
 				int64_t case3Cost = A[i][j_1] + gapCost;
 				if (case1Cost < case2Cost && case1Cost < case3Cost) {
@@ -620,7 +634,7 @@ template<typename T>
 inline Mat mat_loginvert2byte(const T *src_val, const cv::Size& src_size, const size_t row_step, const int bytedepth_scalefactor) { // returns CV_8UC1 matrix of log inverted values. 
 	const double scalefactor = 1.0 / bytedepth_scalefactor;
 	const double factor = 256.0 / approx_log2(256);
-	const const double log_256 = approx_log2(256);
+	const double log_256 = approx_log2(256);
 	Mat dst(src_size, CV_8UC1);
 	uchar *val = (uchar*)dst.data;
 	char *buf = (char*)src_val;
@@ -671,7 +685,7 @@ template<typename T>
 inline Mat mat_loginvert2word(const T *src_val, const cv::Size& src_size, const size_t row_step, const int bytedepth_scalefactor) { // returns CV_16UC1 matrix of log inverted values. 
 	const double scalefactor = bytedepth_scalefactor;
 	const double factor = 65536.0 / approx_log2(65536);
-	const const double log_65536 = approx_log2(65536);
+	const double log_65536 = approx_log2(65536);
 	Mat dst(src_size, CV_16UC1);
 	uint16_t *val = (uint16_t*)dst.data;
 	char *buf = (char*)src_val;
@@ -2839,7 +2853,7 @@ void kalmanSmooting(std::vector<Point_<T>>& contour, std::vector<Point2d>& shock
 		}
 	}
 
-	for (int t = contour.size() - 2, i = contour.size() - 1; t >= 0; --t, --i) {
+	for (int t = static_cast<int>(contour.size()) - 2, i = static_cast<int>(contour.size()) - 1; t >= 0; --t, --i) {
 		Matx22d X[2];
 		Matx22d J[2];
 		for (int j = 0; j < 2; ++j) {
@@ -2905,7 +2919,7 @@ void smoothContour(std::vector<Point_<T>>& contour) {
 
 	const size_t L = contour.size();
 	for (int j = 0; j < L; ++j) {
-		int k = L - j - 1;
+		int k = static_cast<int>(L) - j - 1;
 		contour[j] = (contour[j] + contour_reversed[k]) / 2;
 		//if (cv::norm(shocks[0][j]) > cv::norm(shocks[1][k])) {
 		//	contour[j] = contour_reversed[k];
@@ -4672,8 +4686,8 @@ size_t ConductOverlapElimination(
 	}
 
 
-	size_t count = 0;
-	for (size_t n = nFirst; count < nPolygons && n < ((size_t)nPolygons << 2); ++n) {
+	int count = 0;
+	for (int n = static_cast<int>(nFirst); count < nPolygons && n < (nPolygons << 2); ++n) {
 		_sAlong x;
 		_sAlong y;
 		long s_factor = 0;
@@ -5436,8 +5450,8 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 
 
 				int strip2searchWidth = std::floor(0.35 * aux.cols); //1400
-				int patternHalfWidth = ((strip2searchWidth / 35) >> 1) << 2;
-				const int blurHeight = 9;
+				int patternHalfWidth = ((strip2searchWidth / 35) >> 1) << 1;
+				const int blurHeight = 7;
 
 				
 				cv::Scalar cropMean = cv::mean(aux);
@@ -5451,27 +5465,49 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 				struct iteration_result {
 					int ancorOffset = 0;
 					int pos = 0;
+					int avg_err = 0;
 					Mat crop_buffer[2];
 					Mat strip2search_buffer[2];
-					int disparityError[3] = { 0, 0, 0 };
+					int disparityError[3] = { 0, std::numeric_limits<int>::max(), 0 };
 					Point resPoint;
 					Point mapPoint;
+
+					iteration_result& operator << (const iteration_result& other) {
+						ancorOffset = other.ancorOffset;
+						pos = other.pos;
+						avg_err = other.avg_err;
+						for (size_t m = 0; m < ARRAY_NUM_ELEMENTS(crop_buffer); ++m) {
+							crop_buffer[m] = other.crop_buffer[m].clone();
+						}
+						for (size_t m = 0; m < ARRAY_NUM_ELEMENTS(crop_buffer); ++m) {
+							strip2search_buffer[m] = other.strip2search_buffer[m].clone();
+						}
+						Mat strip2search_buffer[2];
+						memcpy(disparityError, other.disparityError, ARRAY_NUM_ELEMENTS(disparityError));
+						resPoint = other.resPoint;
+						mapPoint = other.mapPoint;
+					}
 				};
 
-				DisparityAlgorithmControl iter_ctl[3];
+				const size_t number_of_passes = 3;
 
-				iteration_result iter_rs[3];
+
+				DisparityAlgorithmControl iter_ctl[number_of_passes];
+				iteration_result iter_rs[number_of_passes];
 				int iter = 0;
 
-				int pos = 0;
 
+				int pos = 0;
 				int good_count = 0;
 
-				int best_pass = 0;
+				iteration_result best_it;
+
 				do {
+					// patternHalfWidth is cut in half with each iteration
+
 					pt = originalPoint;
 
-					if (patternHalfWidth > 8) {
+					if (patternHalfWidth > 8) { // gets changed with each iteration
 						patternHalfWidth >>= 1;
 					}
 
@@ -5480,7 +5516,7 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 
 
 					auto disparityAlgorithm = [&](const int pass) {
-						int ancorOffset = patternHalfWidth * pass;
+						int ancorOffset = patternHalfWidth * pass; // each pass generates different ancorOffset
 
 						auto disparityAlgorithm_internal = [ancorOffset, patternHalfWidth, strip2searchWidth, &checkRectangle]
 							(const cv::Point &pt0, const Mat& left, const Mat& right, Mat& crop, Mat& strip2search, double leftIntensity, double rightIntensity) -> cv::Point {
@@ -5496,6 +5532,10 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 
 							crop = Mat(left, cropRect);
 							strip2search = Mat(right, strip2searchRect);
+
+							if (crop.dims == 0 || crop.rows == 0) {
+								return cv::Point(-1, -1);
+							}
 
 
 							cv::Scalar cropMean = cv::mean(crop);
@@ -5527,16 +5567,20 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 
 						it.resPoint = disparityAlgorithm_internal(pt, aux, aux2, it.crop_buffer[0], it.strip2search_buffer[0], cropIntensity, strip2searchIntensity);
 
-						it.mapPoint = disparityAlgorithm_internal(it.resPoint, aux2, aux, it.crop_buffer[1], it.strip2search_buffer[1], strip2searchIntensity, cropIntensity);
-
-						it.disparityError[1] = std::abs(pt.x - it.mapPoint.x);
-						it.disparityError[2] = std::abs(originalPoint.x - it.mapPoint.x);
-
 						it.ancorOffset = ancorOffset;
-
 						it.pos = it.resPoint.x - (pt.x - strip2searchWidth / 2);
 
-						std::cout << "iteration pass " << pass << "; errors: " << it.disparityError[0] << ' ' << it.disparityError[1] << ' ' << it.disparityError[2] << std::endl;
+						it.mapPoint = disparityAlgorithm_internal(it.resPoint, aux2, aux, it.crop_buffer[1], it.strip2search_buffer[1], strip2searchIntensity, cropIntensity);
+						if (it.mapPoint == cv::Point(-1, -1)) {
+							it.disparityError[1] = std::numeric_limits<int>::max();
+							it.disparityError[2] = std::numeric_limits<int>::max();
+						}
+						else {
+							it.disparityError[1] = std::abs(pt.x - it.mapPoint.x);
+							it.disparityError[2] = std::abs(originalPoint.x - it.mapPoint.x);
+						}
+
+						std::cout << "iteration pass " << pass << "; errors: " << it.disparityError[1] << ' ' << it.disparityError[2] << "; pos: " << it.pos << std::endl;
 					};
 
 
@@ -5544,10 +5588,7 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 
 					int min_error = std::numeric_limits<int>::max();
 
-					for (int pass = 0; pass < 3; ++pass) {
-						auto& it = iter_rs[pass];
-						it.disparityError[0] = it.disparityError[1];
-
+					for (int pass = 0; pass < number_of_passes; ++pass) {
 						iter_ctl[pass]._pass = pass;
 						iter_ctl[pass]._status = 0;
 						iter_ctl[pass]._disparityAlgorithm = disparityAlgorithm;
@@ -5555,37 +5596,76 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 						QueueWorkItem(ExecuteDisparityAlgorithm, &iter_ctl[pass]);
 					}
 
-					int active_count = 0;
-					while (active_count < 3) {
+					int done_count = 0;
+					while (done_count < number_of_passes) {
 						ProcessWinMessages(10);
 
-						active_count = 0;
-						for (int pass = 0; pass < 3; ++pass) {
+						done_count = 0;
+						for (int pass = 0; pass < number_of_passes; ++pass) {
 							if (iter_ctl[pass]._status == 2) {
-								++active_count;
+								++done_count;
 							}
 						}
 					}
 
-					good_count = 0;
 
-					for (int pass = 0; pass < 3; ++pass) {
-						auto& it = iter_rs[pass];
+					for (int pass = 0; pass < number_of_passes; ++pass) {
+						const auto& it = iter_rs[pass];
 						if (it.disparityError[1] < min_error) {
-							best_pass = pass;
 							min_error = it.disparityError[1];
 						}
+					}
+
+
+					good_count = 0;
+
+					int avg_count = 0;
+					double avg_pos = 0;
+
+					for (int pass = 0; pass < number_of_passes; ++pass) {
+						const auto& it = iter_rs[pass];
 						if (it.disparityError[1] <= 2) {
 							if (it.pos > 0) {
+								++avg_count;
+								avg_pos += it.pos;
 								++good_count;
 							}
 						}
 					}
 
-				} while (++iter < 3 && (good_count < 2 || (std::abs(iter_rs[best_pass].disparityError[1] - iter_rs[best_pass].disparityError[0]) > 2)));
+					if (avg_count > 0) {
+						avg_pos /= avg_count;
+					}
+
+					for (int pass = 0; pass < number_of_passes; ++pass) {
+						auto& it = iter_rs[pass];
+						if (it.disparityError[1] == min_error) {
+							if (std::abs(avg_pos - it.pos) > 2) {
+								good_count = 0;
+							}
+						}
+					}
+
+					if (good_count > 1) {
+						for (int pass = 0; pass < number_of_passes; ++pass) {
+							auto& it = iter_rs[pass];
+							if (it.disparityError[1] == min_error) {
+								it.pos = std::floor(avg_pos + 0.5);
+
+								if (best_it.disparityError[1] >= it.disparityError[1]) {
+									if (best_it.disparityError[1] == it.disparityError[1]) {
+										best_it.pos = floor((best_it.pos + it.pos) / 2.0 + 0.5);
+									}
+									else {
+										best_it = it;
+									}
+								}
+							}
+						}
+					}
 
 
-				auto& best_it = iter_rs[best_pass];
+				} while (++iter < number_of_passes && good_count < 2);
 
 
 				if (best_it.pos <= 0 || ((std::abs(best_it.disparityError[1] - best_it.disparityError[0]) > 2) && best_it.disparityError[1] > 2) || best_it.disparityError[2] > patternHalfWidth) {
@@ -5595,7 +5675,7 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 				}
 
 
-				std::cout << "Used " << iter << " iterations; errors: " << best_it.disparityError[0] << ' ' << best_it.disparityError[1] << ' ' << best_it.disparityError[2] << std::endl;
+				std::cout << "Used " << iter << " iterations; pos: " << best_it.pos << "; errors: " << best_it.disparityError[1] << ' ' << best_it.disparityError[2] << std::endl;
 
 
 				pos = best_it.pos;
