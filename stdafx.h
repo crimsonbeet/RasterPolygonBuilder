@@ -830,7 +830,7 @@ struct ClusteredPoint: public Point2d {
 			}
 		}
 		MatCloner(const Mat& mat) : Mat() {
-			(Mat&)*this = mat.clone();
+			(Mat&)*this = mat;
 		}
 		MatCloner(Mat&& mat) : Mat() {
 			(Mat&)*this = mat;
