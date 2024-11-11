@@ -5772,10 +5772,6 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 				}
 
 
-				cv::line(crop, cv::Point(best_it.ancorOffset, 0), cv::Point(best_it.ancorOffset, crop.rows - 1), Scalar(0, 255, 0));
-				cv::line(strip2search, cv::Point(pos, 0), cv::Point(pos, strip2search.rows - 1), Scalar(0, 255, 0));
-
-
 				size_t newPointIdx = points4D.size() - 1;
 
 				if (newPointIdx < points4D.size()) {
@@ -5796,6 +5792,11 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 				else {
 					std::cout << "NO calculated distance" << std::endl;
 				}
+
+
+				cv::line(crop, cv::Point(best_it.ancorOffset, 0), cv::Point(best_it.ancorOffset, crop.rows - 1), Scalar(0, 255, 0));
+				cv::line(strip2search, cv::Point(pos, 0), cv::Point(pos, strip2search.rows - 1), Scalar(0, 255, 0));
+
 
 				break;
 			}
