@@ -11,6 +11,8 @@ struct ImageScaleFactors {
 struct MouseCallbackParameters {
 	ImageScaleFactors scaleFactors;
 	int windowNumber = 0;
+	int x = -1;
+	int y = -1;
 };
 
 struct LoGSeedPoint {
@@ -18,6 +20,7 @@ struct LoGSeedPoint {
 	int eventValue = 0;
 	int x;
 	int y;
+	cv::Rect box;
 };
 
 extern LoGSeedPoint g_LoG_seedPoint;

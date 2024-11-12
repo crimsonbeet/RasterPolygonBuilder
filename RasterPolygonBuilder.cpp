@@ -342,6 +342,7 @@ return_t __stdcall ZeroLogHandler(LPVOID lp) {
 HANDLE g_event_SFrameIsAvailable = INVALID_HANDLE_VALUE;
 HANDLE g_event_SeedPointIsAvailable = INVALID_HANDLE_VALUE;
 HANDLE g_event_ContourIsConfirmed = INVALID_HANDLE_VALUE;
+HANDLE g_event_DrawBox = INVALID_HANDLE_VALUE;
 
 LoGSeedPoint g_LoG_seedPoint;
 int g_LoG_imageWindowNumber;
@@ -349,22 +350,45 @@ int g_LoG_imageWindowNumber;
 void OnMouseCallback(int event, int x, int y, int flags, void* userdata) {
 	MouseCallbackParameters* params = (MouseCallbackParameters*)userdata;
 	if (event == 0) {
+		if (params->x != -1 && params->y != -1 && (params->windowNumber == 1 || params->windowNumber == 2)) {
+			g_LoG_seedPoint.params = *params;
+			g_LoG_seedPoint.eventValue = event;
+			g_LoG_seedPoint.x = -1;
+			g_LoG_seedPoint.y = -1;
+			g_LoG_seedPoint.box = cv::Rect(std::min(x, params->x), std::min(y, params->y), std::abs(x - params->x), std::abs(y - params->y));
+
+			g_LoG_imageWindowNumber = params->windowNumber;
+			SetEvent(g_event_DrawBox);
+		}
 		return;
 	}
-	if (event > 4) {
+
+	if (event < 4) {
+		params->x = x;
+		params->y = y;
+		g_LoG_seedPoint.box = cv::Rect();
 		return;
 	}
-	if (flags == 1) {
-		return;
-	}
+
+	//if (flags == 1) {
+	//	return;
+	//}
+
 	/*
-	event - 4: left button
-	event - 2: right button
-	event - 3: central button
+	event - 4: left button up
+	event - 5: right button up
+	event - 6: central button up
 	*/
 	/*
 	std::cout << "flags" << flags << std::endl;
 	*/
+
+	if (event < 4 || event > 6) {
+		return;
+	}
+
+	params->x = -1;
+	params->y = -1;
 
 	g_LoG_seedPoint.params = *params;
 	g_LoG_seedPoint.eventValue = event;
@@ -387,7 +411,6 @@ void OnMouseCallback(int event, int x, int y, int flags, void* userdata) {
 	default:
 		break;
 	}
-
 }
 
 
@@ -1082,6 +1105,7 @@ int main() {
 	g_event_SFrameIsAvailable = CreateEvent(0, 0, 0, 0);
 	g_event_SeedPointIsAvailable = CreateEvent(0, 0, 0, 0);
 	g_event_ContourIsConfirmed = CreateEvent(0, 0, 0, 0);
+	g_event_DrawBox = CreateEvent(0, 0, 0, 0);
 
 	if (_g_images_frame) {
 		_g_images_frame->NEW_StereoConfiguration(g_configuration);
