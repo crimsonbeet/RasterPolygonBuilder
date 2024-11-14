@@ -75,8 +75,8 @@ double GetFScore(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2) {
 	double fscore = 1;
 	for (int j = 0; j < 3; ++j) {
 		if (ch1[j] > 0 && ch2[j] > 0) {
-			const double div = pow(ch1[j], 2) + pow(ch2[j], 2);
-			const double num = (double)ch1[j] * (double)ch2[j];
+			const double div = (double)ch1[j]* (double)ch1[j] + (double)ch2[j]* (double)ch2[j];
+			const double num = (double)ch1[j]* (double)ch2[j];
 			if (div > 100 && num > 10) {
 				fscore *= (2.0 * num) / div;
 			}
@@ -159,7 +159,6 @@ double cosineDistance3d(const T& left, const S& right) {
 template<typename T>
 void ConvertColoredImage2Mono_CosineLikeness(Mat& image, T chIdeal[3], std::function<double(uchar)> convert) {
 	cv::Mat aux(image.size(), CV_16UC1);
-	double powIdeal1[3] = { pow(chIdeal[0], 1), pow(chIdeal[1], 1), pow(chIdeal[2], 1) };
 	typedef Vec<uchar, 3> Vec3c;
 	for (int r = 0; r < aux.rows; ++r) {
 		for (int c = 0; c < aux.cols; ++c) {
@@ -289,7 +288,7 @@ void BuildIdealChannels_Likeness(Mat& image, Point& pt, double chIdeal[3], int r
 				++cnt;
 				Vec3c& pixVec = image.at<Vec3c>(r, c);
 				for (int j = 0; j < 3; ++j) {
-					likeness[j] += pixVec[j];
+					likeness[j] += ((double)pixVec[j]);
 				}
 			}
 		}

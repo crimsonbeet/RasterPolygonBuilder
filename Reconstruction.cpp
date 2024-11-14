@@ -81,7 +81,7 @@ void Prefetch_PolyspaceProjection(ATLSMatrix<double>& x_xxi_x, int sampleSize = 
 bool AngleFromCosineTheorem(double c, double a, double b, double& angle) { // angle in radians
 	bool ok = false;
 	if(a > 0 && b > 0 && c >= 0) {
-		double cos_c = (pow(a, 2) + pow(b, 2) - pow(c, 2)) / (2 * a * b);
+		double cos_c = (a*a + b*b - c*c) / (2 * a * b);
 		if(fabs(cos_c) <= 1) {
 			angle = std::acos(cos_c);
 			ok = true;
@@ -143,8 +143,8 @@ double DirectionOfRectangle(const std::vector<T>& points, Point2d& direction, Po
 	int idx0 = idx1 > 0? (idx1 - 1): 3;
 	int idx2 = idx1 < 3? (idx1 + 1): 0;
 	int idx3 = idx2 < 3? (idx2 + 1): 0;
-	double dist0 = std::pow(points[idx0].y - points[idx1].y, 2) + std::pow(points[idx0].x - points[idx1].x, 2);
-	double dist2 = std::pow(points[idx2].y - points[idx1].y, 2) + std::pow(points[idx2].x - points[idx1].x, 2);
+	double dist0 = pow2(points[idx0].y - points[idx1].y) + pow2(points[idx0].x - points[idx1].x);
+	double dist2 = pow2(points[idx2].y - points[idx1].y) + pow2(points[idx2].x - points[idx1].x);
 
 	int idxn = dist2 < dist0? idx2: idx0; 
 
@@ -240,8 +240,8 @@ void SetQuadCounterclockwiseShorterEdgeOutgoing(T *points, const size_t N) {
 	}
 
 	// 3. if next point is on longer edge, position the quad to the previous point. 
-	double dist1 = std::pow(points[idx0].y - points[idx1].y, 2) + std::pow(points[idx0].x - points[idx1].x, 2);
-	double dist_1 = std::pow(points[idx0].y - points[idx_1].y, 2) + std::pow(points[idx0].x - points[idx_1].x, 2);
+	double dist1 = pow2(points[idx0].y - points[idx1].y) + pow2(points[idx0].x - points[idx1].x);
+	double dist_1 = pow2(points[idx0].y - points[idx_1].y) + pow2(points[idx0].x - points[idx_1].x);
 	if(dist_1 < dist1) {
 		std::rotate(points, points + idx_1, points + N);
 	}
@@ -321,17 +321,17 @@ double DistanceSquareFromPointToSegment(const Point2d& P, const Point2d& A, cons
 
 	double t = PxAx * BxAx + PyAy * ByAy;
 	if(t < 0) {
-		dist = (std::pow(PxAx, 2) + std::pow(PyAy, 2));
+		dist = (pow2(PxAx) + pow2(PyAy));
 	}
 	else {
 		double BxPx = B.x - P.x;
 		double ByPy = B.y - P.y;
 		t = BxPx * BxAx + ByPy * ByAy;
 		if(t < 0) {
-			dist = (std::pow(BxPx, 2) + std::pow(ByPy, 2));
+			dist = (pow2(BxPx) + pow2(ByPy));
 		}
 		else {
-			dist = (std::pow(PyAy * BxAx - PxAx * ByAy, 2) / (std::pow(BxAx, 2) + std::pow(ByAy, 2)));
+			dist = (pow2(PyAy * BxAx - PxAx * ByAy) / (pow2(BxAx) + pow2(ByAy)));
 		}
 	}
 	return dist;
@@ -344,8 +344,8 @@ double RadiusOfRectangle(const std::vector<Point2d>& points) {
 	if(points.size() != 4) {
 		return 0;
 	}
-	double dist0 = std::sqrt(std::pow(points[0].y - points[2].y, 2) + std::pow(points[0].x - points[2].x, 2));
-	double dist1 = std::sqrt(std::pow(points[1].y - points[3].y, 2) + std::pow(points[1].x - points[3].x, 2));
+	double dist0 = std::sqrt(pow2(points[0].y - points[2].y) + pow2(points[0].x - points[2].x));
+	double dist1 = std::sqrt(pow2(points[1].y - points[3].y) + pow2(points[1].x - points[3].x));
 
 	return (dist0 + dist1) / 4; 
 }
@@ -360,8 +360,12 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 	const int M1 = cropIn.cols;
 	const int N1 = strip2searchIn.cols;
 
-	std::vector<std::vector<int64_t>> A(M);
+	std::vector<std::vector<int64_t>> A(M); // M rows
+	std::vector<std::vector<double>> AF(M); // M rows
 	for (auto& v : A) {
+		v.resize(N);
+	}
+	for (auto& v : AF) {
 		v.resize(N);
 	}
 
@@ -406,13 +410,14 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 	double pos = -N;
 	resultCost = std::numeric_limits<int64_t>::max();
 
-	for (int w = 1; pos <= 0 && w < 4; ++w) {
+	for (int w = 1; pos <= 0 && w < 2; ++w) {
 
 		for (int i = 1; i < M; ++i) {
 			const int i_1 = i - 1;
-			const double X_abs_i_1 = std::abs(double(X - i_1));
-			const double log2_X_i = approx_log2(X_abs_i_1 < 1 ? 1 : X_abs_i_1); // 0 - at the center of crop, log2_X, ~5, at the ends of crop
-			const double distanceFactor = 1 + approx_log2(1 + log2_X - log2_X_i);
+			//const double X_abs_i_1 = std::abs(double(X - i_1));
+			//const double log2_X_i = approx_log2(X_abs_i_1 < 1 ? 1 : X_abs_i_1); // 0 - at the center of crop, log2_X, ~5, at the ends of crop
+			//const double distanceFactor = 1 + approx_log2(1 + log2_X - log2_X_i);
+			const double distanceFactor = 2;
 			const int gapCost = 20000 * distanceFactor;
 			const double scoreWeight = w * gapCost;
 			for (int j = 1; j < N; ++j) {
@@ -436,22 +441,31 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 				}
 				fscore /= fscore_count;
 
+				AF[i][j] = fscore;
+
 				int64_t case1Cost = A[i_1][j_1] + scoreWeight * (0.9 - fscore) + 0.45;
 				int64_t case2Cost = A[i_1][j] + gapCost;
 				int64_t case3Cost = A[i][j_1] + gapCost;
-				if (case1Cost < case2Cost && case1Cost < case3Cost) {
-					T[i][j] = 1;
-					A[i][j] = case1Cost;
-				}
-				else
-					if (case2Cost < case3Cost) {
+				if (case2Cost < case3Cost) {
+					if (case1Cost < case2Cost) {
+						T[i][j] = 1;
+						A[i][j] = case1Cost;
+					}
+					else {
 						T[i][j] = 2;
 						A[i][j] = case2Cost;
+					}
+				}
+				else {
+					if (case1Cost < case3Cost) {
+						T[i][j] = 1;
+						A[i][j] = case1Cost;
 					}
 					else {
 						T[i][j] = 3;
 						A[i][j] = case3Cost;
 					}
+				}
 			}
 		}
 
@@ -460,22 +474,23 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 
 		int64_t caseCost = A[m][n];
 		int64_t caseCostMax = caseCost;
-		//if (caseCostMax <= 0) {
-		//	continue;
-		//}
 
 		std::stack<size_t> st;
-		st.push(n);
+		//st.push(n);
 
-		for (size_t j = n; j > M/*(M + (M >> 1))*/; --j) {
+		for (size_t j = n; j > M; --j) {
 			if (T[m][j] != 3) {
 				if (A[m][j] <= caseCost) {
 					n = j;
-					st.push(n);
+					//st.push(n);
 					caseCost = A[m][j];
 				}
 			}
 		}
+
+		st.push(n);
+
+		const double minimal_fscore = (1.0 * M / 3);
 
 		int64_t caseCostMin = caseCostMax;
 		int64_t caseCostTotalMin = caseCostMax;
@@ -495,22 +510,29 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 			}
 
 			double Y = 0; // yet unknown
+			double fscore = 0;
 
 			while (caseType != 0) {
 				switch (caseType) {
 				case 1:
 					--m;
 					--n;
+					fscore += AF[m][n];
 					break;
 				case 2:
 					--m; // case of allignment matches entry from pattern and gap from strip2search
 					break;
 				case 3:
-					--n;
+					--n; // case of allignment matches entry from strip2search and gap from pattern
+					break;
+				}
+
+				if (n == 0) {
 					break;
 				}
 
 				caseType = T[m][n];
+
 
 				if (m == X) {
 					caseCost = A[m][n];
@@ -525,12 +547,16 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 				}
 			}
 
+			if ((nStart - n) > M || fscore < minimal_fscore) {
+				resultCost = fscore + 0.5;
+			}
+			else
 			if (caseCost < caseCostMin) {
 				pos = Y;
 				caseCostMin = caseCost;
 				caseCostTotalMin = caseCostTotal;
 
-				resultCost = caseCostMin / w;
+				resultCost = fscore;// caseCostMin / w;
 			}
 		}
 	}
@@ -1234,8 +1260,8 @@ void inline BlobCenters(std::vector<ABox>& boxes, std::vector<ClusteredPoint>& p
 Mat_<double> LoG(double sigma, int ksize) { // Laplacian of Gaussian kernel
 	const int cx = (int)(ksize - 1) / 2;
 	const int cy = (int)(ksize - 1) / 2;
-	const double sigmaSquare = pow(sigma, 2); 
-	const double sigmaSquare2 = pow(sigmaSquare, 2); 
+	const double sigmaSquare = sigma*sigma;
+	const double sigmaSquare2 = sigmaSquare*sigmaSquare;
 	Mat_<double> LoGkernel(ksize, ksize);
 	double sumLoGkernel = 0;
 	for(int x = 0; x < ksize; ++x) { 
@@ -1718,7 +1744,8 @@ bool RowsCenterEllipse(std::vector<ABoxedrow> rows, ClusteredPoint& point, Mat& 
 
 			double sum = 0;
 			for(int j = 0; j < N; ++j) {
-				sum += pow(new_u(j, j) - u(j, j), 2);
+				const auto d = new_u(j, j) - u(j, j);
+				sum += d*d;
 			}
 			err = sqrt(sum);
 			u = new_u;
@@ -1992,7 +2019,7 @@ double approximate_withQuad100(const std::vector<Point>& contour, std::vector<Po
 
 void cornerSubPixGravity(Mat& image, std::vector<Point2f>& corners, Size winSize, const unsigned int min_intensity, const unsigned int avg_intensity, TermCriteria criteria = TermCriteria(TermCriteria::EPS + TermCriteria::MAX_ITER, 5, 0.1)) {
 	std::vector<ABoxedrow> rows; 
-	double lambda = 1.0 / sqrt(pow(winSize.height, 2) + pow(winSize.width, 2)); 
+	double lambda = 1.0 / sqrt(winSize.height*winSize.height + winSize.width*winSize.width);
 	rows.reserve(winSize.height * 2 + 1);
 	for(auto& corner : corners) {
 		const int nSteps = (criteria.type & TermCriteria::MAX_ITER) != 0? criteria.maxCount: 1;
@@ -3138,7 +3165,7 @@ void linearizeContourImpl(std::vector<Point_<T>>&contour, double stepSize, const
 	}
 	size_t n = contour.size() - 1;
 	const size_t N = contour[0] == contour[n]? n: n+1;
-	const double D = pow(stepSize, 2) * 2; 
+	const double D = stepSize*stepSize;
 	bool prevIsOk = false; 
 	Point2d aPrevious;
 	Point2d aPoint = contour[0];
@@ -3146,7 +3173,7 @@ void linearizeContourImpl(std::vector<Point_<T>>&contour, double stepSize, const
 	size_t k;
 	for (k = 1; k < N; ++k) {
 		aNext = contour[k % N]; 
-		double d = pow(aPoint.x - aNext.x, 2) + pow(aPoint.y - aNext.y, 2); 
+		double d = pow2(aPoint.x - aNext.x) + pow2(aPoint.y - aNext.y); 
 		if (d > D) {
 			if (prevIsOk) {
 				break; 
@@ -3170,7 +3197,7 @@ void linearizeContourImpl(std::vector<Point_<T>>&contour, double stepSize, const
 	std::vector<Point2d> segment;
 	for (m = k + 1; (m % N) != k; ++m) {
 		aNext = contour[m % N];
-		double d = pow(aPoint.x - aNext.x, 2) + pow(aPoint.y - aNext.y, 2);
+		double d = pow2(aPoint.x - aNext.x) + pow2(aPoint.y - aNext.y);
 		if (d == 0) {
 		}
 		else 
@@ -3230,7 +3257,7 @@ void linearizeContourImpl(std::vector<Point_<T>>&contour, double stepSize, const
 						Mat_<double> corner(solution);
 						Point2d point(corner(0, 0), corner(1, 0));
 
-						d = pow(point.x - aFirst.x, 2) + pow(point.y - aFirst.y, 2) + pow(point.x - aPoint.x, 2) + pow(point.y - aPoint.y, 2);
+						d = pow2(point.x - aFirst.x) + pow2(point.y - aFirst.y) + pow2(point.x - aPoint.x) + pow2(point.y - aPoint.y);
 						if (d < (D * 100)) {
 							aux.push_back(point);
 							solved = true;
@@ -3409,8 +3436,8 @@ double CalculateSkewness(Mat_<double>& vectorized_crop/*prebuilt intensities*/, 
 
 	for(int k = 0; k < n; ++k) {
 		double err = vectorized_crop(k, 1) - mean;
-		err_sum_sqre += pow(err, 2);
-		err_sum_cube += pow(err, 3);
+		err_sum_sqre += pow2(err);
+		err_sum_cube += pow2(err)*err;
 		//err_sum_quad += pow(err, 4);
 	}
 
@@ -3628,14 +3655,14 @@ int BlobCentersLoG(std::vector<ABox>& boxes, std::vector<ClusteredPoint>& points
 
 						double contour_area = contourArea(contour, false/*cannot be negative*/);
 						double contour_perimeter = arcLength(contour, false/*tell it to treat as not closed because it is closed*/);
-						double contour_circularity = 4 * CV_PI * std::abs(contour_area) / std::pow(contour_perimeter, 2);
+						double contour_circularity = 4 * CV_PI * std::abs(contour_area) / pow2(contour_perimeter);
 
 						hull.clear();
 						hull.reserve(contour.size());
 						cv::convexHull(contour, hull);
 						double hull_area = contourArea(hull, true/*can be negative*/);
 						double hull_perimeter = arcLength(hull, true/*tell it to close it because it is not closed*/);
-						double hull_circularity = 4 * CV_PI * std::abs(hull_area) / std::pow(hull_perimeter, 2);
+						double hull_circularity = 4 * CV_PI * std::abs(hull_area) / pow2(hull_perimeter);
 
 						double contour_area2hull_area = std::abs(contour_area) / std::abs(hull_area);
 
@@ -3816,9 +3843,9 @@ int BlobCentersLoG(std::vector<ABox>& boxes, std::vector<ClusteredPoint>& points
 							covar = -covar;
 						}
 
-						covar /= std::pow(max_distance, 2);
+						covar /= pow2(max_distance);
 
-						double effective_flattening = (std::pow(covar, 2) / (form_factor));
+						double effective_flattening = (pow2(covar) / (form_factor));
 						effective_flattening *= contour_area2hull_area;
 
 						//double skewness = CalculateSkewness(vectorized_crop, aBlob, data, imcols, offset, PB, a);
@@ -4077,7 +4104,7 @@ void Align_Rectangles(const ClusteredPoint& point0, const ClusteredPoint& point1
 	//wa[0] = 0.5;
 	//wa[1] = 0.5; 
 
-	double w[2] = {std::pow(point0._shapemeasure, 2), std::pow(point1._shapemeasure, 2)};
+	double w[2] = {pow2(point0._shapemeasure), pow2(point1._shapemeasure)};
 	double shapemeasure_sum = w[0] + w[1];
 	w[0] = 1 - (w[0] / shapemeasure_sum);
 	w[1] = 1 - (w[1] / shapemeasure_sum);
@@ -4108,7 +4135,7 @@ double Rectangles_Minimize_y_error(const ClusteredPoint& point0, const Clustered
 	a[0] = InclinationAngleOfRectangle(point0._corners) * 180 / CV_PI;
 	a[1] = InclinationAngleOfRectangle(point1._corners) * 180 / CV_PI;
 
-	double w[2] = {std::pow(point0._shapemeasure, 2), std::pow(point1._shapemeasure, 2)};
+	double w[2] = {pow2(point0._shapemeasure), pow2(point1._shapemeasure)};
 	double shapemeasure_sum = w[0] + w[1];
 	w[0] = 1 - (w[0] / shapemeasure_sum);
 	w[1] = 1 - (w[1] / shapemeasure_sum);
@@ -5326,7 +5353,7 @@ return_t __stdcall CalculateDisparitySinglePoint(LPVOID lp) {
 
 	const int strip2searchWidth = ctl->strip2searchWidth; 
 	const int strip2searchHalfWidth = strip2searchWidth >> 1;
-	int patternHalfWidth = ctl->patternHalfWidth;
+	const int halfWidth = ctl->patternHalfWidth;
 	const int blurHeight = ctl->blurHeight;
 
 	auto& best_it = ctl->best_it;
@@ -5381,14 +5408,14 @@ return_t __stdcall CalculateDisparitySinglePoint(LPVOID lp) {
 	int good_count = 0;
 	int iterAncorOffset = 0;
 
+	int patternHalfWidth = halfWidth;
+
 	do {
 		int64_t iteration_start_time = GetDayTimeInMilliseconds();
 
-		// patternHalfWidth is cut in half with each iteration
-
 		pt = originalPoint;
 
-		iterAncorOffset = strip2searchHalfWidth + iter * strip2searchHalfWidth / 2;
+		iterAncorOffset = 3 * strip2searchHalfWidth / 2 + iter * 3 * strip2searchHalfWidth / 2;
 
 		std::cout << std::endl << "running Disparity iteration " << iter << "; patternHalfWidth: " << patternHalfWidth << "; strip2searchWidth: " << strip2searchWidth << "; iterAncorOffset: " << iterAncorOffset << std::endl;
 
@@ -5425,7 +5452,7 @@ return_t __stdcall CalculateDisparitySinglePoint(LPVOID lp) {
 				cv::Scalar cropMean = cv::mean(crop);
 				cv::Scalar strip2searchMean = cv::mean(strip2search);
 				double seedReference[3];
-				BuildIdealChannels_Likeness(crop, cv::Point(patternHalfWidth, blurHeight / 2), seedReference, blurHeight);
+				BuildIdealChannels_Likeness(crop, cv::Point(patternHalfWidth, blurHeight / 2), seedReference, blurHeight / 2);
 				double cropFactor[3];
 				double strip2searchFactor[3];
 				for (int j = 0; j < 3; ++j) {
@@ -5471,7 +5498,7 @@ return_t __stdcall CalculateDisparitySinglePoint(LPVOID lp) {
 			int64_t iteration_pass_end_time = GetDayTimeInMilliseconds();
 
 			std::ostringstream ostr;
-			ostr << "iteration pass " << pass << "; time: " << (iteration_pass_end_time - iteration_pass_start_time) << "ms;errors: " << it.disparityError[1] << ";resultCost: " << it.resultCost << "; pos: " << it.pos << std::endl;
+			ostr << "iteration pass " << pass << "; time: " << (iteration_pass_end_time - iteration_pass_start_time) << "ms; errors: " << it.disparityError[1] << "; resultCost: " << it.resultCost << "; pos: " << it.pos << std::endl;
 			std::cout << ostr.str();
 		};
 
@@ -5562,7 +5589,11 @@ return_t __stdcall CalculateDisparitySinglePoint(LPVOID lp) {
 		ostr << "Disparity iteration " << iter << "; time " << (iteration_end_time - iteration_start_time) << "ms" << std::endl;
 		std::cout << ostr.str();
 
-		//if (patternHalfWidth > 8) { 
+		// patternHalfWidth gets increased with each iteration
+
+		patternHalfWidth += halfWidth / 6;
+
+		//if (patternHalfWidth > 8) {
 		//	patternHalfWidth >>= 1;
 		//}
 
@@ -5748,7 +5779,7 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 
 				dsip_calc_ctl.pt = pt;
 
-				dsip_calc_ctl.strip2searchWidth = std::floor(31 * dsip_calc_ctl.aux.cols / 100); 
+				dsip_calc_ctl.strip2searchWidth = std::floor(11 * dsip_calc_ctl.aux.cols / 100); 
 				dsip_calc_ctl.patternHalfWidth = std::floor(0.5 * dsip_calc_ctl.aux.cols / 100);
 				dsip_calc_ctl.blurHeight = 5;
 
@@ -5840,7 +5871,7 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 					}
 					double dist = 0;
 					for (int j = 0; j < 3; ++j) {
-						dist += std::pow(point4D(j), 2);
+						dist += point4D(j) * point4D(j);
 					}
 					dist = std::sqrt(dist);
 					std::cout << "detected distance " << dist << std::endl;
@@ -6016,15 +6047,15 @@ struct ComparePointsOrigin {
 
 struct Compare4DPointsForClusterByDistance { // partitioning in order to detect reference tag (3 LEDs) 
 	double threshold;
-	Compare4DPointsForClusterByDistance(): threshold(pow(g_max_clusterdistance, 2)) {
+	Compare4DPointsForClusterByDistance(): threshold(pow2(g_max_clusterdistance)) {
 	}
 	template<typename M>
 	bool operator()(const M left, const M right) const {
-		double x[2] = {left(0), right(0)};
-		double y[2] = {left(1), right(1)};
-		double z[2] = {left(2), right(2)};
+		double x = left(0) - right(0);
+		double y = left(1) - right(1);
+		double z = left(2) - right(2);
 
-		return (pow(x[0] - x[1], 2) + pow(y[0] - y[1], 2) + pow(z[0] - z[1], 2)) < threshold;
+		return (x*x + y*y + z*z) < threshold;
 	}
 };
 
@@ -6033,7 +6064,7 @@ double distance3d(const T& left, const T& right, T& vec) {
 	double sum = 0;
 	for(int j = 0; j < 3; ++j) { 
 		vec(j) = right(j) - left(j);
-		sum += pow(vec(j), 2);
+		sum += vec(j) * vec(j);
 	}
 	return sqrt(sum);
 
@@ -6400,7 +6431,7 @@ double reconstruct4DPoint(Mat_<double>& X, ClusteredPoint& p1, ClusteredPoint& p
 			if(reproject_err[idx] < 0.1) {
 				reproject_err[idx] = 0.1;
 			}
-			double reproject_weight = 1.0 / pow(reproject_err[idx], 2.0);
+			double reproject_weight = 1.0 / (reproject_err[idx]*reproject_err[idx]);
 			sum_reproject_weights += reproject_weight;
 
 			X += val[idx] * reproject_weight;

@@ -288,6 +288,10 @@ template<typename T> struct ATLSMatrixvar {
 
 template<typename T> inline int mysign(T v) { return v >= +0 ? 1 : -1; }
 
+template<typename T> inline T pow2(T d) { return d * d; }
+
+
+
 
 
 
