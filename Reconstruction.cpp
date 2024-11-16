@@ -353,7 +353,7 @@ double RadiusOfRectangle(const std::vector<Point2d>& points) {
 
 
 
-double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int targetColumn, int64_t& resultCost) { // returns point of alignment in strip2search
+double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int targetColumn, int64_t& resultCost, std::vector<double>& disps, std::vector<int64_t>& costs) { // returns point of alignment in strip2search
 	const int M = cropIn.cols + 1;
 	const int N = strip2searchIn.cols + 1;
 
@@ -388,21 +388,33 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 
 	int X;
 
-	const int W2 = cropIn.cols / 2;
-	if (targetColumn > W2) {
-		cv::flip(cropIn, crop, -1);
-		cv::flip(strip2searchIn, strip2search, -1);
+	//const int W2 = cropIn.cols / 2;
+	//if (targetColumn > W2) {
+	//	cv::flip(cropIn, crop, -1);
+	//	cv::flip(strip2searchIn, strip2search, -1);
 
-		X = crop.cols - targetColumn - 1;
-	}
-	else {
-		crop = cropIn;
-		strip2search = strip2searchIn;
+	//	X = crop.cols - targetColumn - 1;
+	//}
+	//else {
+	//	crop = cropIn;
+	//	strip2search = strip2searchIn;
 
-		X = targetColumn;
-	}
+	//	X = targetColumn;
+	//}
+
+	crop = cropIn;
+	strip2search = strip2searchIn;
+
+	X = targetColumn;
 
 	++X;
+
+
+	disps.resize(0);
+	disps.resize(static_cast<size_t>(M) - 1, std::numeric_limits<double>::max());
+
+	costs.resize(0);
+	costs.resize(static_cast<size_t>(M) - 1, std::numeric_limits<int64_t>::max());
 
 
 	const double log2_X = approx_log2(X + 1);
@@ -410,160 +422,133 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 	double pos = -N;
 	resultCost = std::numeric_limits<int64_t>::max();
 
-	for (int w = 1; pos <= 0 && w < 2; ++w) {
+	for (int i = 1; i < M; ++i) {
+		const int i_1 = i - 1;
+		//const double X_abs_i_1 = std::abs(double(X - i_1));
+		//const double log2_X_i = approx_log2(X_abs_i_1 < 1 ? 1 : X_abs_i_1); // 0 - at the center of crop, log2_X, ~5, at the ends of crop
+		//const double distanceFactor = 1 + approx_log2(1 + log2_X - log2_X_i);
+		const double distanceFactor = 3;
+		const int gapCost = 20000;
+		const double scoreWeight = gapCost * distanceFactor;
+		for (int j = 1; j < N; ++j) {
+			const int j_1 = j - 1;
 
-		for (int i = 1; i < M; ++i) {
-			const int i_1 = i - 1;
-			//const double X_abs_i_1 = std::abs(double(X - i_1));
-			//const double log2_X_i = approx_log2(X_abs_i_1 < 1 ? 1 : X_abs_i_1); // 0 - at the center of crop, log2_X, ~5, at the ends of crop
-			//const double distanceFactor = 1 + approx_log2(1 + log2_X - log2_X_i);
-			const double distanceFactor = 2;
-			const int gapCost = 20000 * distanceFactor;
-			const double scoreWeight = w * gapCost;
-			for (int j = 1; j < N; ++j) {
-				const int j_1 = j - 1;
-
-				double fscore = 0;
-				int fscore_count = 0;
-				for (int r = 0; r < crop.rows; ++r) {
-					for (int c = -1; c < 1; ++c) {
-						const int i_c = i_1 + c;
-						if (i_c < 0 || i_c >= M1) {
-							continue;
-						}
-						const int j_c = j_1 + c;
-						if (j_c < 0 || j_c >= N1) {
-							continue;
-						}
-						fscore += GetFScore(crop.at<cv::Vec<uchar, 3>>(r, i_c), strip2search.at<cv::Vec<uchar, 3>>(r, j_c));
-						++fscore_count;
+			double fscore = 0;
+			int fscore_count = 0;
+			for (int r = 0; r < crop.rows; ++r) {
+				for (int c = -1; c < 1; ++c) {
+					const int i_c = i_1 + c;
+					if (i_c < 0 || i_c >= M1) {
+						continue;
 					}
+					const int j_c = j_1 + c;
+					if (j_c < 0 || j_c >= N1) {
+						continue;
+					}
+					//fscore += GetFScore(crop.at<cv::Vec<uchar, 3>>(r, i_c), strip2search.at<cv::Vec<uchar, 3>>(r, j_c));
+					fscore += GetEScore(crop.at<cv::Vec<uchar, 3>>(r, i_c), strip2search.at<cv::Vec<uchar, 3>>(r, j_c));
+					++fscore_count;
 				}
-				fscore /= fscore_count;
+			}
+			fscore /= fscore_count;
 
-				AF[i][j] = fscore;
+			AF[i][j] = fscore;
 
-				int64_t case1Cost = A[i_1][j_1] + scoreWeight * (0.9 - fscore) + 0.45;
-				int64_t case2Cost = A[i_1][j] + gapCost;
-				int64_t case3Cost = A[i][j_1] + gapCost;
-				if (case2Cost < case3Cost) {
-					if (case1Cost < case2Cost) {
-						T[i][j] = 1;
-						A[i][j] = case1Cost;
-					}
-					else {
-						T[i][j] = 2;
-						A[i][j] = case2Cost;
-					}
+			//int64_t case1Cost = A[i_1][j_1] + scoreWeight * (2 - fscore) + 0.45; 
+			int64_t case1Cost = A[i_1][j_1] + scoreWeight * (1 - fscore) + 0.45;
+			int64_t case2Cost = A[i_1][j] + gapCost;
+			int64_t case3Cost = A[i][j_1] + gapCost;
+			if (case2Cost < case3Cost) {
+				if (case1Cost < case2Cost) {
+					T[i][j] = 1;
+					A[i][j] = case1Cost;
 				}
 				else {
-					if (case1Cost < case3Cost) {
-						T[i][j] = 1;
-						A[i][j] = case1Cost;
-					}
-					else {
-						T[i][j] = 3;
-						A[i][j] = case3Cost;
-					}
+					T[i][j] = 2;
+					A[i][j] = case2Cost;
+				}
+			}
+			else {
+				if (case1Cost < case3Cost) {
+					T[i][j] = 1;
+					A[i][j] = case1Cost;
+				}
+				else {
+					T[i][j] = 3;
+					A[i][j] = case3Cost;
 				}
 			}
 		}
+	}
 
-		size_t m = M - 1;
-		size_t n = N - 1;
+	size_t m = M - 1;
+	size_t n = N - 1;
 
+	int64_t caseCostMax = A[m][n];
+
+	std::stack<size_t> st;
+
+	for (size_t j = n; j > M + 1; --j) {
+		if (A[m][j] <= caseCostMax) {
+			n = j;
+			caseCostMax = A[m][j];
+		}
+	}
+
+	st.push(n);
+
+	while (!st.empty()) {
+		m = static_cast<size_t>(M) - 1;
+		n = st.top();
+		st.pop();
+
+		int caseType = T[m][n];
 		int64_t caseCost = A[m][n];
-		int64_t caseCostMax = caseCost;
 
-		std::stack<size_t> st;
-		//st.push(n);
+		disps[m - 1] = n - 1;
+		costs[m - 1] = caseCost;
 
-		for (size_t j = n; j > M; --j) {
-			if (T[m][j] != 3) {
-				if (A[m][j] <= caseCost) {
-					n = j;
-					//st.push(n);
-					caseCost = A[m][j];
-				}
-			}
-		}
+		double Y = 0; // yet unknown
 
-		st.push(n);
-
-		const double minimal_fscore = (1.0 * M / 3);
-
-		int64_t caseCostMin = caseCostMax;
-		int64_t caseCostTotalMin = caseCostMax;
-		while (!st.empty()) {
-			m = M - 1;
-			n = st.top();
-			st.pop();
-
-			size_t nStart = n;
-
-			int caseType = T[m][n];
-			caseCost = A[m][n];
-
-			int64_t caseCostTotal = caseCost;
-			if (caseCostTotal > caseCostTotalMin) {
+		while (caseType != 0) {
+			switch (caseType) {
+			case 1:
+				--m;
+				--n;
+				break;
+			case 2:
+				--m; // case of allignment matches entry from pattern and gap from strip2search
+				break;
+			case 3:
+				--n; // case of allignment matches entry from strip2search and gap from pattern
 				break;
 			}
 
-			double Y = 0; // yet unknown
-			double fscore = 0;
+			caseType = T[m][n];
+			caseCost = A[m][n];
 
-			while (caseType != 0) {
-				switch (caseType) {
-				case 1:
-					--m;
-					--n;
-					fscore += AF[m][n];
-					break;
-				case 2:
-					--m; // case of allignment matches entry from pattern and gap from strip2search
-					break;
-				case 3:
-					--n; // case of allignment matches entry from strip2search and gap from pattern
-					break;
-				}
-
-				if (n == 0) {
-					break;
-				}
-
-				caseType = T[m][n];
-
-
-				if (m == X) {
-					caseCost = A[m][n];
-					Y = n;
-					if (caseType != 2) {
-						break;
-					}
-				}
-
-				if (m < X) {
-					break;
-				}
+			if (caseType == 0) {
+				break;
 			}
 
-			if ((nStart - n) > M || fscore < minimal_fscore) {
-				resultCost = fscore + 0.5;
-			}
-			else
-			if (caseCost < caseCostMin) {
-				pos = Y;
-				caseCostMin = caseCost;
-				caseCostTotalMin = caseCostTotal;
 
-				resultCost = fscore;// caseCostMin / w;
+
+			disps[m - 1] = n - 1;
+			costs[m - 1] = caseCost;
+
+
+			if (m == X) {
+				Y = n - 1;
+				resultCost = caseCost;
 			}
 		}
+
+		pos = Y;
 	}
 
-	if (targetColumn > W2) {
-		pos = strip2search.cols - pos + 1;
-	}
+	//if (targetColumn > W2) {
+	//	pos = strip2search.cols - pos + 1;
+	//}
 
 	return pos;
 }
@@ -5307,6 +5292,8 @@ struct CalculateDisparityControl {
 		Point resPoint;
 		int64_t mapResultCost = -1;
 		Point mapPoint;
+		std::vector<double> disps;
+		std::vector<int64_t> costs;
 
 		iteration_result& operator << (const iteration_result& other) {
 			ancorOffset = other.ancorOffset;
@@ -5321,6 +5308,9 @@ struct CalculateDisparityControl {
 			memcpy(disparityError, other.disparityError, ARRAY_NUM_ELEMENTS(disparityError) * sizeof(disparityError[0]));
 			resPoint = other.resPoint;
 			mapPoint = other.mapPoint;
+
+			disps = other.disps;
+			costs = other.costs;
 		}
 	};
 
@@ -5362,25 +5352,28 @@ return_t __stdcall CalculateDisparitySinglePoint(LPVOID lp) {
 	int64_t start_time = GetDayTimeInMilliseconds();
 
 
-	auto checkPoint = [&aux](cv::Point& pt) {
+	auto checkPoint = [&aux, halfWidth](cv::Point& pt, int& ancorOffset) {
 		if (pt.x < 0) {
+			ancorOffset += pt.x;
 			pt.x = 0;
 		}
 		if (pt.y < 0) {
 			pt.y = 0;
 		}
-		if (pt.x > aux.cols) {
-			pt.x = aux.cols;
+		const int xmax = aux.cols - (halfWidth << 1);
+		if (pt.x > xmax) {
+			ancorOffset += pt.x - xmax;
+			pt.x = xmax;
 		}
 		if (pt.y > aux.rows) {
 			pt.y = aux.rows;
 		}
 	};
-	auto checkRectangle = [&checkPoint](cv::Rect& rect) {
+	auto checkRectangle = [&checkPoint](cv::Rect& rect, int& ancorOffset) {
 		cv::Point pt1(rect.x, rect.y);
 		cv::Point pt2(rect.x + rect.width, rect.y + rect.height);
-		checkPoint(pt1);
-		checkPoint(pt2);
+		checkPoint(pt1, ancorOffset);
+		checkPoint(pt2, ancorOffset);
 
 		rect = cv::Rect(pt1, pt2);
 	};
@@ -5425,17 +5418,21 @@ return_t __stdcall CalculateDisparitySinglePoint(LPVOID lp) {
 
 			int ancorOffset = pass * patternHalfWidth / 2; // each pass generates different ancorOffset
 			int stripAncorOffset = iterAncorOffset;
+			int stripWidth = strip2searchWidth;
 
-			auto disparityAlgorithm_internal = 
+			std::vector<double> disps;
+			std::vector<int64_t> costs;
+
+			auto disparityAlgorithm_internal =
 				[&](const cv::Point& pt0, const Mat& left, const Mat& right, Mat& crop, Mat& strip2search, int64_t& resultCost, double leftIntensity, double rightIntensity) -> cv::Point {
 
 				//cv::Rect -> x≤pt.x<x+width, y≤pt.y<y+height
 
 				cv::Rect cropRect(pt0.x - ancorOffset, pt0.y - blurHeight / 2, 2 * patternHalfWidth + 1, blurHeight);
-				cv::Rect strip2searchRect(pt0.x - stripAncorOffset, pt0.y - blurHeight / 2, strip2searchWidth, blurHeight);
+				cv::Rect strip2searchRect(pt0.x - stripAncorOffset, pt0.y - blurHeight / 2, stripWidth, blurHeight);
 
-				checkRectangle(cropRect);
-				checkRectangle(strip2searchRect);
+				checkRectangle(cropRect, ancorOffset);
+				checkRectangle(strip2searchRect, stripAncorOffset);
 
 
 				crop = Mat(left, cropRect);
@@ -5464,11 +5461,10 @@ return_t __stdcall CalculateDisparitySinglePoint(LPVOID lp) {
 				WhiteBalance<uchar>(crop, cropFactor);
 				WhiteBalance<uchar>(strip2search, strip2searchFactor);
 
-
-				int pos = FindBestAlignment(crop, strip2search, ancorOffset, resultCost) + 0.45;
+				int pos = FindBestAlignment(crop, strip2search, ancorOffset, resultCost, disps, costs) + 0.45;
 
 				cv::Point resPoint;
-				resPoint.x = strip2searchRect.x + pos - 1;
+				resPoint.x = strip2searchRect.x + pos;
 				resPoint.y = pt0.y;
 
 				return resPoint;
@@ -5482,9 +5478,14 @@ return_t __stdcall CalculateDisparitySinglePoint(LPVOID lp) {
 			it.stripAncorOffset = stripAncorOffset;
 			it.halfWidth = patternHalfWidth;
 			it.pos = it.resPoint.x - (pt.x - stripAncorOffset);
+			it.disps = disps;
+			it.costs = costs;
 
-			stripAncorOffset = strip2searchWidth - stripAncorOffset;
-			ancorOffset = patternHalfWidth * 2 - ancorOffset;
+			stripAncorOffset = it.resPoint.x - (pt.x - ancorOffset) + patternHalfWidth / 4;
+			stripWidth = patternHalfWidth * 3;
+
+			//stripAncorOffset = stripWidth - stripAncorOffset;
+			//ancorOffset = patternHalfWidth * 2 - ancorOffset;
 			it.mapPoint = disparityAlgorithm_internal(it.resPoint, aux2, aux, it.crop_buffer[1], it.strip2search_buffer[1], it.mapResultCost, strip2searchIntensity, cropIntensity);
 			if (it.mapPoint == cv::Point(-1, -1)) {
 				it.disparityError[1] = std::numeric_limits<int>::max();

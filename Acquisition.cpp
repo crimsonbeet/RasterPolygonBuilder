@@ -75,8 +75,10 @@ double GetFScore(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2) {
 	double fscore = 1;
 	for (int j = 0; j < 3; ++j) {
 		if (ch1[j] > 0 && ch2[j] > 0) {
-			const double div = (double)ch1[j]* (double)ch1[j] + (double)ch2[j]* (double)ch2[j];
-			const double num = (double)ch1[j]* (double)ch2[j];
+			const double a = ch1[j];
+			const double b = ch2[j];
+			const double div = a*a + b*b;
+			const double num = a*b;
 			if (div > 100 && num > 10) {
 				fscore *= (2.0 * num) / div;
 			}
@@ -90,6 +92,35 @@ double GetFScore(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2) {
 	}
 	return fscore;
 }
+
+double GetEScore(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2) {
+	double escore = 0;
+	double e[3];
+	double w[3];
+	double total_sum = 0;
+	for (int j = 0; j < 3; ++j) {
+		const int a = ch1[j];
+		const int b = ch2[j];
+		const double div = std::max(a, b);
+		if (div > 0) {
+			const double p = std::min(a, b) / div;
+			e[j] = p * approx_log2(1 + p);
+		}
+		else {
+			e[j] = 0;
+		}
+		w[j] = div;
+		total_sum += div;
+	}
+	for (int j = 0; j < 3; ++j) {
+		escore += e[j] * w[j] / total_sum;
+	}
+	if (isnan(escore)) {
+		escore = 0;
+	}
+	return escore;
+}
+
 
 double GetAngleDifferenceInGrads(double x, double y) {
 	double a1 = x - y;
@@ -275,13 +306,14 @@ bool BuildIdealChannels_Distribution(Mat& image, Point& pt, Mat& mean, Mat& stdD
 	return false;
 }
 
-void BuildIdealChannels_Likeness(Mat& image, Point& pt, double chIdeal[3], int radius) {
+void BuildIdealChannels_Likeness(Mat& image, Point& pt, double chIdeal[3], const int height) {
 	if (image.type() == CV_8UC3) {
 		double likeness[3] = { 0, 0, 0 };
 		double cnt = 0;
 		typedef Vec<uchar, 3> Vec3c;
-		for (int r = pt.y - radius; r < image.rows && r < pt.y + radius + 1; ++r) {
-			for (int c = pt.x - radius; c < image.cols && c < pt.x + radius + 1; ++c) {
+		const int width = height * 2;
+		for (int r = pt.y - height; r < image.rows && r < pt.y + height + 1; ++r) {
+			for (int c = pt.x - width; c < image.cols && c < pt.x + width + 1; ++c) {
 				if (r < 0 || c < 0) {
 					continue;
 				}

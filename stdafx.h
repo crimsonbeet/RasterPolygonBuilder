@@ -1129,6 +1129,8 @@ template<typename T>
 void WhiteBalance(Mat& image, double whiteFactor[3]);
 
 double GetFScore(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2);
+double GetEScore(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2); // max value 3; min value 0;
+
 
 double hsvLikenessScore(cv::Vec<uchar, 3>& pixOriginal, double hsvIdeal[3]); // returns likeness score from 0 to 256.
 

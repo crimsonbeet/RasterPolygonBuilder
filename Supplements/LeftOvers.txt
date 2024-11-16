@@ -35,3 +35,36 @@
 								//prepImages_Likeness(chIdeal, chWeights);
 								//readyImages_Likeness();
 
+
+double GetEScore2(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2) {
+	double escore = 1;
+	double sum[3];
+	double total_sum = 0;
+	double e[3];
+	for (int j = 0; j < 3; ++j) {
+		const int a = ch1[j];
+		const int b = ch2[j];
+
+		if (a == 0 && b == 0) {
+			e[j] = 0;
+			sum[j] = 0;
+		}
+		else {
+			sum[j] = a + b;
+			total_sum += sum[j];
+
+			const double p1 = a / sum[j];
+			const double p2 = b / sum[j];
+
+			e[j] = p1 * approx_log2(1 + p1);
+			e[j] += p2 * approx_log2(1 + p2);
+		}
+	}
+	for (int j = 0; j < 3; ++j) {
+		escore += e[j] * sum[j] / total_sum;
+	}
+	if (isnan(escore)) {
+		escore = 0;
+	}
+	return 1 - escore;
+}
