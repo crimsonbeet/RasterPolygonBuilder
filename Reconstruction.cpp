@@ -9,7 +9,7 @@
 #include "OleDate.h"
 
 
-#pragma warning(disable : 26451)
+#pragma warning(disable : 26451 6260)
 
 
 extern bool g_bTerminated;
@@ -5289,9 +5289,11 @@ struct CalculateDisparityControl {
 		Mat strip2search_buffer[2];
 		int disparityError[3] = { 0, std::numeric_limits<int>::max(), 0 };
 		int64_t resultCost = -1;
-		Point resPoint;
 		int64_t mapResultCost = -1;
+
+		Point resPoint;
 		Point mapPoint;
+
 		std::vector<double> disps;
 		std::vector<int64_t> costs;
 
@@ -5305,7 +5307,7 @@ struct CalculateDisparityControl {
 			for (size_t m = 0; m < ARRAY_NUM_ELEMENTS(strip2search_buffer); ++m) {
 				strip2search_buffer[m] = other.strip2search_buffer[m].clone();
 			}
-			memcpy(disparityError, other.disparityError, ARRAY_NUM_ELEMENTS(disparityError) * sizeof(disparityError[0]));
+			memcpy(disparityError, other.disparityError, ARRAY_NUM_ELEMENTS(disparityError) * sizeof(int));
 			resPoint = other.resPoint;
 			mapPoint = other.mapPoint;
 
@@ -5318,38 +5320,46 @@ struct CalculateDisparityControl {
 };
 
 
-
 struct DisparityAlgorithmControl {
 	int _pass = 0;
+	int _stripAncorOffset = 0;
+	int _halfWidth = 0;
 	int _status = 0; // 0 - unknown, 1 - started, 2 - completed.
-	std::function<void(int)> _disparityAlgorithm;
+
+	CalculateDisparityControl* _calc_ctl = nullptr;
+	CalculateDisparityControl::iteration_result* _iter_rs = nullptr;
+
+	std::function<void(DisparityAlgorithmControl&)> _disparityAlgorithm;
 };
 
 
-return_t __stdcall ExecuteDisparityAlgorithm(LPVOID lp) {
-	DisparityAlgorithmControl* ctl = (DisparityAlgorithmControl*)lp;
-	ctl->_status = 1;
-	ctl->_disparityAlgorithm(ctl->_pass);
-	ctl->_status = 2;
-	return 0;
-}
 
-return_t __stdcall CalculateDisparitySinglePoint(LPVOID lp) {
-	CalculateDisparityControl* ctl = (CalculateDisparityControl*)lp;
+void DisparityAlgorithm(DisparityAlgorithmControl& run_ctl) {
+	int64_t iteration_pass_start_time = GetDayTimeInMilliseconds();
 
-	Mat aux = ctl->aux;
-	Mat aux2 = ctl->aux2;
-	Point pt = ctl->pt;
+	CalculateDisparityControl& ctl = *run_ctl._calc_ctl;
 
-	const int strip2searchWidth = ctl->strip2searchWidth; 
+	Mat aux = ctl.aux;
+	Mat aux2 = ctl.aux2;
+
+	const Point pt = ctl.pt;
+
+	const int halfWidth = run_ctl._halfWidth;
+	const int blurHeight = ctl.blurHeight;
+
+	const int strip2searchWidth = ctl.strip2searchWidth;
 	const int strip2searchHalfWidth = strip2searchWidth >> 1;
-	const int halfWidth = ctl->patternHalfWidth;
-	const int blurHeight = ctl->blurHeight;
 
-	auto& best_it = ctl->best_it;
+	const int pass = run_ctl._pass;
+	const int iterAncorOffset = run_ctl._stripAncorOffset;
 
 
-	int64_t start_time = GetDayTimeInMilliseconds();
+	CalculateDisparityControl::iteration_result& iter_rs = *run_ctl._iter_rs;
+
+
+	iter_rs.disparityError[1] = std::numeric_limits<int>::max();
+	iter_rs.disparityError[2] = std::numeric_limits<int>::max();
+
 
 
 	auto checkPoint = [&aux, halfWidth](cv::Point& pt, int& ancorOffset) {
@@ -5379,13 +5389,128 @@ return_t __stdcall CalculateDisparitySinglePoint(LPVOID lp) {
 	};
 
 
-	cv::Scalar cropMean = cv::mean(aux);
-	cv::Scalar strip2searchMean = cv::mean(aux2);
 
-	double cropIntensity = (cropMean(0) * 0.114 + cropMean(1) * 0.587 + cropMean(2) * 0.299);
-	double strip2searchIntensity = (strip2searchMean(0) * 0.114 + strip2searchMean(1) * 0.587 + strip2searchMean(2) * 0.299);
+	int ancorOffset = pass * halfWidth / 2; // each pass generates different ancorOffset
+	int stripAncorOffset = iterAncorOffset;
+	int stripWidth = strip2searchWidth;
 
-	cv::Point originalPoint = pt;
+	std::vector<double> disps;
+	std::vector<int64_t> costs;
+
+	auto disparityAlgorithm_internal =
+		[&](const cv::Point& pt0, const Mat& left, const Mat& right, Mat& crop, Mat& strip2search, int64_t& resultCost) -> cv::Point {
+
+		//cv::Rect -> x≤pt.x<x+width, y≤pt.y<y+height
+
+		cv::Rect cropRect(pt0.x - ancorOffset, pt0.y - blurHeight / 2, 2 * halfWidth + 1, blurHeight);
+		cv::Rect strip2searchRect(pt0.x - stripAncorOffset, pt0.y - blurHeight / 2, stripWidth, blurHeight);
+
+		checkRectangle(cropRect, ancorOffset);
+		checkRectangle(strip2searchRect, stripAncorOffset);
+
+
+		crop = Mat(left, cropRect);
+		strip2search = Mat(right, strip2searchRect);
+
+		if (crop.dims == 0 || crop.rows == 0) {
+			return cv::Point(-1, -1);
+		}
+		if (strip2search.dims == 0 || strip2search.rows == 0) {
+			return cv::Point(-1, -1);
+		}
+
+
+		cv::Scalar cropMean = cv::mean(crop);
+		cv::Scalar strip2searchMean = cv::mean(strip2search);
+		double seedReference[3];
+		BuildIdealChannels_Likeness(crop, cv::Point(halfWidth, blurHeight / 2), seedReference, blurHeight / 2);
+		double cropFactor[3];
+		double strip2searchFactor[3];
+		for (int j = 0; j < 3; ++j) {
+			cropFactor[j] = cropMean(j) / std::max(seedReference[j], 1.0);
+			strip2searchFactor[j] = strip2searchMean(j) / std::max(seedReference[j], 1.0);
+		}
+
+
+		WhiteBalance<uchar>(crop, cropFactor);
+		WhiteBalance<uchar>(strip2search, strip2searchFactor);
+
+		int pos = FindBestAlignment(crop, strip2search, ancorOffset, resultCost, disps, costs) + 0.45;
+
+		cv::Point resPoint;
+		resPoint.x = strip2searchRect.x + pos;
+		resPoint.y = pt0.y;
+
+		return resPoint;
+	};
+
+	auto& it = iter_rs;
+
+	it.resPoint = disparityAlgorithm_internal(pt, aux, aux2, it.crop_buffer[0], it.strip2search_buffer[0], it.resultCost);
+
+	it.ancorOffset = ancorOffset;
+	it.stripAncorOffset = stripAncorOffset;
+	it.halfWidth = halfWidth;
+	it.pos = it.resPoint.x - (pt.x - stripAncorOffset);
+	it.disps = disps;
+	it.costs = costs;
+
+
+	/*
+	 * flip ancor offsets pivoting on pt.x
+	 */
+	//stripAncorOffset = stripWidth - stripAncorOffset;
+	//ancorOffset = halfWidth * 2 - ancorOffset;
+
+	
+	stripAncorOffset = it.resPoint.x - (pt.x - ancorOffset) + halfWidth / 4;
+	stripWidth = halfWidth * 3;
+
+	//while (stripAncorOffset < 0) {
+	//	stripAncorOffset += halfWidth;
+	//	stripWidth += halfWidth;
+	//}
+
+
+	it.mapPoint = disparityAlgorithm_internal(it.resPoint, aux2, aux, it.crop_buffer[1], it.strip2search_buffer[1], it.mapResultCost);
+	if (it.mapPoint != cv::Point(-1, -1)) {
+		it.disparityError[1] = std::abs(pt.x - it.mapPoint.x);
+	}
+
+	int64_t iteration_pass_end_time = GetDayTimeInMilliseconds();
+
+	std::ostringstream ostr;
+	ostr << "iteration pass " << pass << "; time: " << (iteration_pass_end_time - iteration_pass_start_time) << "ms; errors: " << it.disparityError[1] << "; resultCost: " << it.resultCost << "; pos: " << it.pos << std::endl;
+	std::cout << ostr.str();
+};
+
+
+
+
+return_t __stdcall ExecuteDisparityAlgorithm(LPVOID lp) {
+	DisparityAlgorithmControl* ctl = (DisparityAlgorithmControl*)lp;
+	ctl->_status = 1;
+	ctl->_disparityAlgorithm(*ctl);
+	ctl->_status = 2;
+	return 0;
+}
+
+return_t __stdcall CalculateDisparitySinglePoint(LPVOID lp) {
+	CalculateDisparityControl* ctl = (CalculateDisparityControl*)lp;
+
+	Mat aux = ctl->aux;
+	Mat aux2 = ctl->aux2;
+
+	const Point pt = ctl->pt;
+
+	const int strip2searchWidth = ctl->strip2searchWidth; 
+	const int strip2searchHalfWidth = strip2searchWidth >> 1;
+	const int halfWidth = ctl->patternHalfWidth;
+
+	auto& best_it = ctl->best_it;
+
+
+	int64_t start_time = GetDayTimeInMilliseconds();
 
 
 	const size_t number_of_passes = 5;
@@ -5406,112 +5531,21 @@ return_t __stdcall CalculateDisparitySinglePoint(LPVOID lp) {
 	do {
 		int64_t iteration_start_time = GetDayTimeInMilliseconds();
 
-		pt = originalPoint;
-
 		iterAncorOffset = 3 * strip2searchHalfWidth / 2 + iter * 3 * strip2searchHalfWidth / 2;
 
 		std::cout << std::endl << "running Disparity iteration " << iter << "; patternHalfWidth: " << patternHalfWidth << "; strip2searchWidth: " << strip2searchWidth << "; iterAncorOffset: " << iterAncorOffset << std::endl;
-
-
-		auto disparityAlgorithm = [&](const int pass) {
-			int64_t iteration_pass_start_time = GetDayTimeInMilliseconds();
-
-			int ancorOffset = pass * patternHalfWidth / 2; // each pass generates different ancorOffset
-			int stripAncorOffset = iterAncorOffset;
-			int stripWidth = strip2searchWidth;
-
-			std::vector<double> disps;
-			std::vector<int64_t> costs;
-
-			auto disparityAlgorithm_internal =
-				[&](const cv::Point& pt0, const Mat& left, const Mat& right, Mat& crop, Mat& strip2search, int64_t& resultCost, double leftIntensity, double rightIntensity) -> cv::Point {
-
-				//cv::Rect -> x≤pt.x<x+width, y≤pt.y<y+height
-
-				cv::Rect cropRect(pt0.x - ancorOffset, pt0.y - blurHeight / 2, 2 * patternHalfWidth + 1, blurHeight);
-				cv::Rect strip2searchRect(pt0.x - stripAncorOffset, pt0.y - blurHeight / 2, stripWidth, blurHeight);
-
-				checkRectangle(cropRect, ancorOffset);
-				checkRectangle(strip2searchRect, stripAncorOffset);
-
-
-				crop = Mat(left, cropRect);
-				strip2search = Mat(right, strip2searchRect);
-
-				if (crop.dims == 0 || crop.rows == 0) {
-					return cv::Point(-1, -1);
-				}
-				if (strip2search.dims == 0 || strip2search.rows == 0) {
-					return cv::Point(-1, -1);
-				}
-
-
-				cv::Scalar cropMean = cv::mean(crop);
-				cv::Scalar strip2searchMean = cv::mean(strip2search);
-				double seedReference[3];
-				BuildIdealChannels_Likeness(crop, cv::Point(patternHalfWidth, blurHeight / 2), seedReference, blurHeight / 2);
-				double cropFactor[3];
-				double strip2searchFactor[3];
-				for (int j = 0; j < 3; ++j) {
-					cropFactor[j] = cropMean(j) / std::max(seedReference[j], 1.0);
-					strip2searchFactor[j] = strip2searchMean(j) / std::max(seedReference[j], 1.0);
-				}
-
-
-				WhiteBalance<uchar>(crop, cropFactor);
-				WhiteBalance<uchar>(strip2search, strip2searchFactor);
-
-				int pos = FindBestAlignment(crop, strip2search, ancorOffset, resultCost, disps, costs) + 0.45;
-
-				cv::Point resPoint;
-				resPoint.x = strip2searchRect.x + pos;
-				resPoint.y = pt0.y;
-
-				return resPoint;
-			};
-
-			auto& it = iter_rs[pass];
-
-			it.resPoint = disparityAlgorithm_internal(pt, aux, aux2, it.crop_buffer[0], it.strip2search_buffer[0], it.resultCost, cropIntensity, strip2searchIntensity);
-
-			it.ancorOffset = ancorOffset;
-			it.stripAncorOffset = stripAncorOffset;
-			it.halfWidth = patternHalfWidth;
-			it.pos = it.resPoint.x - (pt.x - stripAncorOffset);
-			it.disps = disps;
-			it.costs = costs;
-
-			stripAncorOffset = it.resPoint.x - (pt.x - ancorOffset) + patternHalfWidth / 4;
-			stripWidth = patternHalfWidth * 3;
-
-			//stripAncorOffset = stripWidth - stripAncorOffset;
-			//ancorOffset = patternHalfWidth * 2 - ancorOffset;
-			it.mapPoint = disparityAlgorithm_internal(it.resPoint, aux2, aux, it.crop_buffer[1], it.strip2search_buffer[1], it.mapResultCost, strip2searchIntensity, cropIntensity);
-			if (it.mapPoint == cv::Point(-1, -1)) {
-				it.disparityError[1] = std::numeric_limits<int>::max();
-				it.disparityError[2] = std::numeric_limits<int>::max();
-			}
-			else {
-				it.disparityError[1] = std::abs(pt.x - it.mapPoint.x);
-				it.disparityError[2] = std::abs(originalPoint.x - it.mapPoint.x);
-			}
-
-			int64_t iteration_pass_end_time = GetDayTimeInMilliseconds();
-
-			std::ostringstream ostr;
-			ostr << "iteration pass " << pass << "; time: " << (iteration_pass_end_time - iteration_pass_start_time) << "ms; errors: " << it.disparityError[1] << "; resultCost: " << it.resultCost << "; pos: " << it.pos << std::endl;
-			std::cout << ostr.str();
-		};
-
-
 
 
 		int min_error = std::numeric_limits<int>::max();
 
 		for (int pass = 0; pass < number_of_passes; ++pass) {
 			iter_ctl[pass]._pass = pass;
+			iter_ctl[pass]._stripAncorOffset = iterAncorOffset;
+			iter_ctl[pass]._halfWidth = patternHalfWidth;
+			iter_ctl[pass]._calc_ctl = ctl;
+			iter_ctl[pass]._iter_rs = &iter_rs[pass];
 			iter_ctl[pass]._status = 0;
-			iter_ctl[pass]._disparityAlgorithm = disparityAlgorithm;
+			iter_ctl[pass]._disparityAlgorithm = DisparityAlgorithm;
 
 			QueueWorkItem(ExecuteDisparityAlgorithm, &iter_ctl[pass]);
 		}
@@ -5593,10 +5627,6 @@ return_t __stdcall CalculateDisparitySinglePoint(LPVOID lp) {
 		// patternHalfWidth gets increased with each iteration
 
 		patternHalfWidth += halfWidth / 6;
-
-		//if (patternHalfWidth > 8) {
-		//	patternHalfWidth >>= 1;
-		//}
 
 	} while (++iter < number_of_iterations && good_count < 2);
 
