@@ -435,7 +435,8 @@ void drawScene(std::vector<ReconstructedPoint>& points4D, std::vector<int>& labe
 		}
 		++idx;
 	}
-	for (size_t j = 0; j < coordlines4D.size(); ++j) {
+coordlines.resize(0);
+	for (size_t j = 0; j < coordlines.size(); ++j) {
 		coordlines[j].reserve(coordlines4D[j].size());
 		for (auto& point : coordlines4D[j]) {
 			coordlines[j].push_back((Mat_<double>)point + translate);
@@ -658,7 +659,7 @@ bool DisplayReconstructionData(SPointsReconstructionCtl& reconstruction_ctl, int
 				}
 			}
 
-			double offset_point[4] = { 0, 0, -1, 0 };
+			double offset_point[4] = { 0, 0, 10, 0 };
 
 			offset_point[0] = (offset_point[0] * 9 + (-max_point[0] * 1) - 0.001 * 10) / 10.0;
 			offset_point[1] = (offset_point[1] * 9 + (max_point[1] * 2) - 0.001 * 10) / 10.0;

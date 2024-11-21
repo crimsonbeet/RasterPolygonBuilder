@@ -424,10 +424,10 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 
 	for (int i = 1; i < M; ++i) {
 		const int i_1 = i - 1;
+		const double distanceFactor = 3;
 		//const double X_abs_i_1 = std::abs(double(X - i_1));
 		//const double log2_X_i = approx_log2(X_abs_i_1 < 1 ? 1 : X_abs_i_1); // 0 - at the center of crop, log2_X, ~5, at the ends of crop
-		//const double distanceFactor = 1 + approx_log2(1 + log2_X - log2_X_i);
-		const double distanceFactor = 3;
+		//const double distanceFactor = 2 + approx_log2(1 + log2_X - log2_X_i);
 		const int gapCost = 20000;
 		const double scoreWeight = gapCost * distanceFactor;
 		for (int j = 1; j < N; ++j) {
@@ -445,7 +445,6 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 					if (j_c < 0 || j_c >= N1) {
 						continue;
 					}
-					//fscore += GetFScore(crop.at<cv::Vec<uchar, 3>>(r, i_c), strip2search.at<cv::Vec<uchar, 3>>(r, j_c));
 					fscore += GetEScore(crop.at<cv::Vec<uchar, 3>>(r, i_c), strip2search.at<cv::Vec<uchar, 3>>(r, j_c));
 					++fscore_count;
 				}
@@ -454,7 +453,6 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 
 			AF[i][j] = fscore;
 
-			//int64_t case1Cost = A[i_1][j_1] + scoreWeight * (2 - fscore) + 0.45; 
 			int64_t case1Cost = A[i_1][j_1] + scoreWeight * (1 - fscore) + 0.45;
 			int64_t case2Cost = A[i_1][j] + gapCost;
 			int64_t case3Cost = A[i][j_1] + gapCost;
@@ -510,6 +508,9 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 
 		double Y = 0; // yet unknown
 
+		double fscore = AF[m][n];
+		int fscore_count = 1;
+
 		while (caseType != 0) {
 			switch (caseType) {
 			case 1:
@@ -532,6 +533,8 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 			}
 
 
+			fscore += AF[m][n];
+			++fscore_count;
 
 			disps[m - 1] = n - 1;
 			costs[m - 1] = caseCost;
@@ -544,6 +547,7 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 		}
 
 		pos = Y;
+		resultCost = 100 * fscore / fscore_count + 0.5;
 	}
 
 	//if (targetColumn > W2) {
@@ -5397,13 +5401,16 @@ void DisparityAlgorithm(DisparityAlgorithmControl& run_ctl) {
 	std::vector<double> disps;
 	std::vector<int64_t> costs;
 
+	cv::Rect cropRect;
+	cv::Rect strip2searchRect;
+
 	auto disparityAlgorithm_internal =
 		[&](const cv::Point& pt0, const Mat& left, const Mat& right, Mat& crop, Mat& strip2search, int64_t& resultCost) -> cv::Point {
 
 		//cv::Rect -> x≤pt.x<x+width, y≤pt.y<y+height
 
-		cv::Rect cropRect(pt0.x - ancorOffset, pt0.y - blurHeight / 2, 2 * halfWidth + 1, blurHeight);
-		cv::Rect strip2searchRect(pt0.x - stripAncorOffset, pt0.y - blurHeight / 2, stripWidth, blurHeight);
+		cropRect = cv::Rect(pt0.x - ancorOffset, pt0.y - blurHeight / 2, 2 * halfWidth + 1, blurHeight);
+		strip2searchRect = cv::Rect(pt0.x - stripAncorOffset, pt0.y - blurHeight / 2, stripWidth, blurHeight);
 
 		checkRectangle(cropRect, ancorOffset);
 		checkRectangle(strip2searchRect, stripAncorOffset);
@@ -5451,7 +5458,7 @@ void DisparityAlgorithm(DisparityAlgorithmControl& run_ctl) {
 	it.ancorOffset = ancorOffset;
 	it.stripAncorOffset = stripAncorOffset;
 	it.halfWidth = halfWidth;
-	it.pos = it.resPoint.x - (pt.x - stripAncorOffset);
+	it.pos = it.resPoint.x - strip2searchRect.x;// (pt.x - stripAncorOffset);
 	it.disps = disps;
 	it.costs = costs;
 
@@ -5463,8 +5470,8 @@ void DisparityAlgorithm(DisparityAlgorithmControl& run_ctl) {
 	//ancorOffset = halfWidth * 2 - ancorOffset;
 
 	
-	stripAncorOffset = it.resPoint.x - (pt.x - ancorOffset) + halfWidth / 4;
-	stripWidth = halfWidth * 3;
+	stripAncorOffset = it.resPoint.x - (pt.x - ancorOffset) + halfWidth;
+	stripWidth = halfWidth * 4;
 
 	//while (stripAncorOffset < 0) {
 	//	stripAncorOffset += halfWidth;
@@ -5514,7 +5521,7 @@ return_t __stdcall CalculateDisparitySinglePoint(LPVOID lp) {
 
 
 	const size_t number_of_passes = 5;
-	const size_t number_of_iterations = 5;
+	const size_t number_of_iterations = 1;
 
 
 	DisparityAlgorithmControl iter_ctl[number_of_passes];
@@ -5531,7 +5538,7 @@ return_t __stdcall CalculateDisparitySinglePoint(LPVOID lp) {
 	do {
 		int64_t iteration_start_time = GetDayTimeInMilliseconds();
 
-		iterAncorOffset = 3 * strip2searchHalfWidth / 2 + iter * 3 * strip2searchHalfWidth / 2;
+		iterAncorOffset = 6 * strip2searchHalfWidth / 5 + iter * 3 * strip2searchHalfWidth / 2;
 
 		std::cout << std::endl << "running Disparity iteration " << iter << "; patternHalfWidth: " << patternHalfWidth << "; strip2searchWidth: " << strip2searchWidth << "; iterAncorOffset: " << iterAncorOffset << std::endl;
 
@@ -5810,7 +5817,7 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 
 				dsip_calc_ctl.pt = pt;
 
-				dsip_calc_ctl.strip2searchWidth = std::floor(11 * dsip_calc_ctl.aux.cols / 100); 
+				dsip_calc_ctl.strip2searchWidth = std::floor(70 * dsip_calc_ctl.aux.cols / 100); 
 				dsip_calc_ctl.patternHalfWidth = std::floor(0.5 * dsip_calc_ctl.aux.cols / 100);
 				dsip_calc_ctl.blurHeight = 5;
 
@@ -5941,19 +5948,19 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 
 return_t __stdcall ReconstructPoints(LPVOID lp) {
 	timeBeginPeriod(1);
-	try {
+	//try {
 		if (g_configuration._evaluate_contours) {
 			EvaluateContours(lp); 
 		}
 		else{
 			RenderCameraImages(lp);
 		}
-	}
-	catch(Exception& ex) {
-		std::cout << ex.msg << std::endl;
-		g_bTerminated = true;
-		((SPointsReconstructionCtl*)lp)->_status--;
-	}
+	//}
+	//catch(Exception& ex) {
+	//	std::cout << ex.msg << std::endl;
+	//	g_bTerminated = true;
+	//	((SPointsReconstructionCtl*)lp)->_status--;
+	//}
 	timeEndPeriod(1);
 	SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_NORMAL);
 	return 0;
