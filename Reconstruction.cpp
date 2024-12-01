@@ -417,18 +417,18 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 	costs.resize(static_cast<size_t>(M) - 1, std::numeric_limits<int64_t>::max());
 
 
-	const double log2_X = approx_log2(X + 1);
+	//const double log2_X = approx_log2(X + 1);
 
 	double pos = -N;
 	resultCost = std::numeric_limits<int64_t>::max();
 
 	for (int i = 1; i < M; ++i) {
 		const int i_1 = i - 1;
-		const double distanceFactor = 3;
 		//const double X_abs_i_1 = std::abs(double(X - i_1));
 		//const double log2_X_i = approx_log2(X_abs_i_1 < 1 ? 1 : X_abs_i_1); // 0 - at the center of crop, log2_X, ~5, at the ends of crop
 		//const double distanceFactor = 2 + approx_log2(1 + log2_X - log2_X_i);
-		const int gapCost = 20000;
+		constexpr int gapCost = 20000;
+		constexpr double distanceFactor = 3;
 		const double scoreWeight = gapCost * distanceFactor;
 		for (int j = 1; j < N; ++j) {
 			const int j_1 = j - 1;
@@ -453,7 +453,7 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 
 			AF[i][j] = fscore;
 
-			int64_t case1Cost = A[i_1][j_1] + scoreWeight * (1 - fscore) + 0.45;
+			int64_t case1Cost = A[i_1][j_1] + scoreWeight * (0.87 - fscore) + 0.45;
 			int64_t case2Cost = A[i_1][j] + gapCost;
 			int64_t case3Cost = A[i][j_1] + gapCost;
 			if (case2Cost < case3Cost) {
