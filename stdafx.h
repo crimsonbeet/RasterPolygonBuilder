@@ -995,10 +995,10 @@ struct SImageAcquisitionCtl {
 
 		_12bit_format = 0; 
 
-		_camera_serialnumbers[0] = "40269283"; // defines what cameras to use
-		_camera_serialnumbers[NUMBER_OF_CAMERAS - 1] = "40294791";
+		_camera_serialnumbers[0] = "40294791"; // defines what cameras to use
+		_camera_serialnumbers[NUMBER_OF_CAMERAS - 1] = "40269283";
 
-		for (auto& exp : _exposure_times) exp = 0;
+		for (auto& exp : _exposure_times) exp = 100000;
 	}
 
 	~SImageAcquisitionCtl() {
@@ -1130,6 +1130,7 @@ void WhiteBalance(Mat& image, double whiteFactor[3]);
 
 double GetFScore(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2);
 double GetEScore(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2); // max value 3; min value 0;
+double GetRSS_Score(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2);
 
 
 double hsvLikenessScore(cv::Vec<uchar, 3>& pixOriginal, double hsvIdeal[3]); // returns likeness score from 0 to 256.
@@ -1138,6 +1139,8 @@ double Get_Squared_Z_Score(const cv::Vec<uchar, 3>& pixOrig, double mean_data[3]
 
 void BuildIdealChannels_Likeness(Mat& image, Point& pt, double rgbdeal[3], int radius = 4);
 bool BuildIdealChannels_Distribution(Mat& image, Point& pt, Mat& mean, Mat& stdDev, Mat& factorLoadings, Mat& invCovar, Mat& invCholesky, int neighbourhoodRadius = 4);
+void NormalizeColoredImage(Mat& image);
+void NormalizeColoredImage_RSS(Mat& image);
 
 
 bool StandardizeImage_HSV_Likeness(Mat& image, double rgbIdeal[3]);

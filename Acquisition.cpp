@@ -110,17 +110,21 @@ double lookup_log2_64_log2_1_v_5(double x) {
 }
 
 const double p_log2_log2_lookup_table[100] = { -0.197, -0.197, -0.197, -0.197, -0.197, -0.197, -0.197, -0.197, -0.197, -0.197, -0.197, -0.197, -0.197, -0.197, -0.196528524, -0.195756186, -0.194201662, -0.191916837, -0.188947707, -0.185335315, -0.181116496, -0.176324484, -0.170989407, -0.165138690, -0.158797402, -0.151988536, -0.144733254, -0.137051090, -0.128960127, -0.120477148, -0.111617769, -0.102396553, -0.092827108, -0.082922176, -0.072693714, -0.062152955, -0.051310476, -0.040176249, -0.028759689, -0.017069701, -0.005114715, 0.007097277, 0.019558688, 0.032262308, 0.045201278, 0.058369067, 0.071759446, 0.085366474, 0.099184476, 0.113208024, 0.127431929, 0.141851219, 0.156461131, 0.171257097, 0.186234731, 0.201389823, 0.216718325, 0.232216347, 0.247880142, 0.263706105, 0.279690761, 0.295830760, 0.312122872, 0.328563979, 0.345151072, 0.361881241, 0.378751676, 0.395759659, 0.412902561, 0.430177836, 0.447583021, 0.465115729, 0.482773647, 0.500554531, 0.518456207, 0.536476565, 0.554613556, 0.572865191, 0.591229540, 0.609704726, 0.628288923, 0.646980360, 0.665777311, 0.684678098, 0.703681088, 0.722784691, 0.741987360, 0.761287586, 0.780683901, 0.800174873, 0.819759107, 0.839435241, 0.859201948, 0.879057934, 0.899001934, 0.919032717, 0.939149076, 0.959349838, 0.979633853, 1.000000000 };
+/*
+* (p^1.7)*1.27 - 0.27
+*/
+const double p_1_7_1_27[100] = { -0.270000000, -0.269485691, -0.268329006, -0.266670876, -0.264570925, -0.262066353, -0.259183643, -0.255943068, -0.252360882, -0.248450552, -0.244223503, -0.239689615, -0.234857552, -0.229735011, -0.224328892, -0.218645438, -0.212690336, -0.206468800, -0.199985636, -0.193245294, -0.186251915, -0.179009366, -0.171521268, -0.163791027, -0.155821850, -0.147616772, -0.139178663, -0.130510252, -0.121614131, -0.112492773, -0.103148535, -0.093583675, -0.083800353, -0.073800639, -0.063586523, -0.053159917, -0.042522660, -0.031676526, -0.020623225, -0.009364408, 0.002098329, 0.013763444, 0.025629442, 0.037694876, 0.049958344, 0.062418483, 0.075073973, 0.087923529, 0.100965903, 0.114199881, 0.127624282, 0.141237954, 0.155039776, 0.169028656, 0.183203528, 0.197563351, 0.212107110, 0.226833813, 0.241742491, 0.256832198, 0.272102008, 0.287551014, 0.303178329, 0.318983087, 0.334964438, 0.351121548, 0.367453604, 0.383959804, 0.400639365, 0.417491518, 0.434515509, 0.451710598, 0.469076059, 0.486611177, 0.504315252, 0.522187596, 0.540227533, 0.558434397, 0.576807537, 0.595346308, 0.614050080, 0.632918231, 0.651950150, 0.671145234, 0.690502891, 0.710022539, 0.729703603, 0.749545518, 0.769547726, 0.789709680, 0.810030838, 0.830510669, 0.851148646, 0.871944252, 0.892896976, 0.914006316, 0.935271775, 0.956692863, 0.978269097, 1.000000000 };
 
 // p<-(115:200)/100
 // ((p-1)*(log2(64*log2(p))-5))
 // x must be in closed range [0,1]
-double lookup_p_log2_64_log2_1_v_5(double x) {
+inline double lookup_p_log2_64_log2_1_v_5(double x) {
 	size_t i = x * 100 - 1;
 
 	if (i < 0)
 		i = 0;
 
-	return p_log2_log2_lookup_table[i];
+	return p_log2_log2_lookup_table[i]; //p_1_7_1_27[i]; 
 }
 
 double GetEScore(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2) {
@@ -138,7 +142,8 @@ double GetEScore(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2) {
 			//e[j] = lookup_log2_64_log2_1_v_5(p + 1);
 
 			const double p = (std::min(a, b) / div); // in 0..1
-			e[j] = lookup_p_log2_64_log2_1_v_5(p); 
+			//e[j] = lookup_p_log2_64_log2_1_v_5(p);
+			e[j] = p * p * 1.2 - 0.2;
 		}
 		else {
 			e[j] = 0;
@@ -153,6 +158,122 @@ double GetEScore(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2) {
 		escore = 0;
 	}
 	return escore;
+}
+
+/*
+* use RSS as loss function
+* 1. calculate intensity sqrt((A*A + B*B + C*C)/3)
+* 2. normalize channels: A/intensity, ..., C/intensity
+* 3. calculate normalized differences DA = (A1 - A2), ..., DC = (C1 - C2)
+* 4. RSS = DA*DA + ... + DC*DC.
+* 
+* further in the FindBestAlignment(), 
+* 1. in the begin: transform image to the normalized values.
+* 2. having called GetEScore(), accumulate RSS so it appears as totals in the last column.
+*/
+
+/*
+ 
+ 
+a1 = [0.4, 0.6, 0.7 ]
+a1_intens = sum(x*x for x in a1)**0.5
+a1_norm = [x/a1_intens for x in a1]
+a1_norm
+
+
+0.4/2, 0.6/2, 0.7/2
+a2 = [0.4/2, 0.6/2, 0.7/2 ]
+a2_intens = sum(x*x for x in a2)**0.5
+a2_norm = [x/a2_intens for x in a2]
+a2_norm
+
+
+a3 = [0.7, 0.8, 0.95 ]
+a3_intens = sum(x*x for x in a3)**0.5
+a3_norm = [x/a3_intens for x in a3]
+a3_norm
+
+
+a4 = [0.1, 0.8, 0.95 ]
+a4_intens = sum(x*x for x in a4)**0.5
+a4_norm = [x/a4_intens for x in a4]
+a4_norm
+
+a5 = [0.95, 0.95, 0.95 ]
+a5_intens = sum(x*x for x in a5)**0.5
+a5_norm = [x/a5_intens for x in a5]
+a5_norm
+
+a5 = [0, 1.0, 1.0 ]
+a5_intens = sum(x*x for x in a5)**0.5
+a5_norm = [x/a5_intens for x in a5]
+a5_norm
+
+#a1_a4_norm = [x - y for x, y in zip(a1, a4)]
+#a1_a4_norm
+
+import numpy as np
+a1_a4_norm = np.array(a1) - np.array(a4)
+a1_a4_norm
+
+RSS = sum(x*x for x in a1_a4_norm)
+
+
+
+*/
+
+double GetRSS_Score(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2) {
+	double escore = 0;
+	double e[3];
+	double w[3];
+	double total_sum = 0;
+	for(int j = 0; j < 3; ++j) {
+		const int a = ch1[j];
+		const int b = ch2[j];
+		const double sub = a - b;
+		total_sum += 65536.0 - sub * sub;
+	}
+	if(isnan(total_sum)) {
+		total_sum = 0;
+	}
+	//return sqrt(total_sum) / 256;
+	return total_sum / 65536;
+}
+
+void NormalizeColoredImage_RSS(Mat& image) {
+	if(image.type() == CV_8UC3) {
+		typedef Vec<uchar, 3> Vec3c;
+		for(int r = 0; r < image.rows; ++r) {
+			for(int c = 0; c < image.cols; ++c) {
+				Vec3c& pixVec = image.at<Vec3c>(r, c);
+				double pixVals[3];
+				double sum = 0;
+				for(int x = 0; x < 3; ++x) {
+					pixVals[x] = pixVec[x];
+					sum += pixVals[x] * pixVals[x];
+				}
+				sum = sqrt(sum);
+				if(sum > 1) {
+					for(int x = 0; x < 3; ++x) {
+						double pixVal = (pixVals[x] / sum) * 255;
+						pixVec[x] = std::ceil(pixVal);
+					}
+				}
+			}
+		}
+		image = image.clone();
+	}
+}
+
+void NormalizeColoredImage(Mat& image) {
+	if(image.type() == CV_8UC3) {
+		//cv::Mat aux(image.size(), CV_8UC3);
+
+		cv::Mat aux;
+		cv::medianBlur(image, aux, 5);
+
+		NormalizeColoredImage_RSS(image);
+	}
 }
 
 
@@ -275,6 +396,8 @@ void BuildWeights_ByChannel(Mat& image, Point& pt, double weights_out[3]) {
 
 bool BuildIdealChannels_Distribution(Mat& image, Point& pt, Mat& mean, Mat& stdDev, Mat& factorLoadings, Mat& invCovar, Mat& invCholesky, int neighbourhoodRadius) {
 	if (image.type() == CV_8UC3) {
+		NormalizeColoredImage(image);
+
 		if (neighbourhoodRadius > 5) {
 			neighbourhoodRadius = 5;
 		}
@@ -400,8 +523,8 @@ void ConvertColoredImage2Mono_Likeness(cv::Mat& image, cv::Mat mean/*rgb*/, Mat&
 	for (int r = 0; r < aux.rows; ++r) {
 		for (int c = 0; c < aux.cols; ++c) {
 			double zScore = Get_Squared_Z_Score(image.at<cv::Vec<uchar, 3>>(r, c), mean_data, invCholesky_data);
-			if (zScore < 9) {
-				aux.at<ushort>(r, c) = (9 - zScore) * 26 + 0.5;
+			if (zScore < 20) {
+				aux.at<ushort>(r, c) = (20 - zScore) * 7 + 0.5;
 			}
 			else {
 				aux.at<ushort>(r, c) = 0;
@@ -634,13 +757,15 @@ void CopyStereoFrame(Mat& left, Mat& right, SStereoFrame* pframe, int64* time_re
 	Mat* dst[2] = { &left, &right };
 	std::vector<int> idx = pframe->GetIdxs();
 	int j = 0;
-	for (auto dst : dst) {
+	for (auto dstPtr : dst) {
 		Mat& image = pframe->frames[idx[j++]].cv_image;
 		if (image.type() == CV_8UC3) {
-			matCV_8UC3_memcpy(*dst, image);
+			cv::rotate(image, *dstPtr, cv::ROTATE_90_COUNTERCLOCKWISE);
+			//matCV_8UC3_memcpy(*dstPtr, image);
 		}
 		else {
-			matCV_16UC1_memcpy(*dst, image);
+			cv::rotate(image, *dstPtr, cv::ROTATE_90_COUNTERCLOCKWISE);
+			//matCV_16UC1_memcpy(*dstPtr, image);
 		}
 	}
 	if (time_received != NULL) {
@@ -973,7 +1098,7 @@ bool SynchronizedGrabResults(CBaslerUsbInstantCameraArray& cameras, std::vector<
 	int noresponse_count = 0;
 	for (int j = 0; j < (int)cameras.GetSize(); ++j) {
 		try {
-			cameras[j].RetrieveResult(23, ptrGrabResults[j], TimeoutHandling_Return);
+			cameras[j].RetrieveResult(50, ptrGrabResults[j], TimeoutHandling_Return);
 			if (ptrGrabResults[j] == NULL || !ptrGrabResults[j]->GrabSucceeded() || (int)ptrGrabResults[j]->GetCameraContext() != j) {
 				++noresponse_count;
 			}

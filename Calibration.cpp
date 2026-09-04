@@ -60,6 +60,16 @@ extern HANDLE g_event_SeedPointIsAvailable;
 
 
 double g_greenSquare_mean_data[3] = { 108.59519, 106.87839, 93.29372 };// { 117.41603, 108.29612, 89.85426 };
+double g_greenSquare_invCovar_data[9] = { 0.008706637, 0.002279566, -0.01101841, 0.002279566, 0.043274569, -0.03528071, -0.011018411, -0.035280710, 0.04288963 };// { 0.003871324, 0.001966916, -0.001440268, 0.001966916, 0.036550065, -0.030285284, -0.001440268, -0.030285284, 0.035661410 };
+double g_greenSquare_invCholesky_data[9] = { 0.05144795, 0.0000000, 0.0000000, -0.05682516, 0.1193855, 0.0000000, -0.05320382, -0.1703575, 0.2070981 };// { 0.061335769, 0.0000000, 0.0000000, 0.007146916, 0.1040693, 0.0000000, -0.007626832, -0.1603734, 0.1888423 };
+
+
+cv::Mat g_greenSquare_mean = cv::Mat(1, 3, CV_64F, g_greenSquare_mean_data);
+cv::Mat g_greenSquare_invCovar = cv::Mat(3, 3, CV_64F, g_greenSquare_invCovar_data);
+cv::Mat g_greenSquare_invCholesky = cv::Mat(3, 3, CV_64F, g_greenSquare_invCholesky_data);
+
+cv::Mat g_greenSquare_stdDev;
+cv::Mat g_greenSquare_factorLoadings;
 
 
 
@@ -362,14 +372,16 @@ void ClassBlobDetector::detectImpl(const cv::Mat& image, std::vector<cv::KeyPoin
 	Mat grayscaleImage;
 
 	Mat aux = image.clone();
+
 	//cv::medianBlur(aux, aux, 3);
-	cv::GaussianBlur(aux, aux, Size(5, 5), 0.9, 0.9);
+	//cv::GaussianBlur(aux, aux, Size(5, 5), 0.9, 0.9);
 	cv::normalize(aux, grayscaleImage, 0, 255 * g_bytedepth_scalefactor, NORM_MINMAX, CV_32FC1, Mat());
 
 	vector < vector<Center> > centers;
 	double thresh = params.minThreshold;
 	for(size_t nstep = 0; nstep < 20 && thresh <= params.maxThreshold; thresh += params.thresholdStep, ++nstep) {
 		Mat binImage;
+
 		try {
 			threshold(grayscaleImage, binImage, thresh, 255 * g_bytedepth_scalefactor, THRESH_BINARY);
 		}
@@ -407,8 +419,7 @@ void ClassBlobDetector::detectImpl(const cv::Mat& image, std::vector<cv::KeyPoin
 
 			Mat image0;
 			cvtColor(binarizedImage, image0, COLOR_GRAY2RGB);
-			for each(auto& points in contours)
-			{
+			for each(auto& points in contours) {
 				int n = (int)points.size();
 				const Point* p = &points[0];
 				cv::polylines(image0, &p, &n, 1, true, Scalar(0, 255 * 256, 0), 2, LINE_AA);
@@ -598,17 +609,7 @@ return_t __stdcall DetectBlackSquaresVia_ColorDistribution(LPVOID lp) {
 	ctl->_status = 2;
 	try {
 		if (image.type() == CV_8UC3) {
-			double mean_data[3] = {g_greenSquare_mean_data[0], g_greenSquare_mean_data[1], g_greenSquare_mean_data[2]};
-
-			double invCovar_data[9] = { 0.008706637, 0.002279566, -0.01101841, 0.002279566, 0.043274569, -0.03528071, -0.011018411, -0.035280710, 0.04288963 };// { 0.003871324, 0.001966916, -0.001440268, 0.001966916, 0.036550065, -0.030285284, -0.001440268, -0.030285284, 0.035661410 };
-			double invCholesky_data[9] = { 0.05144795, 0.0000000, 0.0000000, -0.05682516, 0.1193855, 0.0000000, -0.05320382, -0.1703575, 0.2070981 };// { 0.061335769, 0.0000000, 0.0000000, 0.007146916, 0.1040693, 0.0000000, -0.007626832, -0.1603734, 0.1888423 };
-
-			cv:Mat mean = cv::Mat(1, 3, CV_64F, mean_data);
-			cv::Mat invCovar = cv::Mat(3, 3, CV_64F, invCovar_data);
-			cv::Mat invCholesky = cv::Mat(3, 3, CV_64F, invCholesky_data);
-
-			cv::Mat stdDev;
-			cv::Mat factorLoadings;
+			auto& mean_data = g_greenSquare_mean_data;
 
 			if (ctl->_saturationFactor != 0.0) {
 				for (auto& mean : mean_data) {
@@ -616,11 +617,24 @@ return_t __stdcall DetectBlackSquaresVia_ColorDistribution(LPVOID lp) {
 				}
 			}
 
-			StandardizeImage_Likeness(image, mean, stdDev, factorLoadings, invCovar, invCholesky);
+			NormalizeColoredImage(image);
 
-			image = mat_loginvert2word(image);
-			image = mat_invert2word(image);
+			cv::Mat mean = cv::Mat(1, 3, CV_64F, mean_data);
+			StandardizeImage_Likeness(image, mean, g_greenSquare_stdDev, g_greenSquare_factorLoadings, g_greenSquare_invCovar, g_greenSquare_invCholesky);
+
+			//image = mat_loginvert2word(image);
+			//image = mat_invert2word(image);
+
 			cv::normalize(image.clone(), image, 0, (size_t)256 * g_bytedepth_scalefactor, NORM_MINMAX, CV_16UC1, Mat());
+
+			ctl->_gate.lock();
+			Mat aux;
+			cvtColor(image, aux, COLOR_GRAY2RGB);
+			//cv::normalize(aux.clone(), aux, 0, (size_t)256 * g_bytedepth_scalefactor, NORM_MINMAX, CV_16UC1, Mat());
+			ctl->_image2visualize = aux.clone();
+			ctl->_image_isvalid = true;
+			ctl->_last_image_timestamp = OSDayTimeInMilliseconds();
+			ctl->_gate.unlock();
 		}
 
 		ctl->_detector->detect(image, keyPoints);
@@ -1327,7 +1341,7 @@ double calc_betweenimages_rmse(vector<Point2d>& image1, vector<Point2d>& image2)
 std::vector<bool> EvaluateImagePoints(cv::Mat cv_images[2], std::vector<std::vector<cv::Point2d>> imagePoints[2], SImageAcquisitionCtl& ctl, double aposteriory_minsdistance, double min_confidence = 0.4, size_t min_repeatability = 2) {
 	constexpr int N = 2;
 
-	static double min_rmse = std::numeric_limits<double>::max();
+	double min_rmse = std::numeric_limits<double>::max();
 
 	std::vector<bool> is_ok(N, false);
 	std::vector<double> min_image_rmse(N, std::numeric_limits<double>::max());
@@ -1336,7 +1350,11 @@ std::vector<bool> EvaluateImagePoints(cv::Mat cv_images[2], std::vector<std::vec
 
 	if(buildPointsFromImages(cv_images, points, N, ctl, min_confidence, min_repeatability)) {
 		for (int j = 0; j < N; ++j) {
-			is_ok[j] = points[j].size() == g_boardChessCornersSize.width * g_boardChessCornersSize.height;
+			if(points[j].size() != g_boardChessCornersSize.width * g_boardChessCornersSize.height) {
+				continue;
+			}
+
+			is_ok[j] = true;
 
 			int x = (int)imagePoints[j].size() - 1;
 
@@ -1348,23 +1366,29 @@ std::vector<bool> EvaluateImagePoints(cv::Mat cv_images[2], std::vector<std::vec
 					if (min_image_rmse[j] > rmse) {
 						min_image_rmse[j] = rmse;
 					}
-					if (min_rmse > rmse && rmse > aposteriory_minsdistance) {
+					if (min_rmse > rmse) {
 						min_rmse = rmse;
 					}
 				}
 			}
 		}
-		for (int j = 0; j < N; ++j) {
-			if (min_image_rmse[j] < aposteriory_minsdistance) {
-				for (int k = j + 1; k < N; ++k) {
-					if (min_image_rmse[k] < aposteriory_minsdistance) {
-						is_ok[j] = false;
-						is_ok[k] = false;
-						std::cout << "rejected by min_rmse=" << min_rmse << " vs. aposteriory_minsdistance=" << aposteriory_minsdistance << std::endl;
-					}
-				}
+		if(min_rmse < aposteriory_minsdistance) {
+			for(int j = 0; j < N; ++j) {
+				is_ok[j] = false;
 			}
+			std::cout << "PROXIMITY TO PREVIOUS IMAGES: rejected by min_rmse=" << min_rmse << " vs. aposteriory_minsdistance=" << aposteriory_minsdistance << std::endl;
 		}
+		//for (int j = 0; j < N; ++j) {
+		//	if (min_image_rmse[j] < aposteriory_minsdistance) {
+		//		for (int k = j + 1; k < N; ++k) {
+		//			if (min_image_rmse[k] < aposteriory_minsdistance) {
+		//				is_ok[j] = false;
+		//				is_ok[k] = false;
+		//				std::cout << "rejected by min_rmse=" << min_rmse << " vs. aposteriory_minsdistance=" << aposteriory_minsdistance << std::endl;
+		//			}
+		//		}
+		//	}
+		//}
 	}
 
 	return is_ok;
@@ -1417,6 +1441,9 @@ void VisualizeCapturedImages(cv::Mat& left_image, cv::Mat& right_image) {
 		double fy = fx;
 
 		std::string& imagewin_name = cv_windows[c + 4];
+		if(g_bTerminated) {
+			return;
+		}
 
 		HWND hwnd = (HWND)cvGetWindowHandle(imagewin_name.c_str());
 		RECT clrect;
@@ -1443,7 +1470,7 @@ void VisualizeCapturedImages(cv::Mat& left_image, cv::Mat& right_image) {
 int g_sync_button_pressed;
 return_t __stdcall ShowSynchronizationButton(LPVOID lp) {
 	ProcessWinMessages(10);
-	MessageBoxA(NULL, "Press when ready", "Synchronization", MB_OK | MB_TOPMOST | MB_SETFOREGROUND);
+	MessageBoxA(NULL, "CLICK in the middle of Green rectangle.\r\nPress when ready", "Synchronization", MB_OK | MB_TOPMOST | MB_SETFOREGROUND);
 	g_sync_button_pressed = true;
 	return 0;
 }
@@ -1519,7 +1546,7 @@ return_t __stdcall SaveImagesWorkItem(LPVOID lp) {
 }
 
 std::function<void()> g_imageGetFromFilesLambda = nullptr;
-return_t __stdcall GetImagesImagesWorkItem(LPVOID lp) {
+return_t __stdcall GetImagesFromFilesWorkItem(LPVOID lp) {
 	g_imageGetFromFilesLambda();
 	return 0;
 }
@@ -1604,9 +1631,16 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 			Mat &aux = images[windowNumber];
 
 			if (aux.rows > pt.y) {
+				if(BuildIdealChannels_Distribution(aux, pt, g_greenSquare_mean, g_greenSquare_stdDev, g_greenSquare_factorLoadings, g_greenSquare_invCovar, g_greenSquare_invCholesky, 5)) {
+					for(int c = 0; c < 3; ++c) {
+						g_greenSquare_mean_data[c] = g_greenSquare_mean.at<double>(0, c);
+					}
+				}
+
 				double seedReference[3];
 
 				BuildIdealChannels_Likeness(aux, pt, seedReference, 7);
+
 				double grayWorldMean = 0;
 				for (int j = 0; j < 3; ++j) {
 					if (seedReference[j] == 0) {
@@ -1662,7 +1696,7 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 			g_imageGetFromFilesLambda = nullptr;
 		};
 
-		QueueWorkItem(GetImagesImagesWorkItem);
+		QueueWorkItem(GetImagesFromFilesWorkItem);
 		while (g_imageGetFromFilesLambda != nullptr) {
 			ProcessWinMessages(10);
 		}

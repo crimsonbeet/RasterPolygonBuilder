@@ -427,9 +427,8 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 		//const double X_abs_i_1 = std::abs(double(X - i_1));
 		//const double log2_X_i = approx_log2(X_abs_i_1 < 1 ? 1 : X_abs_i_1); // 0 - at the center of crop, log2_X, ~5, at the ends of crop
 		//const double distanceFactor = 2 + approx_log2(1 + log2_X - log2_X_i);
-		constexpr int gapCost = 20000;
-		constexpr double distanceFactor = 3;
-		const double scoreWeight = gapCost * distanceFactor;
+		constexpr int gapCost = 10000;
+		const double scoreWeight = gapCost * 4;
 		for (int j = 1; j < N; ++j) {
 			const int j_1 = j - 1;
 
@@ -446,14 +445,16 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 						continue;
 					}
 					fscore += GetEScore(crop.at<cv::Vec<uchar, 3>>(r, i_c), strip2search.at<cv::Vec<uchar, 3>>(r, j_c));
+					fscore += GetRSS_Score(crop.at<cv::Vec<uchar, 3>>(r, i_c), strip2search.at<cv::Vec<uchar, 3>>(r, j_c));
 					++fscore_count;
 				}
 			}
-			fscore /= fscore_count;
+			fscore /= fscore_count * 2;
 
 			AF[i][j] = fscore;
 
 			int64_t case1Cost = A[i_1][j_1] + scoreWeight * (0.87 - fscore) + 0.45;
+			//int64_t case1Cost = A[i_1][j_1] + scoreWeight * (0.75 - fscore) + 0.45; // fscore == 0, scoreWeight * 0.75 == 3; fscore == 3, scoreWeight * -2.25
 			int64_t case2Cost = A[i_1][j] + gapCost;
 			int64_t case3Cost = A[i][j_1] + gapCost;
 			if (case2Cost < case3Cost) {
@@ -5438,9 +5439,11 @@ void DisparityAlgorithm(DisparityAlgorithmControl& run_ctl) {
 			strip2searchFactor[j] = strip2searchMean(j) / std::max(seedReference[j], 1.0);
 		}
 
-
 		WhiteBalance<uchar>(crop, cropFactor);
 		WhiteBalance<uchar>(strip2search, strip2searchFactor);
+
+		//NormalizeColoredImage_RSS(crop);
+		//NormalizeColoredImage_RSS(strip2search);
 
 		int pos = FindBestAlignment(crop, strip2search, ancorOffset, resultCost, disps, costs) + 0.45;
 
@@ -5817,8 +5820,8 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 
 				dsip_calc_ctl.pt = pt;
 
-				dsip_calc_ctl.strip2searchWidth = std::floor(70 * dsip_calc_ctl.aux.cols / 100); 
-				dsip_calc_ctl.patternHalfWidth = std::floor(0.5 * dsip_calc_ctl.aux.cols / 100);
+				dsip_calc_ctl.strip2searchWidth = std::floor(70 * dsip_calc_ctl.aux.cols / 80); 
+				dsip_calc_ctl.patternHalfWidth = std::floor(1.0 * dsip_calc_ctl.aux.cols / 80);
 				dsip_calc_ctl.blurHeight = 5;
 
 

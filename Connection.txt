@@ -2,12 +2,29 @@
 
 ><$XRemoting 
 
+>< ChangeableAddress Name=OPServer Address='0.0.0.0:4545' Description='OP Server'
 
 ><$Connector ResponseTimeoutSecs=10 UseClones=1 
 
 >< Listener Name=PolyMorpher Address='0.0.0.0:18221' Datatype={AndroidBayerFilterImage AndroidCameraJpegImage AndroidCaptureStillImageRequest}
 
 >< Producer Address='192.168.5.146:18211' Name=AndroidLS Parser=CWSIParser IsLogServer=1 Returns={AndroidBayerFilterImage AndroidCameraJpegImage} Datatype={AndroidCaptureStillImageRequest}
+
+$
+
+><$Connector ResponseTimeoutSecs=5 UseClones=1
+
+>< Listener Name=OPServer Parser=CFepParser 
+
+>< ProducerArray Name=OPServer MaxIndex=64 Datatype={M0 M001 M003 M006 M008 M010 M018 M040 M042 M043 M060 M062 M063 M064 M070 M072 M073 M075 M077 M105 M108 M150 MN2500 M9999}
+Returns={M002 M004 M005 M011 M041 M061 M061R02 M061R03 M061R04 M061R05 M061R06 M061R998 M065 M065R6 M071 M074 M076 M105 M106 M107 MN2500 M9999}
+OutBufferSizeKBytes=32 
+InBufferSizeKBytes=32 
+
+>< ProducerArray Name=DSTR MaxIndex=64 Datatype={M0 M001 M003 M006 M008 M010 M018 M040 M042 M043 M051 M053 M054 M060 M062 M063 M064 M070 M072 M073 M075 M077 M105 M108 M150 M7405 M7407 M7412 M7414 M9999}
+Returns={M002 M004 M005 M011 M041 M052 M061 M061R02 M061R03 M061R04 M061R05 M061R06 M061R998 M065 M065R6 M071 M074 M076 M105 M106 M107 M7404 M7406 M7413 M9999}
+OutBufferSizeKBytes=32 
+InBufferSizeKBytes=32 
 
 $
 

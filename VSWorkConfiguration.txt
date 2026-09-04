@@ -2,5 +2,20 @@
 CameraNames={DART1 DART2} PixelThreshold=40 
 SceneTranslate={-30 } 
 SceneTranslate@3={-20 } 
-LocalSceneTranslate@2={-10 40 } ImageHeight=966 PercentMaxintensity=0.1333 PatternIsWhiteOnBlack=1 PatternIsChessBoard=1 MaxBoxsizePixels=25 DistanceToTarget=4 VersionNumber=11 SupervisedLoG=0 VisualDiagnostics=0 FeaturesRequested=1 
-SaveAll=1 TwoStepCalibration=1 MinImages=11 CalibMinConfidence=0.4 CalibAutoImageCapture=0 CalibImagesFromFiles=0 EvaluateContours=0 PolyMorphicSize=1 FramesAcquisitionMode=-1 UseUncalibratedCameras=0 
+LocalSceneTranslate@2={-10 40 } 
+EvaluateContours=0 
+PolyMorphicSize=1 UseUncalibratedCameras=0 
+ImageHeight=966 
+PercentMaxintensity=0.1333 DistanceToTarget=4 VersionNumber=11 SupervisedLoG=0 VisualDiagnostics=0 FeaturesRequested=1 
+SaveAll=1 
+TwoStepCalibration=1 
+MinImages=11 
+MinRMSEImages=50 
+PatternIsChessBoard=1 
+MaxBoxsizePixels=25 
+CalibMinConfidence=0.4 
+CalibAutoImageCapture=0 
+CalibImagesFromFiles=0 
+PatternIsWhiteOnBlack=1 
+FramesAcquisitionMode=-1 
+TriggerHardware=-1

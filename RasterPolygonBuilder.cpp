@@ -309,6 +309,7 @@ void AcceptNewGlobalConfiguration(StereoConfiguration& configuration/*out - loca
 	image_acquisition_ctl._image_height = configuration._image_height;
 
 	image_acquisition_ctl._trigger_source_software = configuration._trigger_source_hardware == 0;
+	image_acquisition_ctl._use_trigger = configuration._trigger_source_hardware >= 0;
 
 	image_acquisition_ctl._two_step_calibration = configuration._two_step_calibration != 0;
 	image_acquisition_ctl._save_all_calibration_images = configuration._save_all_calibration_images != 0;
@@ -1040,7 +1041,12 @@ int main() {
 		AcceptNewGlobalConfiguration(configuration/*out - local config*/, image_acquisition_ctl, &reconstruction_ctl);
 	}
 
-
+	/*
+	* FramesAcquisitionMode=2 - read from producer
+	* FramesAcquisitionMode=1 - read from files
+	* EvaluateContours=1 - polygons
+	* 
+	*/
 
 	if (g_configuration._frames_acquisition_mode > 1) {
 		std::string connectConfig = ReadTextFile(g_path_connectconfiguration);

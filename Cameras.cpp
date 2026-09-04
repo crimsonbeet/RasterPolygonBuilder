@@ -29,11 +29,18 @@ void InitializeCameras(SImageAcquisitionCtl& ctl) {
 
 		for (int j = 0; j < ARRAY_NUM_ELEMENTS(ctl._camera_serialnumbers); ++j) {
 			if (user_name == ctl._camera_serialnumbers[j]) {
-				auto dev = tlFactory.CreateDevice(*it); 
-				cameras[j].Attach(dev);
-				cameras[j].SetCameraContext(j); // CameraContext is attached to the GrabResult
+				try {
+					auto dev = tlFactory.CreateDevice(*it);
+					cameras[j].Attach(dev);
+					cameras[j].SetCameraContext(j); // CameraContext is attached to the GrabResult
 
-				++cameras_found;
+					++cameras_found;
+				}
+				catch(GenICam::GenericException& e) {
+					std::cerr << std::endl << "An exception occurred: " << e.GetDescription() << std::endl;
+					g_bTerminated = true;
+					return;
+				}
 			}
 		}
 	}
@@ -77,11 +84,11 @@ void ParameterizeCameras(SImageAcquisitionCtl& ctl, bool setTriggerMode) {
 				cameras[j].TriggerSource = ctl._trigger_source_software ? Basler_UsbCameraParams::TriggerSource_Software : Basler_UsbCameraParams::TriggerSource_Line1;
 				cameras[j].AcquisitionStatusSelector = Basler_UsbCameraParams::AcquisitionStatusSelector_FrameTriggerWait;
 			}
-			else {
-				cameras[j].TriggerSelector = Basler_UsbCameraParams::TriggerSelector_FrameStart;
-				cameras[j].TriggerSource = Basler_UsbCameraParams::TriggerSource_Software;
-				cameras[j].AcquisitionStatusSelector = Basler_UsbCameraParams::AcquisitionStatusSelector_FrameTriggerWait;
-			}
+			//else {
+			//	cameras[j].TriggerSelector = Basler_UsbCameraParams::TriggerSelector_FrameStart;
+			//	cameras[j].TriggerSource = Basler_UsbCameraParams::TriggerSource_Software;
+			//	cameras[j].AcquisitionStatusSelector = Basler_UsbCameraParams::AcquisitionStatusSelector_FrameTriggerWait;
+			//}
 
 			if (setTriggerMode) {
 				cameras[j].TriggerMode = ctl._use_trigger ? Basler_UsbCameraParams::TriggerMode_On : Basler_UsbCameraParams::TriggerMode_Off;
@@ -94,6 +101,7 @@ void ParameterizeCameras(SImageAcquisitionCtl& ctl, bool setTriggerMode) {
 
 			g_frameRate[j] = cameras[j].ResultingFrameRate.GetValue();
 		}
+
 		g_resultingFrameRate = 50;
 		for (int j = 0; j < (int)cameras.GetSize(); ++j) {
 			if (g_frameRate[j] < g_resultingFrameRate) {
@@ -127,21 +135,23 @@ void OpenCameras(SImageAcquisitionCtl& ctl) {
 
 			std::string model_name = cameras[j].GetDeviceInfo().GetModelName();
 
-			int pixelsHoriz = 1280;
-			int pixelsVert = 960;
+			//int pixelsHoriz = 1214;
+			//int pixelsVert = 2160;
 
-			//cameras[j].OffsetX.SetValue(0);
+			////cameras[j].OffsetX.SetValue(0);
+			////cameras[j].Width.SetValue(pixelsHoriz);
+
+			////cameras[j].OffsetY.SetValue(0);
+			////cameras[j].Height.SetValue(ctl._image_height);
+			////cameras[j].OffsetY.SetValue((pixelsVert - ctl._image_height) / 2);
+
 			//cameras[j].Width.SetValue(pixelsHoriz);
-			//cameras[j].CenterX = true;
+			//cameras[j].OffsetX.SetValue(1322);
+			//cameras[j].Height.SetValue(pixelsVert);
+			//cameras[j].OffsetY.SetValue(8);
 
-			if (ctl._image_height > pixelsVert) {
-				ctl._image_height = pixelsVert;
-			}
-
-			//cameras[j].OffsetY.SetValue(0);
-			//cameras[j].Height.SetValue(ctl._image_height);
-			//cameras[j].OffsetY.SetValue((pixelsVert - ctl._image_height) / 2);
-			//cameras[j].CenterY = true;
+			////cameras[j].CenterX.SetValue(true);
+			////cameras[j].CenterY.SetValue(true);
 
 			if (ctl._12bit_format) {
 				cameras[j].PixelFormat = Basler_UsbCameraParams::PixelFormat_Mono12;
