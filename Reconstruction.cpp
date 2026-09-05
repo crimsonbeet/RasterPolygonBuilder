@@ -5785,7 +5785,7 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 				if (anEvent == WAIT_OBJECT_0 + 2) {
 					int iWin = g_LoG_imageWindowNumber - 1;
 					undistorted[iWin] = cv_image[iWin].clone();
-					cv:Rect box = g_LoG_seedPoint.box;
+					cv::Rect box = g_LoG_seedPoint.box;
 					ImageScaleFactors sf = g_LoG_seedPoint.params.scaleFactors;
 					box.x /= sf.fx;
 					box.y /= sf.fy;

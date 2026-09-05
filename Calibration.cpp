@@ -609,18 +609,94 @@ return_t __stdcall DetectBlackSquaresVia_ColorDistribution(LPVOID lp) {
 	ctl->_status = 2;
 	try {
 		if (image.type() == CV_8UC3) {
-			auto& mean_data = g_greenSquare_mean_data;
 
-			if (ctl->_saturationFactor != 0.0) {
-				for (auto& mean : mean_data) {
-					mean *= ctl->_saturationFactor; 
+			SImageGreenPointDescriptor* descrPtr = nullptr;
+
+			if(ctl->_n >= 0 && ctl->_n <= 2 && ctl->_aquisitionCtl != nullptr) {
+				descrPtr = &ctl->_aquisitionCtl->_greenPointDescriptor[ctl->_n];
+			}
+
+			if(descrPtr && descrPtr->_isValid) {
+				auto& descr = *descrPtr;
+
+				WhiteBalance<uchar>(image, descr._whiteFactor);
+				NormalizeColoredImage(image);
+
+				cv::Mat mean = descr._greenSquare_mean.clone();
+
+				if(ctl->_saturationFactor != 0.0) {
+					mean.at<double>(0) *= ctl->_saturationFactor;
+					mean.at<double>(1) *= ctl->_saturationFactor;
+					mean.at<double>(2) *= ctl->_saturationFactor;
+				}
+
+				StandardizeImage_Likeness(image, mean, descr._greenSquare_stdDev, descr._greenSquare_factorLoadings, descr._greenSquare_invCovar, descr._greenSquare_invCholesky);
+			}
+			else {
+				cv::Mat mean = g_greenSquare_mean.clone();
+
+				if(descrPtr && descrPtr->_meanIsValid) {
+					auto& descr = *descrPtr;
+
+					WhiteBalance<uchar>(image, descr._whiteFactor);
+					NormalizeColoredImage(image);
+
+					mean = descr._greenSquare_mean.clone();
+				}
+
+				if(ctl->_saturationFactor != 0.0) {
+					mean.at<double>(0) *= ctl->_saturationFactor;
+					mean.at<double>(1) *= ctl->_saturationFactor;
+					mean.at<double>(2) *= ctl->_saturationFactor;
+				}
+
+				if(image.type() == CV_8UC3) {
+					double* mean_data = (double*)(mean.data);
+
+					double meanShape = mean_data[0] - 2 * mean_data[1] + mean_data[2]; // channel for shape of mean
+
+					cv::Mat aux(image.size(), CV_16UC1);
+
+					typedef Vec<uchar, 3> Vec3c;
+					for(int r = 0; r < image.rows; ++r) {
+						for(int c = 0; c < image.cols; ++c) {
+							Vec3c& pixVec = image.at<Vec3c>(r, c);
+							double pixShape = 0;
+							double sum = 0;
+							for(int x = 0; x < 3; ++x) {
+								double pixVal = pixVec[x];
+								double dif = pixVal - mean_data[x];
+								sum += dif * dif;
+
+								pixShape += pixVal * (x == 1 ? -2 : 1);
+							}
+
+							pixShape -= meanShape;
+
+							sum += 4 * pixShape * pixShape; 
+							//sum *= 0.75;
+
+							sum /= 65536.0;
+
+							if(sum < 0.1) {
+								aux.at<ushort>(r, c) = (2 - sum * 20) * 128 + 0.5;
+							}
+							else {
+								aux.at<ushort>(r, c) = 0;
+							}
+						}
+					}
+
+					image = aux.clone();
+				}
+				else {
+					StandardizeImage_Likeness(image, mean, g_greenSquare_stdDev, g_greenSquare_factorLoadings, g_greenSquare_invCovar, g_greenSquare_invCholesky);
 				}
 			}
 
-			NormalizeColoredImage(image);
-
-			cv::Mat mean = cv::Mat(1, 3, CV_64F, mean_data);
-			StandardizeImage_Likeness(image, mean, g_greenSquare_stdDev, g_greenSquare_factorLoadings, g_greenSquare_invCovar, g_greenSquare_invCholesky);
+			/*
+			 * image is CV_16UC1 at this point.
+			 */
 
 			//image = mat_loginvert2word(image);
 			//image = mat_invert2word(image);
@@ -1165,17 +1241,7 @@ return_t __stdcall BuildChessGridCorners(LPVOID lp) {
 
 
 
-
-bool ExtractCornersOfChessPattern(Mat *imagesInp, vector<Point2d> *pointBufs, const size_t N, double saturationFactor, ClassBlobDetector& blobDetector) {
-
-	SFeatureDetectorCtl controls[3] = { SFeatureDetectorCtl(imagesInp[0].clone()), SFeatureDetectorCtl(N > 1? imagesInp[1].clone(): Mat()), SFeatureDetectorCtl(N > 2 ? imagesInp[2].clone() : Mat()) };
-	for (auto& ctl : controls) {
-		ctl._saturationFactor = saturationFactor;
-		ctl._detector = new ClassBlobDetector(blobDetector, &ctl);
-		ctl._status = 0;
-	}
-
-
+bool ExtractCornersOfChessPattern(Mat *imagesInp, vector<Point2d> *pointBufs, FeatureControls& controls, const size_t N, double saturationFactor, ClassBlobDetector& blobDetector) {
 
 	std::function<void()> runMessagePipe = [&]() {
 		int status = 0;
@@ -1272,9 +1338,9 @@ bool ExtractCornersOfChessPattern(Mat *imagesInp, vector<Point2d> *pointBufs, co
 	return okCount == N;
 }
 
-bool DetectChessGrid(Mat *images, vector<Point2d> *pointBufs, const size_t N, double saturationFactor, ClassBlobDetector& blobDetector) {
+bool DetectChessGrid(Mat *images, vector<Point2d> *pointBufs, FeatureControls& controls, const size_t N, double saturationFactor, ClassBlobDetector& blobDetector) {
 	for (size_t x = 0; x < N; ++x) pointBufs[x].clear();
-	bool found = ExtractCornersOfChessPattern(images, pointBufs, N, saturationFactor, blobDetector);
+	bool found = ExtractCornersOfChessPattern(images, pointBufs, controls, N, saturationFactor, blobDetector);
 	return found;
 }
 
@@ -1282,6 +1348,7 @@ bool DetectChessGrid(Mat *images, vector<Point2d> *pointBufs, const size_t N, do
 bool buildPointsFromImages(Mat* images, vector<Point2d>* pointBufs, const size_t N, SImageAcquisitionCtl& ctl, double min_confidence, size_t min_repeatability) {
 	const int tartgetNumberOfCorners = g_boardChessCornersSize.width * g_boardChessCornersSize.height;
 	ClassBlobDetector blobDetector = ClassBlobDetector(min_confidence, min_repeatability, 40, ctl._pattern_is_whiteOnBlack, ctl._pattern_is_chessBoard);
+
 	bool found = false;
 	for (size_t x = 0; x < N; ++x) pointBufs[x].clear();
 	if (images[0].data) {
@@ -1289,7 +1356,16 @@ bool buildPointsFromImages(Mat* images, vector<Point2d>* pointBufs, const size_t
 		double saturationFactors[6] = { 1.0, 0.9, 1.1, 1.2, 0.8, 1.3 };
 		std::vector<vector<Point2d>> foundBufs(N);
 		for (auto saturationFactor : saturationFactors) {
-			found = DetectChessGrid(images, foundBufs.data(), N, saturationFactor, blobDetector);
+
+			FeatureControls controls = { SFeatureDetectorCtl(images[0].clone(), 0), SFeatureDetectorCtl(N > 1 ? images[1].clone() : Mat(), 1), SFeatureDetectorCtl(N > 2 ? images[2].clone() : Mat(), 2) };
+			for(auto& ctlFeat : controls) {
+				ctlFeat._saturationFactor = saturationFactor;
+				ctlFeat._detector = new ClassBlobDetector(blobDetector, &ctlFeat);
+				ctlFeat._aquisitionCtl = &ctl;
+				ctlFeat._status = 0;
+			}
+
+			found = DetectChessGrid(images, foundBufs.data(), controls, N, saturationFactor, blobDetector);
 			for (size_t j = 0; j < N; ++j) {
 				if (foundBufs[j].size() == tartgetNumberOfCorners) {
 					pointBufs[j] = foundBufs[j];
@@ -1631,19 +1707,14 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 			Mat &aux = images[windowNumber];
 
 			if (aux.rows > pt.y) {
-				if(BuildIdealChannels_Distribution(aux, pt, g_greenSquare_mean, g_greenSquare_stdDev, g_greenSquare_factorLoadings, g_greenSquare_invCovar, g_greenSquare_invCholesky, 5)) {
-					for(int c = 0; c < 3; ++c) {
-						g_greenSquare_mean_data[c] = g_greenSquare_mean.at<double>(0, c);
-					}
-				}
+				auto& descr = ctl->_greenPointDescriptor[windowNumber];
 
 				double seedReference[3];
-
 				BuildIdealChannels_Likeness(aux, pt, seedReference, 7);
 
 				double grayWorldMean = 0;
-				for (int j = 0; j < 3; ++j) {
-					if (seedReference[j] == 0) {
+				for(int j = 0; j < 3; ++j) {
+					if(seedReference[j] == 0) {
 						seedReference[j] = 1;
 					}
 					grayWorldMean += seedReference[j];
@@ -1655,9 +1726,9 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 				Mat image;
 				aux.convertTo(image, CV_32FC3);
 
-				double whiteFactor[3] = { 1, 1, 1 };
-				for (int j = 0; j < 3; ++j) {
-					switch (g_LoG_seedPoint.eventValue) {
+				double* whiteFactor = descr._whiteFactor;
+				for(int j = 0; j < 3; ++j) {
+					switch(g_LoG_seedPoint.eventValue) {
 					case 1:
 					case 4:
 						whiteFactor[j] = 255.0 / seedReference[j]; // ground truth 
@@ -1673,6 +1744,35 @@ return_t __stdcall AcquireImagepoints(LPVOID lp) {
 				WhiteBalance<float>(image, whiteFactor);
 
 				image.convertTo(aux, CV_8UC3);
+
+				NormalizeColoredImage(aux);
+
+				if(BuildIdealChannels_Distribution(aux, pt, g_greenSquare_mean, g_greenSquare_stdDev, g_greenSquare_factorLoadings, g_greenSquare_invCovar, g_greenSquare_invCholesky, 11)) {
+					memcpy(descr._greenSquare_invCovar_data, g_greenSquare_invCovar_data, sizeof(g_greenSquare_invCovar_data));
+					memcpy(descr._greenSquare_invCholesky_data, g_greenSquare_invCholesky_data, sizeof(g_greenSquare_invCholesky_data));
+
+					descr._greenSquare_invCovar = cv::Mat(3, 3, CV_64F, descr._greenSquare_invCovar_data);
+					descr._greenSquare_invCholesky = cv::Mat(3, 3, CV_64F, descr._greenSquare_invCholesky_data);
+
+					descr._greenSquare_stdDev = g_greenSquare_stdDev.clone();
+					descr._greenSquare_factorLoadings = g_greenSquare_factorLoadings.clone();
+
+					descr._isValid = true;
+				}
+
+
+
+				memcpy(descr._greenSquare_mean_data, g_greenSquare_mean_data, sizeof(g_greenSquare_mean_data));
+				descr._greenSquare_mean = cv::Mat(1, 3, CV_64F, descr._greenSquare_mean_data);
+
+				for(int c = 0; c < 3; ++c) {
+					g_greenSquare_mean_data[c] = g_greenSquare_mean.at<double>(0, c);
+				}
+				g_greenSquare_mean = cv::Mat(1, 3, CV_64F, g_greenSquare_mean_data);
+
+				descr._meanIsValid = true;
+
+
 
 				VisualizeCapturedImages(left_image, right_image);
 			}

@@ -223,20 +223,26 @@ RSS = sum(x*x for x in a1_a4_norm)
 */
 
 double GetRSS_Score(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2) {
-	double escore = 0;
-	double e[3];
-	double w[3];
 	double total_sum = 0;
+	double pixShape[3] = {0, 0, 0};
 	for(int j = 0; j < 3; ++j) {
 		const int a = ch1[j];
 		const int b = ch2[j];
 		const double sub = a - b;
 		total_sum += 65536.0 - sub * sub;
+		pixShape[0] += a * (j == 1 ? -2 : 1);
+		pixShape[1] += b * (j == 1 ? -2 : 1);
 	}
+
 	if(isnan(total_sum)) {
 		total_sum = 0;
 	}
-	//return sqrt(total_sum) / 256;
+
+	pixShape[2] = pixShape[0] - pixShape[1];
+
+	total_sum += 4 * pixShape[2] * pixShape[2];
+	//total_sum *= 0.75;
+
 	return total_sum / 65536;
 }
 
@@ -261,18 +267,24 @@ void NormalizeColoredImage_RSS(Mat& image) {
 				}
 			}
 		}
-		image = image.clone();
 	}
 }
 
-void NormalizeColoredImage(Mat& image) {
+void NormalizeColoredImage(Mat& image, bool use_RSS_normalizer) {
 	if(image.type() == CV_8UC3) {
-		//cv::Mat aux(image.size(), CV_8UC3);
+		//if(use_RSS_normalizer) {
+		//	NormalizeColoredImage_RSS(image);
+		//	return;
+		//}
 
-		cv::Mat aux;
-		cv::medianBlur(image, aux, 5);
+		if(use_RSS_normalizer) {
+			cv::Mat aux;
+			cv::medianBlur(image, aux, 5);
 
-		NormalizeColoredImage_RSS(image);
+			NormalizeColoredImage_RSS(aux);
+
+			image = aux.clone();
+		}
 	}
 }
 
@@ -396,12 +408,13 @@ void BuildWeights_ByChannel(Mat& image, Point& pt, double weights_out[3]) {
 
 bool BuildIdealChannels_Distribution(Mat& image, Point& pt, Mat& mean, Mat& stdDev, Mat& factorLoadings, Mat& invCovar, Mat& invCholesky, int neighbourhoodRadius) {
 	if (image.type() == CV_8UC3) {
-		NormalizeColoredImage(image);
 
-		if (neighbourhoodRadius > 5) {
-			neighbourhoodRadius = 5;
+		if (neighbourhoodRadius > 10) {
+			neighbourhoodRadius = 11;
 		}
-		Mat_<double> neighbours(neighbourhoodRadius <= 2? 25: neighbourhoodRadius == 3 ? 49: neighbourhoodRadius == 4 ? 81: 121, 3);
+		int rowSize = neighbourhoodRadius * 2 + 1;
+
+		Mat_<double> neighbours(rowSize * rowSize, 3);
 		int yStart = pt.y - neighbourhoodRadius;
 		int yEnd = pt.y + neighbourhoodRadius + 1;
 		while (yStart < 0) ++yStart, ++yEnd;
@@ -448,8 +461,8 @@ bool BuildIdealChannels_Distribution(Mat& image, Point& pt, Mat& mean, Mat& stdD
 
 		double invConditionNumber = cv::invert(Q.clone(), invCovar, DECOMP_SVD);
 		std::cout << "Covar inverse condition number " << invConditionNumber << std::endl;
-		if (invConditionNumber > 0.01) {
-			if (cv::Cholesky(&Q.at<double>(0, 0), (size_t)Q.step, Q.rows, nullptr, 0, 0)) {
+		if (invConditionNumber > 0.1) {
+			if (cv::Cholesky(&Q.at<double>(0, 0), (size_t)(Q.step), Q.rows, nullptr, 0, 0)) {
 				for (int i = 0; i < 2; ++i) {
 					for (int j = i + 1; j < 3; ++j) {
 						Q.at<double>(i, j) = 0;;
@@ -523,8 +536,11 @@ void ConvertColoredImage2Mono_Likeness(cv::Mat& image, cv::Mat mean/*rgb*/, Mat&
 	for (int r = 0; r < aux.rows; ++r) {
 		for (int c = 0; c < aux.cols; ++c) {
 			double zScore = Get_Squared_Z_Score(image.at<cv::Vec<uchar, 3>>(r, c), mean_data, invCholesky_data);
-			if (zScore < 20) {
-				aux.at<ushort>(r, c) = (20 - zScore) * 7 + 0.5;
+			//if(zScore < 9) {
+			//	aux.at<ushort>(r, c) = (9 - zScore) * 26 + 0.5;
+			//}
+			if(zScore < 1) {
+				aux.at<ushort>(r, c) = (2 - zScore * 2) * 128 + 0.5;
 			}
 			else {
 				aux.at<ushort>(r, c) = 0;
@@ -623,6 +639,19 @@ bool ConvertColoredImage2Mono_HSV_Likeness(Mat& image, double rgbIdeal[3]) {
 	image = aux.clone();
 
 	return true;
+}
+
+void StandardizeImage_RSS(Mat& image) {
+	if(image.type() == CV_8UC3) {
+		return;
+	}
+	if(image.type() != CV_16UC1) {
+		if(image.type() != CV_8UC1) {
+			image.clone().convertTo(image, CV_8UC1);
+		}
+		image.clone().convertTo(image, CV_16UC1);
+		image *= (size_t)256;
+	}
 }
 
 void StandardizeImage_Likeness(Mat& image, Mat mean/*rgb*/, Mat& stdDev, Mat& factorLoadings, Mat invCovar/*inverted covariance of colors*/, Mat invCholesky) {

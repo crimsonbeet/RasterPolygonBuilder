@@ -608,8 +608,11 @@ struct SCalibrationBaseCtl {
 };
 
 
+struct SImageAcquisitionCtl;
 
 struct SFeatureDetectorCtl : public SCalibrationBaseCtl {
+	int _n = -1;
+
 	cv::Ptr<cv::FeatureDetector> _detector;
 	double _saturationFactor;
 
@@ -624,14 +627,19 @@ struct SFeatureDetectorCtl : public SCalibrationBaseCtl {
 
 	cv::Rect _roi;
 
+	SImageAcquisitionCtl* _aquisitionCtl = nullptr;
 
 	SFeatureDetectorCtl() : SCalibrationBaseCtl(), _saturationFactor(1.0) {
 	}
 
-	SFeatureDetectorCtl(cv::Mat& image) : SFeatureDetectorCtl() {
+	SFeatureDetectorCtl(cv::Mat& image, int n = -1) : SFeatureDetectorCtl() {
+		_n = n;
 		_image = image;
 	}
 };
+
+typedef SFeatureDetectorCtl FeatureControls[3];
+
 
 
 
@@ -942,6 +950,34 @@ size_t ConductOverlapEliminationEx(const std::vector<std::vector<cv::Point2d>>& 
 
 
 
+struct SImageGreenPointDescriptor {
+	double _whiteFactor[3] = { 1, 1, 1 };
+
+	double _greenSquare_mean_data[3] = { 108.59519, 106.87839, 93.29372 };// { 117.41603, 108.29612, 89.85426 };
+	double _greenSquare_invCovar_data[9] = { 0.008706637, 0.002279566, -0.01101841, 0.002279566, 0.043274569, -0.03528071, -0.011018411, -0.035280710, 0.04288963 };// { 0.003871324, 0.001966916, -0.001440268, 0.001966916, 0.036550065, -0.030285284, -0.001440268, -0.030285284, 0.035661410 };
+	double _greenSquare_invCholesky_data[9] = { 0.05144795, 0.0000000, 0.0000000, -0.05682516, 0.1193855, 0.0000000, -0.05320382, -0.1703575, 0.2070981 };// { 0.061335769, 0.0000000, 0.0000000, 0.007146916, 0.1040693, 0.0000000, -0.007626832, -0.1603734, 0.1888423 };
+
+	cv::Mat _greenSquare_mean;
+	cv::Mat _greenSquare_invCovar;
+	cv::Mat _greenSquare_invCholesky;
+
+	cv::Mat _greenSquare_stdDev;
+	cv::Mat _greenSquare_factorLoadings;
+
+	SImageGreenPointDescriptor() {
+		_greenSquare_mean = cv::Mat(1, 3, CV_64F, _greenSquare_mean_data);
+		_greenSquare_invCovar = cv::Mat(3, 3, CV_64F, _greenSquare_invCovar_data);
+		_greenSquare_invCholesky = cv::Mat(3, 3, CV_64F, _greenSquare_invCholesky_data);
+	}
+
+	bool _isValid = false;
+	bool _meanIsValid = false;
+};
+
+
+
+
+
 
 constexpr auto NUMBER_OF_CAMERAS = 2;
 
@@ -976,6 +1012,8 @@ struct SImageAcquisitionCtl {
 	int _exposure_times[NUMBER_OF_CAMERAS];
 
 	int _12bit_format;
+
+	SImageGreenPointDescriptor _greenPointDescriptor[NUMBER_OF_CAMERAS];
 
 	SImageAcquisitionCtl(): _status(0), _imagepoints_status(0), _terminated(0) {
 		_cameras = &_basler_cameras;
@@ -1139,7 +1177,8 @@ double Get_Squared_Z_Score(const cv::Vec<uchar, 3>& pixOrig, double mean_data[3]
 
 void BuildIdealChannels_Likeness(Mat& image, Point& pt, double rgbdeal[3], int radius = 4);
 bool BuildIdealChannels_Distribution(Mat& image, Point& pt, Mat& mean, Mat& stdDev, Mat& factorLoadings, Mat& invCovar, Mat& invCholesky, int neighbourhoodRadius = 4);
-void NormalizeColoredImage(Mat& image);
+
+void NormalizeColoredImage(Mat& image, bool use_RSS_normalizer = false);
 void NormalizeColoredImage_RSS(Mat& image);
 
 
