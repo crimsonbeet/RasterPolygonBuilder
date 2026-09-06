@@ -1192,6 +1192,7 @@ void ConvertColoredImage2Mono(Mat& image, double chWeights[3], std::function<dou
 
 
 
+double reconstruct4DPoint(Mat_<double>& X, ClusteredPoint& p1, ClusteredPoint& p2, Mat& F, Mat& Pl, Mat& Pr); // returns reproject error
 
 void reconstruct4DPoints(
 	std::vector<ClusteredPoint> points2D[2] /*in/out*/, // gets sorted and modified. The _cluster is set to the index of epipolar cluster. 

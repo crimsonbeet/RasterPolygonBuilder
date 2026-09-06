@@ -240,10 +240,21 @@ double GetRSS_Score(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2) 
 
 	pixShape[2] = pixShape[0] - pixShape[1];
 
-	total_sum += 4 * pixShape[2] * pixShape[2];
+	total_sum += 65536.0 - 8 * pixShape[2] * pixShape[2];
+	//total_sum += 65536.0 - pixShape[2] * pixShape[2];
 	//total_sum *= 0.75;
 
-	return total_sum / 65536;
+	total_sum /= 65536;
+
+	if(total_sum > 3) {
+		total_sum = 3;
+	}
+	else
+	if(total_sum < 0) {
+		total_sum = 0;
+	}
+
+	return total_sum;
 }
 
 void NormalizeColoredImage_RSS(Mat& image) {

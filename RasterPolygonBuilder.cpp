@@ -436,7 +436,7 @@ void drawScene(std::vector<ReconstructedPoint>& points4D, std::vector<int>& labe
 		}
 		++idx;
 	}
-coordlines.resize(0);
+	coordlines.resize(0);
 	for (size_t j = 0; j < coordlines.size(); ++j) {
 		coordlines[j].reserve(coordlines4D[j].size());
 		for (auto& point : coordlines4D[j]) {

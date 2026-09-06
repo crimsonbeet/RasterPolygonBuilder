@@ -5284,6 +5284,11 @@ struct CalculateDisparityControl {
 	int patternHalfWidth; // ((strip2searchWidth / 35) >> 1) << 1
 	int blurHeight; // 7
 
+	int number_of_passes = 5;
+	int number_of_iterations = 1;
+
+	bool mapResultPoint = true;
+
 	// output section
 	struct iteration_result {
 		int ancorOffset = 0;
@@ -5296,8 +5301,8 @@ struct CalculateDisparityControl {
 		int64_t resultCost = -1;
 		int64_t mapResultCost = -1;
 
-		Point resPoint;
-		Point mapPoint;
+		Point resPoint = cv::Point(-1, -1);
+		Point mapPoint = cv::Point(-1, -1);
 
 		std::vector<double> disps;
 		std::vector<int64_t> costs;
@@ -5481,10 +5486,14 @@ void DisparityAlgorithm(DisparityAlgorithmControl& run_ctl) {
 	//	stripWidth += halfWidth;
 	//}
 
-
-	it.mapPoint = disparityAlgorithm_internal(it.resPoint, aux2, aux, it.crop_buffer[1], it.strip2search_buffer[1], it.mapResultCost);
-	if (it.mapPoint != cv::Point(-1, -1)) {
-		it.disparityError[1] = std::abs(pt.x - it.mapPoint.x);
+	if(ctl.mapResultPoint) {
+		it.mapPoint = disparityAlgorithm_internal(it.resPoint, aux2, aux, it.crop_buffer[1], it.strip2search_buffer[1], it.mapResultCost);
+		if(it.mapPoint != cv::Point(-1, -1)) {
+			it.disparityError[1] = std::abs(pt.x - it.mapPoint.x);
+		}
+	}
+	else {
+		it.disparityError[1] = 0;
 	}
 
 	int64_t iteration_pass_end_time = GetDayTimeInMilliseconds();
@@ -5505,7 +5514,7 @@ return_t __stdcall ExecuteDisparityAlgorithm(LPVOID lp) {
 	return 0;
 }
 
-return_t __stdcall CalculateDisparitySinglePoint(LPVOID lp) {
+return_t __stdcall CalculateDisparitySingleStrip(LPVOID lp) {
 	CalculateDisparityControl* ctl = (CalculateDisparityControl*)lp;
 
 	Mat aux = ctl->aux;
@@ -5523,12 +5532,16 @@ return_t __stdcall CalculateDisparitySinglePoint(LPVOID lp) {
 	int64_t start_time = GetDayTimeInMilliseconds();
 
 
-	const size_t number_of_passes = 5;
-	const size_t number_of_iterations = 1;
+	size_t number_of_passes = ctl->number_of_passes;
+	size_t number_of_iterations = ctl->number_of_iterations;
+
+	if(number_of_passes > 5) {
+		number_of_passes = 5;
+	}
 
 
-	DisparityAlgorithmControl iter_ctl[number_of_passes];
-	CalculateDisparityControl::iteration_result iter_rs[number_of_passes];
+	DisparityAlgorithmControl iter_ctl[7];
+	CalculateDisparityControl::iteration_result iter_rs[7];
 	int iter = 0;
 
 
@@ -5580,6 +5593,19 @@ return_t __stdcall CalculateDisparitySinglePoint(LPVOID lp) {
 			}
 		}
 
+		size_t iter_rs_order[7] = {0,1,2,3,4,5,6};
+
+		std::stable_sort(std::begin(iter_rs_order), std::end(iter_rs_order), [&](const auto& i1, const auto& i2) {
+			const auto& it1 = iter_rs[i1];
+			const auto& it2 = iter_rs[i2];
+			if(it1.disparityError[1] < it2.disparityError[1]) {
+				return true;
+			}
+			if(it1.disparityError[1] > it2.disparityError[1]) {
+				return false;
+			}
+			return it1.pos < it2.pos;
+		});
 
 		good_count = 0;
 
@@ -5588,7 +5614,7 @@ return_t __stdcall CalculateDisparitySinglePoint(LPVOID lp) {
 
 		for (int pass = 0; pass < number_of_passes; ++pass) {
 			const auto& it = iter_rs[pass];
-			if (it.disparityError[1] <= 2) {
+			if (it.disparityError[1] < 2) {
 				if (it.pos > 0) {
 					++avg_count;
 					avg_pos += it.pos;
@@ -5601,32 +5627,37 @@ return_t __stdcall CalculateDisparitySinglePoint(LPVOID lp) {
 			avg_pos /= avg_count;
 		}
 
-		for (int pass = 0; pass < number_of_passes; ++pass) {
-			auto& it = iter_rs[pass];
-			if (it.disparityError[1] == min_error) {
-				if (std::abs(avg_pos - it.pos) > 2) {
-					good_count = 0;
-				}
-			}
+		if(good_count > 1 || good_count == number_of_passes) {
+			int median = good_count / 2;
+			best_it = iter_rs[iter_rs_order[median]];
 		}
 
-		if (good_count > 1) {
-			for (int pass = 0; pass < number_of_passes; ++pass) {
-				auto& it = iter_rs[pass];
-				if (it.disparityError[1] == min_error) {
-					it.pos = std::floor(avg_pos + 0.5);
+		//for (int pass = 0; pass < number_of_passes; ++pass) {
+		//	auto& it = iter_rs[pass];
+		//	if (it.disparityError[1] == min_error) {
+		//		if (std::abs(avg_pos - it.pos) > 2) {
+		//			good_count = 0;
+		//		}
+		//	}
+		//}
 
-					if (best_it.disparityError[1] >= it.disparityError[1]) {
-						if (best_it.disparityError[1] == it.disparityError[1]) {
-							best_it.pos = floor((best_it.pos + it.pos) / 2.0 + 0.5);
-						}
-						else {
-							best_it = it;
-						}
-					}
-				}
-			}
-		}
+		//if (good_count > 1 || good_count == number_of_passes) {
+		//	for (int pass = 0; pass < number_of_passes; ++pass) {
+		//		auto& it = iter_rs[pass];
+		//		if (it.disparityError[1] == min_error) {
+		//			it.pos = std::floor(avg_pos + 0.5);
+
+		//			if (best_it.disparityError[1] >= it.disparityError[1]) {
+		//				if(best_it.disparityError[1] == it.disparityError[1] && best_it.mapResultCost) {
+		//					best_it.pos = floor((best_it.pos + it.pos) / 2.0 + 0.5);
+		//				}
+		//				else {
+		//					best_it = it;
+		//				}
+		//			}
+		//		}
+		//	}
+		//}
 
 		int64_t iteration_end_time = GetDayTimeInMilliseconds();
 
@@ -5643,7 +5674,7 @@ return_t __stdcall CalculateDisparitySinglePoint(LPVOID lp) {
 	int64_t end_time = GetDayTimeInMilliseconds();
 
 	std::ostringstream ostr;
-	ostr << "Time spent " << (end_time - start_time) << "ms; Used " << iter << " iterations; pos: " << best_it.pos << "; errors: " << best_it.disparityError[1] << ' ' << best_it.disparityError[2] << std::endl;
+	ostr << "Time spent " << (end_time - start_time) << "ms; Used " << iter << " iterations; pos: " << best_it.pos << "; errors: " << best_it.disparityError[1]/* << ' ' << best_it.disparityError[2]*/ << std::endl;
 	std::cout  << ostr.str();
 	return 0;
 }
@@ -5767,7 +5798,8 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 
 				image_delay_acquisition = false;
 
-				switch (g_LoG_imageWindowNumber) {
+
+				switch(g_LoG_imageWindowNumber) {
 				case 1:
 				case 2:
 					break;
@@ -5775,7 +5807,136 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 					continue;
 				}
 
+
+				/*
+				 *  reconstruct 4D point and pick the corresponding color from image.
+				 */
+				auto reconstruct4Dpoints = [&](Mat& crop, int xOffset, int yOffset) {
+
+					for(int j = 0; j < cv_points[0].size() && j < cv_points[1].size(); ++j) {
+						Mat_<double> X(4, 1, 0.0);
+
+						double min_reproject_err = reconstruct4DPoint(X, cv_points[0][j], cv_points[1][j], ctl->_F, ctl->_Pl, ctl->_Pr);
+
+						points4D.push_back(ReconstructedPoint(Matx41d(X(0), -X(1), -X(2), 1), 3, 0, min_reproject_err));
+
+						size_t newPointIdx = points4D.size() - 1;
+
+
+						double rgbSelected[3];
+						BuildIdealChannels_Likeness(crop, cv::Point(xOffset + j, yOffset), rgbSelected, 0);
+
+						auto& point4D = points4D[newPointIdx];
+						for(size_t c = 0; c < ARRAY_NUM_ELEMENTS(rgbSelected); ++c) {
+							point4D._rgb_normalized[c] = rgbSelected[c] / 255;
+						}
+						double dist = 0;
+						for(int j = 0; j < 3; ++j) {
+							dist += point4D(j) * point4D(j);
+						}
+						dist = std::sqrt(dist);
+						std::cout << "detected distance " << dist << std::endl;
+
+						++newPointIdx;
+					}
+				};
+
+
+				/*
+				 * show images of NO match
+				 */
+				auto default_cv_points = [&cv_points]() {
+					cv_points[0].resize(1);
+					cv_points[1].resize(1);
+					cv_points[0][0]._crop = imread(IMG_DELETEDOCUMENT_H, cv::IMREAD_ANYCOLOR);
+					cv_points[1][0]._crop = imread(IMG_DELETEDOCUMENT_H, cv::IMREAD_ANYCOLOR);
+				};
+
+
+
+
+				int selectedWindow = g_LoG_seedPoint.params.windowNumber - 1;
+				int direction = selectedWindow == 1 ? 1 : -1;
+
+
+				targetWindow = selectedWindow - direction;
+
+				ImageScaleFactors sf = g_LoG_seedPoint.params.scaleFactors;
+
+
+
 				if (anEvent == WAIT_OBJECT_0) {
+					Point pt;
+					pt.x = g_LoG_seedPoint.x / sf.fx + 0.5;
+					pt.y = g_LoG_seedPoint.y / sf.fy + 0.5;
+
+
+					CalculateDisparityControl disp_calc_ctl;
+
+					disp_calc_ctl.aux = cv_image[2 + selectedWindow];
+					disp_calc_ctl.aux2 = cv_image[2 + targetWindow];
+
+					disp_calc_ctl.pt = pt;
+
+					disp_calc_ctl.strip2searchWidth = std::floor(70 * disp_calc_ctl.aux.cols / 80);
+					disp_calc_ctl.patternHalfWidth = std::floor(1.0 * disp_calc_ctl.aux.cols / 80);
+					disp_calc_ctl.blurHeight = 5;
+
+					disp_calc_ctl.number_of_iterations = 1;
+					disp_calc_ctl.number_of_passes = 5;
+
+
+
+					CalculateDisparitySingleStrip(&disp_calc_ctl);
+
+
+
+					auto& best_it = disp_calc_ctl.best_it;
+
+
+					if(best_it.pos <= 0 || ((std::abs(best_it.disparityError[1] - best_it.disparityError[0]) > 2) && best_it.disparityError[1] > 2)) {
+						std::cout << "Unable to determnine match for the selected point; errors: " << best_it.disparityError[0] << ' ' << best_it.disparityError[1] << ' ' << best_it.disparityError[2] << std::endl;
+						default_cv_points();
+						break;
+					}
+
+
+					detectedPoint = best_it.resPoint;
+
+
+					cv_points[selectedWindow].resize(1);
+					cv_points[selectedWindow][0].x = best_it.mapPoint.x;
+					cv_points[selectedWindow][0].y = best_it.mapPoint.y;
+
+					cv_points[targetWindow].resize(1);
+					cv_points[targetWindow][0].x = best_it.resPoint.x;
+					cv_points[targetWindow][0].y = best_it.resPoint.y;
+
+
+					Mat crop = best_it.crop_buffer[0];
+					Mat strip2search = best_it.strip2search_buffer[0];
+
+					cv::Point pt1(best_it.pos - best_it.ancorOffset, 0);
+					cv::Point pt2(best_it.pos + 2 * best_it.halfWidth - best_it.ancorOffset + 1, strip2search.rows);
+					if(pt1.x < 0) {
+						pt1.x = 0;
+					}
+					if(pt2.x > (strip2search.cols)) {
+						pt2.x = strip2search.cols;
+					}
+
+					cv_points[selectedWindow][0]._crop = Mat(crop);
+					cv_points[targetWindow][0]._crop = Mat(strip2search, cv::Rect(pt1, pt2));
+
+
+
+					reconstruct4Dpoints(crop, best_it.ancorOffset, disp_calc_ctl.blurHeight / 2);
+
+
+
+					cv::line(crop, cv::Point(best_it.ancorOffset, 0), cv::Point(best_it.ancorOffset, crop.rows - 1), cv::Scalar(0, 255, 0));
+					cv::line(strip2search, cv::Point(best_it.pos, 0), cv::Point(best_it.pos, strip2search.rows - 1), cv::Scalar(0, 255, 0));
+
 				}
 				else
 				if (anEvent == WAIT_OBJECT_0 + 1) {
@@ -5800,130 +5961,50 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 				}
 
 
-				ImageScaleFactors sf = g_LoG_seedPoint.params.scaleFactors;
-				Point pt;
-				pt.x = g_LoG_seedPoint.x / sf.fx + 0.5;
-				pt.y = g_LoG_seedPoint.y / sf.fy + 0.5;
+				//size_t newPointIdx = points4D.size() - 1;
+
+				//if (ctl->_use_uncalibrated_cameras) {
+				//	reconstruct4DPoints(
+				//		cv_points,
+				//		ctl->_default_F, /*in*/
+				//		ctl->_default_Intrinsic[0], /*in*/
+				//		ctl->_default_Intrinsic[1], /*in*/
+				//		ctl->_default_Pl, /*in*/
+				//		ctl->_default_Pr, /*in*/
+				//		points4D /*out*/ // the _id member of each point links to the point in cv_point array. 
+				//	);
+				//}
+				//else {
+				//	reconstruct4DPoints(
+				//		cv_points,
+				//		ctl->_F, /*in*/
+				//		ctl->_cameraMatrix[0], /*in*/
+				//		ctl->_cameraMatrix[1], /*in*/
+				//		ctl->_Pl, /*in*/
+				//		ctl->_Pr, /*in*/
+				//		points4D /*out*/ // the _id member of each point links to the point in cv_point array. 
+				//	);
+				//}
 
 
-				int selectedWindow = g_LoG_seedPoint.params.windowNumber - 1;
-				int direction = selectedWindow == 1 ? 1 : -1;
+				//while (newPointIdx < points4D.size()) {
+				//	double rgbSelected[3];
+				//	BuildIdealChannels_Likeness(crop, cv::Point(best_it.ancorOffset, disp_calc_ctl.blurHeight / 2), rgbSelected, 0);
 
+				//	auto& point4D = points4D[newPointIdx];
+				//	for (size_t c = 0; c < ARRAY_NUM_ELEMENTS(rgbSelected); ++c) {
+				//		point4D._rgb_normalized[c] = rgbSelected[c] / 255;
+				//	}
+				//	double dist = 0;
+				//	for (int j = 0; j < 3; ++j) {
+				//		dist += point4D(j) * point4D(j);
+				//	}
+				//	dist = std::sqrt(dist);
+				//	std::cout << "detected distance " << dist << std::endl;
 
-				targetWindow = selectedWindow - direction;
+				//	++newPointIdx;
+				//}
 
-
-				CalculateDisparityControl dsip_calc_ctl;
-
-				dsip_calc_ctl.aux = cv_image[2 + selectedWindow];
-				dsip_calc_ctl.aux2 = cv_image[2 + targetWindow];
-
-				dsip_calc_ctl.pt = pt;
-
-				dsip_calc_ctl.strip2searchWidth = std::floor(70 * dsip_calc_ctl.aux.cols / 80); 
-				dsip_calc_ctl.patternHalfWidth = std::floor(1.0 * dsip_calc_ctl.aux.cols / 80);
-				dsip_calc_ctl.blurHeight = 5;
-
-
-				
-				CalculateDisparitySinglePoint(&dsip_calc_ctl);
-
-
-
-				auto default_cv_points = [&cv_points]() {
-					cv_points[0].resize(1);
-					cv_points[1].resize(1);
-					cv_points[0][0]._crop = imread(IMG_DELETEDOCUMENT_H, cv::IMREAD_ANYCOLOR);
-					cv_points[1][0]._crop = imread(IMG_DELETEDOCUMENT_H, cv::IMREAD_ANYCOLOR);
-				};
-
-
-				auto& best_it = dsip_calc_ctl.best_it;
-
-
-				if (best_it.pos <= 0 || ((std::abs(best_it.disparityError[1] - best_it.disparityError[0]) > 2) && best_it.disparityError[1] > 2)) {
-					std::cout << "Unable to determnine match for the selected point; errors: " << best_it.disparityError[0] << ' ' << best_it.disparityError[1] << ' ' << best_it.disparityError[2] << std::endl;
-					default_cv_points();
-					break;
-				}
-
-
-				auto pos = best_it.pos;
-				detectedPoint = best_it.resPoint;
-				pt = best_it.mapPoint;
-
-				Mat crop = best_it.crop_buffer[0];
-				Mat strip2search = best_it.strip2search_buffer[0];
-
-				cv::Point pt1(pos - best_it.ancorOffset, 0);
-				cv::Point pt2(pos + 2 * best_it.halfWidth - best_it.ancorOffset + 1, strip2search.rows);
-				if (pt1.x < 0) {
-					pt1.x = 0;
-				}
-				if (pt2.x > (strip2search.cols)) {
-					pt2.x = strip2search.cols;
-				}
-
-
-
-				cv_points[selectedWindow].resize(1);
-				cv_points[selectedWindow][0]._crop = Mat(crop);
-				cv_points[selectedWindow][0].x = pt.x;
-				cv_points[selectedWindow][0].y = pt.y;
-
-				cv_points[targetWindow].resize(1);
-				cv_points[targetWindow][0]._crop = Mat(strip2search, cv::Rect(pt1, pt2));
-				cv_points[targetWindow][0].x = detectedPoint.x;
-				cv_points[targetWindow][0].y = detectedPoint.y;
-
-				if (ctl->_use_uncalibrated_cameras) {
-					reconstruct4DPoints(
-						cv_points,
-						ctl->_default_F, /*in*/
-						ctl->_default_Intrinsic[0], /*in*/
-						ctl->_default_Intrinsic[1], /*in*/
-						ctl->_default_Pl, /*in*/
-						ctl->_default_Pr, /*in*/
-						points4D /*out*/ // the _id member of each point links to the point in cv_point array. 
-					);
-				}
-				else {
-					reconstruct4DPoints(
-						cv_points,
-						ctl->_F, /*in*/
-						ctl->_cameraMatrix[0], /*in*/
-						ctl->_cameraMatrix[1], /*in*/
-						ctl->_Pl, /*in*/
-						ctl->_Pr, /*in*/
-						points4D /*out*/ // the _id member of each point links to the point in cv_point array. 
-					);
-				}
-
-
-				size_t newPointIdx = points4D.size() - 1;
-
-				if (newPointIdx < points4D.size()) {
-					double rgbSelected[3];
-					BuildIdealChannels_Likeness(crop, cv::Point(best_it.ancorOffset, dsip_calc_ctl.blurHeight / 2), rgbSelected, 0);
-
-					auto& point4D = points4D[newPointIdx];
-					for (size_t c = 0; c < ARRAY_NUM_ELEMENTS(rgbSelected); ++c) {
-						point4D._rgb_normalized[c] = rgbSelected[c] / 255;
-					}
-					double dist = 0;
-					for (int j = 0; j < 3; ++j) {
-						dist += point4D(j) * point4D(j);
-					}
-					dist = std::sqrt(dist);
-					std::cout << "detected distance " << dist << std::endl;
-				}
-				else {
-					std::cout << "NO calculated distance" << std::endl;
-				}
-
-
-				cv::line(crop, cv::Point(best_it.ancorOffset, 0), cv::Point(best_it.ancorOffset, crop.rows - 1), cv::Scalar(0, 255, 0));
-				cv::line(strip2search, cv::Point(pos, 0), cv::Point(pos, strip2search.rows - 1), cv::Scalar(0, 255, 0));
 
 
 				break;

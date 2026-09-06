@@ -122,10 +122,10 @@ GLvoid drawScene(std::vector<Mat_<double>>& points4D, const std::vector<bool>& i
 		GLdouble y = point(1);
 		GLdouble z = point(2);
 
-		GLfloat c[4] = {0.2, 0.2, 0.2, 1};
+		GLfloat c[4] = {0.2, 0.2, 0.2, 0.5};
 
 		//float radius = 0.1f; 
-		float radius = 1.5f;
+		float radius = 0.5f;
 		if(it_isACoordinatePoint != isACoordinatePoint.cend()) {
 			if(*it_isACoordinatePoint) {
 				radius *= 1.5f; 
@@ -137,27 +137,49 @@ GLvoid drawScene(std::vector<Mat_<double>>& points4D, const std::vector<bool>& i
 			++it;
 		}
 
+		for(int j = 0; j < 3; ++j) {
+			c[2 - j] = (*it_colors)[j];
+		}
+		++it_colors;
+
 		GLfloat c_max = -1;
 		GLfloat c_min = 1;
 		GLfloat c_mid = 1;
-		if (it_colors != colors.end()) {
-			for (int j = 0; j < 3; ++j) {
-				c[j] = (*it_colors)[j];
-				if (c[j] < c_min) {
-					c_min = c[j];
-				}
-				if (c[j] > c_max) {
-					c_max = c[j];
-				}
+		for(int j = 0; j < 3; ++j) {
+			if(c[j] < c_min) {
+				c_min = c[j];
 			}
-			++it_colors; 
+			if(c[j] > c_max) {
+				c_max = c[j];
+			}
 		}
 		c_mid = (c_max + c_min) / 2.0f;
 		for (int j = 0; j < 3; ++j) {
 			c[j] -= c_mid;
 			c[j] /= c_max - c_mid;
 		}
-		std::swap(c[0], c[2]);
+
+		//GLfloat c_max = -1;
+		//GLfloat c_min = 1;
+		//GLfloat c_mid = 1;
+		//if (it_colors != colors.end()) {
+		//	for (int j = 0; j < 3; ++j) {
+		//		c[j] = (*it_colors)[j];
+		//		if (c[j] < c_min) {
+		//			c_min = c[j];
+		//		}
+		//		if (c[j] > c_max) {
+		//			c_max = c[j];
+		//		}
+		//	}
+		//	++it_colors; 
+		//}
+		//c_mid = (c_max + c_min) / 2.0f;
+		//for (int j = 0; j < 3; ++j) {
+		//	c[j] -= c_mid;
+		//	c[j] /= c_max - c_mid;
+		//}
+		//std::swap(c[0], c[2]);
 
 
 		GLUquadricObj *quadObj;
@@ -171,7 +193,7 @@ GLvoid drawScene(std::vector<Mat_<double>>& points4D, const std::vector<bool>& i
 		glEndList();
 
 		glTranslated(x, y, z);
-		glMaterialfv(GL_FRONT, GL_AMBIENT, c);
+		glMaterialfv(GL_FRONT, GL_EMISSION, c);
 		glCallList(object_index);
 
 		glPopMatrix();
