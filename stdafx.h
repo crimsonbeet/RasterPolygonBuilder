@@ -777,7 +777,7 @@ struct ABox {
 struct ClusteredPoint: public Point2d {
 	void Init() {
 		_center = 0;
-		_isACorner = 0;
+		_isACorner = 1;
 		_isACenter = 0;
 		_crop_mat_scalefactor = 0;
 		_corners_max_Y_error = 2 * g_max_Y_error;

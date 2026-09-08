@@ -423,19 +423,20 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 	double pos = -N;
 	resultCost = std::numeric_limits<int64_t>::max();
 
-	constexpr int gapCost = 10000;
+	constexpr int gapCost = 1000000;
 	const double scoreWeight = gapCost * 4;
 
-	for (int j = 1; j < N; ++j) {
-		const int j_1 = j - 1;
+	const int nm = M;
+	const int ni = 1;
+
+	for(int i = ni; i < nm; ++i) {
+		const int i_1 = i - 1;
 
 		//int nm = std::min(j + bandWidth, M);
 		//int ni = std::max(nm - bandWidth * 2, 1);
-		const int nm = M;
-		const int ni = 1;
 
-		for(int i = ni; i < nm; ++i) {
-			const int i_1 = i - 1;
+		for(int j = 1; j < N; ++j) {
+			const int j_1 = j - 1;
 
 			//const double X_abs_i_1 = std::abs(double(X - i_1));
 			//const double log2_X_i = approx_log2(X_abs_i_1 < 1 ? 1 : X_abs_i_1); // 0 - at the center of crop, log2_X, ~5, at the ends of crop
@@ -463,7 +464,7 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 
 			AF[i][j] = fscore;
 
-			int64_t case1Cost = A[i_1][j_1] + scoreWeight * (1/*0.87*/ - fscore) + 0.45;
+			int64_t case1Cost = A[i_1][j_1] + scoreWeight * (0.87 - fscore) + 0.45;
 			int64_t case2Cost = A[i_1][j] + gapCost;
 			int64_t case3Cost = A[i][j_1] + gapCost;
 			if (case2Cost < case3Cost) {
@@ -489,14 +490,14 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 		}
 	}
 
-	size_t m = M - 1;
-	size_t n = N - 1;
+	int m = M - 1;
+	int n = N - 1;
 
 	int64_t caseCostMax = A[m][n];
 
-	std::stack<size_t> st;
+	std::stack<int> st;
 
-	for (size_t j = n; j > M + 1; --j) {
+	for (int j = n; j > M + 1; --j) {
 		if (A[m][j] <= caseCostMax) {
 			n = j;
 			caseCostMax = A[m][j];
@@ -506,7 +507,7 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 	st.push(n);
 
 	while (!st.empty()) {
-		m = static_cast<size_t>(M) - 1;
+		m = static_cast<int>(M) - 1;
 		n = st.top();
 		st.pop();
 
@@ -546,8 +547,10 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 			fscore += AF[m][n];
 			++fscore_count;
 
-			disps[m - 1] = n - 1;
-			costs[m - 1] = caseCost;
+			if(caseType == 1) {
+				disps[m - 1] = n - 1;
+				costs[m - 1] = caseCost;
+			}
 
 
 			if (m == X) {
@@ -5544,8 +5547,8 @@ return_t __stdcall CalculateDisparitySingleStrip(LPVOID lp) {
 	int64_t start_time = GetDayTimeInMilliseconds();
 
 
-	size_t number_of_passes = ctl->number_of_passes;
-	size_t number_of_iterations = ctl->number_of_iterations;
+	int number_of_passes = ctl->number_of_passes;
+	int number_of_iterations = ctl->number_of_iterations;
 
 	if(number_of_passes > 5) {
 		number_of_passes = 5;
@@ -6016,12 +6019,12 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 
 
 						int x = -1;
-						int dx = best_it.disps.size() /40;
+						int dx = static_cast<int>(best_it.disps.size()) /40;
 
 						for(auto pos : best_it.disps) {
 							++x;
 
-							if(pos < 0) {
+							if(pos <= 0) {
 								continue;
 							}
 

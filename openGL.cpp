@@ -266,7 +266,7 @@ GLvoid drawScene(std::vector<Mat_<double>>& points4D, const std::vector<bool>& i
 	zAvg /= points4D.size();
 
 	glLoadIdentity();
-	gluLookAt(0, 0, zLast + 10, xAvg, yAvg, zAvg, 0, yAvg, 0);
+	gluLookAt(0, 0, zAvg + 10, xAvg, yAvg, zAvg, 0, yAvg, 0);
 }
 
 GLvoid commitScene() {
