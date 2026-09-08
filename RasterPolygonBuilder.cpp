@@ -342,6 +342,7 @@ return_t __stdcall ZeroLogHandler(LPVOID lp) {
 
 HANDLE g_event_SFrameIsAvailable = INVALID_HANDLE_VALUE;
 HANDLE g_event_SeedPointIsAvailable = INVALID_HANDLE_VALUE;
+HANDLE g_event_SelectionBoxIsAvailable = INVALID_HANDLE_VALUE;
 HANDLE g_event_ContourIsConfirmed = INVALID_HANDLE_VALUE;
 HANDLE g_event_DrawBox = INVALID_HANDLE_VALUE;
 
@@ -402,7 +403,12 @@ void OnMouseCallback(int event, int x, int y, int flags, void* userdata) {
 	case 1: // window 1
 		g_LoG_imageWindowNumber = 1;
 	case 2: // window 2
-		SetEvent(g_event_SeedPointIsAvailable);
+		if(g_LoG_seedPoint.box.empty()) {
+			SetEvent(g_event_SeedPointIsAvailable);
+		}
+		else {
+			SetEvent(g_event_SelectionBoxIsAvailable);
+		}
 		break;
 	case 3:
 	case 4:
@@ -1113,6 +1119,7 @@ int main() {
 	g_event_SeedPointIsAvailable = CreateEvent(0, 0, 0, 0);
 	g_event_ContourIsConfirmed = CreateEvent(0, 0, 0, 0);
 	g_event_DrawBox = CreateEvent(0, 0, 0, 0);
+	g_event_SelectionBoxIsAvailable = CreateEvent(0, 0, 0, 0);
 
 	if (_g_images_frame) {
 		_g_images_frame->NEW_StereoConfiguration(g_configuration);

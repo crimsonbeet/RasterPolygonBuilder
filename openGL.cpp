@@ -116,6 +116,7 @@ GLvoid drawScene(std::vector<Mat_<double>>& points4D, const std::vector<bool>& i
 	GLdouble xAvg = 0;
 	GLdouble yAvg = 0;
 	GLdouble zAvg = 0;
+	GLdouble zLast = 0;
 
 	for(auto& point : points4D) {
 		GLdouble x = point(0);
@@ -142,22 +143,22 @@ GLvoid drawScene(std::vector<Mat_<double>>& points4D, const std::vector<bool>& i
 		}
 		++it_colors;
 
-		GLfloat c_max = -1;
-		GLfloat c_min = 1;
-		GLfloat c_mid = 1;
-		for(int j = 0; j < 3; ++j) {
-			if(c[j] < c_min) {
-				c_min = c[j];
-			}
-			if(c[j] > c_max) {
-				c_max = c[j];
-			}
-		}
-		c_mid = (c_max + c_min) / 2.0f;
-		for (int j = 0; j < 3; ++j) {
-			c[j] -= c_mid;
-			c[j] /= c_max - c_mid;
-		}
+		//GLfloat c_max = -1;
+		//GLfloat c_min = 1;
+		//GLfloat c_mid = 1;
+		//for(int j = 0; j < 3; ++j) {
+		//	if(c[j] < c_min) {
+		//		c_min = c[j];
+		//	}
+		//	if(c[j] > c_max) {
+		//		c_max = c[j];
+		//	}
+		//}
+		//c_mid = (c_max + c_min) / 2.0f;
+		//for (int j = 0; j < 3; ++j) {
+		//	c[j] -= c_mid;
+		//	c[j] /= c_max - c_mid;
+		//}
 
 		//GLfloat c_max = -1;
 		//GLfloat c_min = 1;
@@ -179,7 +180,8 @@ GLvoid drawScene(std::vector<Mat_<double>>& points4D, const std::vector<bool>& i
 		//	c[j] -= c_mid;
 		//	c[j] /= c_max - c_mid;
 		//}
-		//std::swap(c[0], c[2]);
+
+		std::swap(c[0], c[2]);
 
 
 		GLUquadricObj *quadObj;
@@ -193,7 +195,9 @@ GLvoid drawScene(std::vector<Mat_<double>>& points4D, const std::vector<bool>& i
 		glEndList();
 
 		glTranslated(x, y, z);
-		glMaterialfv(GL_FRONT, GL_EMISSION, c);
+		glMaterialfv(GL_FRONT, GL_AMBIENT, c);
+		//glMaterialfv(GL_FRONT, GL_EMISSION, c);
+		//glMaterialfv(GL_FRONT, GL_SHININESS, c);
 		glCallList(object_index);
 
 		glPopMatrix();
@@ -202,6 +206,8 @@ GLvoid drawScene(std::vector<Mat_<double>>& points4D, const std::vector<bool>& i
 		xAvg += x;
 		yAvg += y;
 		zAvg += z;
+
+		zLast = z;
 	}
 
 	size_t nline = 0; 
@@ -260,7 +266,7 @@ GLvoid drawScene(std::vector<Mat_<double>>& points4D, const std::vector<bool>& i
 	zAvg /= points4D.size();
 
 	glLoadIdentity();
-	gluLookAt(0, 0, 0, xAvg, yAvg, zAvg, 0, 1, 0);
+	gluLookAt(0, 0, zLast + 10, xAvg, yAvg, zAvg, 0, yAvg, 0);
 }
 
 GLvoid commitScene() {
