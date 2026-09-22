@@ -354,7 +354,7 @@ double RadiusOfRectangle(const std::vector<Point2d>& points) {
 
 
 
-double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int targetColumn, const int bandWidth, int64_t& resultCost, std::vector<int>& disps, std::vector<int64_t>& costs) { // returns point of alignment in strip2search
+double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int targetColumn, const int bandWidth, int64_t& resultCost, std::vector<int>& disps, std::vector<int64_t>& costs, bool createTraceFile) { // returns point of alignment in strip2search
 	const int M = cropIn.cols + 1;
 	const int N = strip2searchIn.cols + 1;
 
@@ -362,24 +362,28 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 	const int N1 = strip2searchIn.cols;
 
 	std::vector<std::vector<int64_t>> A(M); // M rows
-	std::vector<std::vector<double>> AF(M); // M rows
-	for (auto& v : A) {
+	std::vector<std::vector<double>> AF(M); // M rows, matrix of scores
+	std::vector<std::vector<double>> AAF(M); // M rows, matrix of adjusted scores
+	for(auto& v : A) {
 		v.resize(N, -1);
 	}
-	for (auto& v : AF) {
+	for(auto& v : AF) {
+		v.resize(N, -1);
+	}
+	for(auto& v : AAF) {
 		v.resize(N, -1);
 	}
 
 	std::vector<std::vector<char>> T(M);
-	for (auto& t : T) {
+	for(auto& t : T) {
 		t.resize(N);
 	}
 
-	for (size_t i = 0; i < M; ++i) {
+	for(size_t i = 0; i < M; ++i) {
 		A[i][0] = 1;
 	}
 
-	for (size_t j = 0; j < N; ++j) {
+	for(size_t j = 0; j < N; ++j) {
 		A[0][j] = 1;
 	}
 
@@ -424,7 +428,14 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 	resultCost = std::numeric_limits<int64_t>::max();
 
 	constexpr int gapCost = 1000000;
-	const double scoreWeight = gapCost * 4;
+	constexpr double scoreWeight = 1.0;// 1;// 4;
+	constexpr double score_pivot = 1.5;// 3.0;// 2.9;// 2.8;// 0.87;// 2.4;// 2.2;// 0.25;//
+
+	/*
+	* higher score_pivot means more strict matching, less tolerance for misalignment
+	* higher score_pivot prefers gaps over mismatches, lower score_pivot prefers mismatches over gaps
+	*/
+
 
 	const int nm = M;
 	const int ni = 1;
@@ -444,47 +455,75 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 
 			double fscore = 0;
 			int fscore_count = 0;
-			for (int r = 0; r < crop.rows; ++r) {
-				for (int c = -1; c < 1; ++c) {
+			for(int r = 0; r < crop.rows; ++r) {
+				for(int c = -1; c < 1; ++c) {
 					const int i_c = i_1 + c;
-					if (i_c < 0 || i_c >= M1) {
+					if(i_c < 0 || i_c >= M1) {
 						continue;
 					}
 					const int j_c = j_1 + c;
-					if (j_c < 0 || j_c >= N1) {
+					if(j_c < 0 || j_c >= N1) {
 						continue;
 					}
-					fscore += GetEScore(crop.at<cv::Vec<uchar, 3>>(r, i_c), strip2search.at<cv::Vec<uchar, 3>>(r, j_c));
+					fscore += GetFScore(crop.at<cv::Vec<uchar, 3>>(r, i_c), strip2search.at<cv::Vec<uchar, 3>>(r, j_c));
 					++fscore_count;
+					//fscore += GetEScore(crop.at<cv::Vec<uchar, 3>>(r, i_c), strip2search.at<cv::Vec<uchar, 3>>(r, j_c));
+					//++fscore_count;
 					fscore += GetRSS_Score(crop.at<cv::Vec<uchar, 3>>(r, i_c), strip2search.at<cv::Vec<uchar, 3>>(r, j_c));
 					++fscore_count;
+					//fscore += GetSkewRSS_Score(crop.at<cv::Vec<uchar, 3>>(r, i_c), strip2search.at<cv::Vec<uchar, 3>>(r, j_c));
+					//++fscore_count;
 				}
 			}
 			fscore /= fscore_count;
 
-			AF[i][j] = fscore;
+			double adjFscore = scoreWeight * (score_pivot - fscore);// -1;
 
-			int64_t case1Cost = A[i_1][j_1] + scoreWeight * (0.87 - fscore) + 0.45;
+			if(score_pivot == 1.5) {
+				if(adjFscore > 0) {
+					adjFscore = std::atan(adjFscore);
+				}
+				else {
+					adjFscore = -std::atan(-adjFscore);
+				}
+				if(adjFscore > M_PI / 2) {
+					adjFscore = M_PI / 2;
+				}
+				else
+					if(adjFscore < -M_PI / 2) {
+						adjFscore = -M_PI / 2;
+					}
+				adjFscore = std::tan(adjFscore);
+			}
+
+			if(std::abs(adjFscore) > 4) {
+				adjFscore = 4 * (std::signbit(adjFscore) ? -1 : 1);
+			}
+
+			AF[i][j] = fscore;
+			AAF[i][j] = adjFscore;
+
+			int64_t case1Cost = A[i_1][j_1] + gapCost * adjFscore + 0.45; /*gapCost + */
 			int64_t case2Cost = A[i_1][j] + gapCost;
 			int64_t case3Cost = A[i][j_1] + gapCost;
-			if (case2Cost < case3Cost) {
-				if (case1Cost < case2Cost) {
+			if(case2Cost < case3Cost) {
+				if(case1Cost < case2Cost/* && fscore > score_pivot*/) {
 					T[i][j] = 1;
 					A[i][j] = case1Cost;
 				}
 				else {
 					T[i][j] = 2;
-					A[i][j] = case2Cost;
+					A[i][j] = case2Cost; //case1Cost;
 				}
 			}
 			else {
-				if (case1Cost < case3Cost) {
+				if(case1Cost < case3Cost/* && fscore > score_pivot*/) {
 					T[i][j] = 1;
 					A[i][j] = case1Cost;
 				}
 				else {
 					T[i][j] = 3;
-					A[i][j] = case3Cost;
+					A[i][j] = case3Cost; //case1Cost;
 				}
 			}
 		}
@@ -497,8 +536,8 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 
 	std::stack<int> st;
 
-	for (int j = n; j > M + 1; --j) {
-		if (A[m][j] <= caseCostMax) {
+	for(int j = n; j > M + 1; --j) {
+		if(A[m][j] <= caseCostMax) {
 			n = j;
 			caseCostMax = A[m][j];
 		}
@@ -506,7 +545,7 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 
 	st.push(n);
 
-	while (!st.empty()) {
+	while(!st.empty()) {
 		m = static_cast<int>(M) - 1;
 		n = st.top();
 		st.pop();
@@ -522,8 +561,8 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 		double fscore = AF[m][n];
 		int fscore_count = 1;
 
-		while (caseType >= 0) {
-			switch (caseType) {
+		while(caseType >= 0) {
+			switch(caseType) {
 			case 1:
 				--m;
 				--n;
@@ -539,7 +578,7 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 			caseType = T[m][n];
 			caseCost = A[m][n];
 
-			if (caseType <= 0) {
+			if(caseType <= 0) {
 				break;
 			}
 
@@ -553,7 +592,7 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 			}
 
 
-			if (m == X) {
+			if(m == X) {
 				Y = n - 1;
 				resultCost = caseCost;
 			}
@@ -566,6 +605,26 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 	//if (targetColumn > W2) {
 	//	pos = strip2search.cols - pos + 1;
 	//}
+
+	if(createTraceFile) {
+		HANDLE handle_file = (HANDLE)-1;
+		const std::string file_name = "alignment_" + std::to_string(cropIn.cols) + "_" + std::to_string(strip2searchIn.cols) + "_" + std::to_string(targetColumn);
+		std::string full_file_name = "VSStatistics\\disp_" + file_name + "_" + stringify_currentTime(true);
+		handle_file = OSWRONLYOpenFile(full_file_name + ".csv");
+
+		std::ostringstream ostr;
+		ostr << "i,j,fscore,adjFscore,path\n";
+
+		for(int m = 1; m < M; ++m) {
+			for(int n = 1; n < N; ++n) {
+				ostr << m << "," << n << "," << AF[m][n] << "," << AAF[m][n] << "," << ((disps[m - 1] == n - 1) ? 1 : 0) << "\n";
+			}
+		}
+
+		OSAppendStringToFile(handle_file, ostr.str());
+		OSCloseFile(handle_file);
+	}
+
 
 	return pos;
 }
@@ -5288,7 +5347,7 @@ return_t __stdcall EvaluateContours(LPVOID lp) {
 
 struct CalculateDisparityControl {
 	// input section
-	Mat aux; // referance matrix
+	Mat aux; // reference matrix
 	Mat aux2; // matrix to search
 	Point pt; // seed point
 
@@ -5301,6 +5360,8 @@ struct CalculateDisparityControl {
 	int number_of_iterations = 1;
 
 	bool mapResultPoint = true;
+
+	bool createTraceFile = false;
 
 	// output section
 	struct iteration_result {
@@ -5348,6 +5409,8 @@ struct DisparityAlgorithmControl {
 	int _stripAncorOffset = 0;
 	int _halfWidth = 0;
 	int _status = 0; // 0 - unknown, 1 - started, 2 - completed.
+
+	bool _createTraceFile = false;
 
 	CalculateDisparityControl* _calc_ctl = nullptr;
 	CalculateDisparityControl::iteration_result* _iter_rs = nullptr;
@@ -5447,24 +5510,24 @@ void DisparityAlgorithm(DisparityAlgorithmControl& run_ctl) {
 		}
 
 
-		cv::Scalar cropMean = cv::mean(crop);
-		cv::Scalar strip2searchMean = cv::mean(strip2search);
-		double seedReference[3];
-		BuildIdealChannels_Likeness(crop, cv::Point(halfWidth, blurHeight / 2), seedReference, blurHeight / 2);
-		double cropFactor[3];
-		double strip2searchFactor[3];
-		for (int j = 0; j < 3; ++j) {
-			cropFactor[j] = cropMean(j) / std::max(seedReference[j], 1.0);
-			strip2searchFactor[j] = strip2searchMean(j) / std::max(seedReference[j], 1.0);
-		}
+		//cv::Scalar cropMean = cv::mean(crop);
+		//cv::Scalar strip2searchMean = cv::mean(strip2search);
+		//double seedReference[3];
+		//BuildIdealChannels_Likeness(crop, cv::Point(halfWidth, blurHeight / 2), seedReference, blurHeight / 2);
+		//double cropFactor[3];
+		//double strip2searchFactor[3];
+		//for (int j = 0; j < 3; ++j) {
+		//	cropFactor[j] = cropMean(j) / std::max(seedReference[j], 1.0);
+		//	strip2searchFactor[j] = strip2searchMean(j) / std::max(seedReference[j], 1.0);
+		//}
 
-		WhiteBalance<uchar>(crop, cropFactor);
-		WhiteBalance<uchar>(strip2search, strip2searchFactor);
+		//WhiteBalance<uchar>(crop, cropFactor);
+		//WhiteBalance<uchar>(strip2search, strip2searchFactor);
 
-		//NormalizeColoredImage_RSS(crop);
-		//NormalizeColoredImage_RSS(strip2search);
+		////NormalizeColoredImage_RSS(crop);
+		////NormalizeColoredImage_RSS(strip2search);
 
-		int pos = FindBestAlignment(crop, strip2search, ancorOffset, bandWidth, resultCost, disps, costs) + 0.45;
+		int pos = FindBestAlignment(crop, strip2search, ancorOffset, bandWidth, resultCost, disps, costs, run_ctl._createTraceFile) + 0.45;
 
 		cv::Point resPoint;
 		resPoint.x = strip2searchRect.x + pos;
@@ -5586,6 +5649,7 @@ return_t __stdcall CalculateDisparitySingleStrip(LPVOID lp) {
 			iter_ctl[pass]._iter_rs = &iter_rs[pass];
 			iter_ctl[pass]._status = 0;
 			iter_ctl[pass]._disparityAlgorithm = DisparityAlgorithm;
+			iter_ctl[pass]._createTraceFile = pass == 0? ctl->createTraceFile : false;
 
 			if(pass == last_pass_idx) {
 				ExecuteDisparityAlgorithm(&iter_ctl[pass]);
@@ -5814,7 +5878,7 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 					for(int j = 0; j < cv_points[0].size() && j < cv_points[1].size(); ++j) {
 						Mat_<double> X(4, 1, 0.0);
 
-						double min_reproject_err = reconstruct4DPoint(X, cv_points[0][j], cv_points[1][j], ctl->_F, ctl->_Pl, ctl->_Pr);
+						double min_reproject_err = reconstruct4DPoint_Plain(X, cv_points[0][j], cv_points[1][j], ctl->_F, ctl->_Pl, ctl->_Pr);
 
 						points4D.push_back(ReconstructedPoint(Matx41d(X(0), -X(1), -X(2), 1), 3, 0, min_reproject_err));
 
@@ -5889,6 +5953,8 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 					disp_calc_ctl.number_of_iterations = 1;
 					disp_calc_ctl.number_of_passes = 5;
 					
+					//disp_calc_ctl.createTraceFile = true;
+
 					disp_calc_ctl.mapResultPoint = true;
 
 
@@ -6598,6 +6664,25 @@ void PartitionPoints(std::vector<ClusteredPoint> cv_points[2], std::vector<std::
 
 
 
+double reconstruct4DPoint_Plain(Mat_<double>& X, ClusteredPoint& p1, ClusteredPoint& p2, Mat& F, Mat& Pl, Mat& Pr) { // returns reproject error
+	X = Mat_<double>(4, 1, 0.0);
+
+	cv::Mat cam0pnts(1, 1, CV_64FC2, Scalar(p1.x, p1.y));
+	cv::Mat cam1pnts(1, 1, CV_64FC2, Scalar(p2.x, p2.y));
+
+
+	Point3d U[3];
+	U[0].x = ((Scalar*)(cam0pnts.data))->val[0];
+	U[0].y = ((Scalar*)(cam0pnts.data))->val[1];
+	U[0].z = 1;
+	U[1].x = ((Scalar*)(cam1pnts.data))->val[0];
+	U[1].y = ((Scalar*)(cam1pnts.data))->val[1];
+	U[1].z = 1;
+
+	X = IterativeLinearLSTriangulation(U[0], Pl, U[1], Pr);
+
+	return 0;// Eval_ReprojectError(p1, p2, Pl, Pr, X);
+}
 
 
 

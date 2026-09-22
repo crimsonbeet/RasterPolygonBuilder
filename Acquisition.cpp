@@ -72,23 +72,28 @@ void RGB_TO_HSV(Vec<uchar, 3> rgb, double hsv[3], const double maxMinThreshold) 
 }
 
 double GetFScore(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2) {
-	double fscore = 1;
+	//double fscore = 3;
+	double fscore = 0;
 	for (int j = 0; j < 3; ++j) {
 		if (ch1[j] > 0 && ch2[j] > 0) {
 			const double a = ch1[j];
 			const double b = ch2[j];
 			const double div = a*a + b*b;
 			const double num = a*b;
-			if (div > 100 && num > 10) {
-				fscore *= (2.0 * num) / div;
+			if(div > 1) {
+				//fscore += pow2((2.0 * num) / div);
+				fscore += (2.0 * num) / div;
 			}
-			else {
-				fscore *= 0.01;
-			}
+			//if (div > 20 && num > 10) {
+			//	fscore *= (2.0 * num) / div;
+			//}
+			//else {
+			//	fscore *= 0.01;
+			//}
 		}
 	}
 	if (isnan(fscore)) {
-		fscore = 0;
+		fscore = 3;
 	}
 	return fscore;
 }
@@ -244,45 +249,71 @@ np.array([1,-1]) @ B @ np.array([1,-1]).T
 
 */
 
+inline void localSubtractSquaredValue(double& total, const double sub) {
+	total -= sub * sub;
+}
+
 double GetRSS_Score(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2) {
 	//const double max_intens = 65025;
 	const double max_intens = 35512.5;
+
+	double si[3] = { ch1[0] - ch2[0], ch1[1] - ch2[1], ch1[2] - ch2[2] };
+
 	double total_sum = 0;
-	double pixShape[3] = {0, 0, 0};
-	for(int j = 0; j < 3; ++j) {
-		const int a = ch1[j];
-		const int b = ch2[j];
-		const double sub = a - b;
-		total_sum -= sub * sub;
-		//total_sum += max_intens - sub * sub;
-		pixShape[0] += a * (j == 1 ? -2 : 1);
-		pixShape[1] += b * (j == 1 ? -2 : 1);
+
+	localSubtractSquaredValue(total_sum, si[0]);
+	localSubtractSquaredValue(total_sum, si[1]);
+	localSubtractSquaredValue(total_sum, si[2]);
+
+	localSubtractSquaredValue(total_sum, si[0] - 2.0 * si[2] + si[1]);
+	localSubtractSquaredValue(total_sum, si[0] - 2.0 * si[1] + si[2]);
+	localSubtractSquaredValue(total_sum, si[1] - 2.0 * si[0] + si[2]);
+
+	total_sum += 6 * max_intens;
+	total_sum /= max_intens * 2;
+
+	if(total_sum > 3) {
+		total_sum = 3;
 	}
 
-	if(isnan(total_sum)) {
-		total_sum = 0;
-	}
-
-	pixShape[2] = pixShape[0] - pixShape[1];
-
-
-	total_sum -= pixShape[2] * pixShape[2];
-	total_sum += 3 * max_intens;
-
-
-	//total_sum += max_intens - pixShape[2] * pixShape[2];
-	//total_sum *= 0.75;
-
-
-	total_sum /= max_intens;
-
-	//if(total_sum > 3) {
-	//	total_sum = 3;
-	//}
-	//else
 	//if(total_sum < 0) {
 	//	total_sum = 0;
 	//}
+
+	return total_sum;
+}
+
+double GetSkewRSS_Score(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2) {
+	//const double max_intens = 65025;
+	const double max_intens = 35512.5;
+	double total_sum = 0;
+
+	//double pixShape[2] = { 0, 0 };
+	//for(int j = 0; j < 3; ++j) {
+	//	pixShape[0] += ch1[j] * (j == 1 ? -2 : 1);
+	//	pixShape[1] += ch2[j] * (j == 1 ? -2 : 1);
+	//}
+
+
+	//localSubSquaredValue(total_sum, ch1[0] - ch2[0] - (ch1[2] - ch2[2]));
+	//localSubSquaredValue(total_sum, ch1[1] - ch2[1]);
+	//localSubSquaredValue(total_sum, pixShape[0] - pixShape[1]);
+
+	//total_sum += 1 * max_intens;
+
+	localSubtractSquaredValue(total_sum, ch1[0] - ch2[0] - (ch1[2] - ch2[2]));
+	localSubtractSquaredValue(total_sum, ch1[0] - ch2[0] - (ch1[1] - ch2[1]));
+	localSubtractSquaredValue(total_sum, ch1[2] - ch2[2] - (ch1[1] - ch2[1]));
+
+	total_sum += 0.1 * max_intens;
+	total_sum /= max_intens;
+
+	if(total_sum > 0) {
+		total_sum = 0;
+	}
+	if(total_sum < 0) {
+		total_sum = total_sum;
+	}
 
 	return total_sum;
 }

@@ -1169,6 +1169,7 @@ void WhiteBalance(Mat& image, double whiteFactor[3]);
 double GetFScore(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2);
 double GetEScore(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2); // max value 3; min value 0;
 double GetRSS_Score(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2);
+double GetSkewRSS_Score(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2);
 
 
 double hsvLikenessScore(cv::Vec<uchar, 3>& pixOriginal, double hsvIdeal[3]); // returns likeness score from 0 to 256.
@@ -1193,6 +1194,7 @@ void ConvertColoredImage2Mono(Mat& image, double chWeights[3], std::function<dou
 
 
 double reconstruct4DPoint(Mat_<double>& X, ClusteredPoint& p1, ClusteredPoint& p2, Mat& F, Mat& Pl, Mat& Pr); // returns reproject error
+double reconstruct4DPoint_Plain(Mat_<double>& X, ClusteredPoint& p1, ClusteredPoint& p2, Mat& F, Mat& Pl, Mat& Pr);
 
 void reconstruct4DPoints(
 	std::vector<ClusteredPoint> points2D[2] /*in/out*/, // gets sorted and modified. The _cluster is set to the index of epipolar cluster. 
