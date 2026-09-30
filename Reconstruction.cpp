@@ -428,8 +428,8 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 	resultCost = std::numeric_limits<int64_t>::max();
 
 	constexpr int gapCost = 1000000;
-	constexpr double scoreWeight = 1.0;// 1;// 4;
-	constexpr double score_pivot = 1.5;// 3.0;// 2.9;// 2.8;// 0.87;// 2.4;// 2.2;// 0.25;//
+	constexpr double scoreWeight = 4.0;// 1;// 4;
+	constexpr double score_pivot = 2.4;// 0.87;// 1.5;// 3.0;// 2.9;// 2.8;// 2.2;// 0.25;//
 
 	/*
 	* higher score_pivot means more strict matching, less tolerance for misalignment
@@ -455,8 +455,10 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 
 			double fscore = 0;
 			int fscore_count = 0;
-			for(int r = 0; r < crop.rows; ++r) {
-				for(int c = -1; c < 1; ++c) {
+			for(int r = 1; r < (crop.rows-1); ++r) {
+			//for(int r = 0; r < crop.rows; ++r) {
+				//for(int c = -1; c < 1; ++c) {
+				for(int c = 0; c < 1; ++c) {
 					const int i_c = i_1 + c;
 					if(i_c < 0 || i_c >= M1) {
 						continue;
@@ -469,39 +471,50 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 					++fscore_count;
 					//fscore += GetEScore(crop.at<cv::Vec<uchar, 3>>(r, i_c), strip2search.at<cv::Vec<uchar, 3>>(r, j_c));
 					//++fscore_count;
-					fscore += GetRSS_Score(crop.at<cv::Vec<uchar, 3>>(r, i_c), strip2search.at<cv::Vec<uchar, 3>>(r, j_c));
+					fscore += GetNormalizedDiff_Score(crop.at<cv::Vec<uchar, 3>>(r, i_c), strip2search.at<cv::Vec<uchar, 3>>(r, j_c));
 					++fscore_count;
+					//fscore += GetRSS_Score(crop.at<cv::Vec<uchar, 3>>(r, i_c), strip2search.at<cv::Vec<uchar, 3>>(r, j_c));
+					//++fscore_count;
 					//fscore += GetSkewRSS_Score(crop.at<cv::Vec<uchar, 3>>(r, i_c), strip2search.at<cv::Vec<uchar, 3>>(r, j_c));
 					//++fscore_count;
 				}
 			}
 			fscore /= fscore_count;
 
-			double adjFscore = scoreWeight * (score_pivot - fscore);// -1;
+			double fDiffScore = 0;
+			fDiffScore += GetFScore(crop.at<cv::Vec<uchar, 3>>(0, i_1), strip2search.at<cv::Vec<uchar, 3>>(crop.rows - 1, j_1));
+			fDiffScore += GetNormalizedDiff_Score(crop.at<cv::Vec<uchar, 3>>(0, i_1), strip2search.at<cv::Vec<uchar, 3>>(crop.rows - 1, j_1));
+			fDiffScore /= 2;
+			fDiffScore = std::abs(fscore - fDiffScore);
+			double adjFscore = (1 + fDiffScore) * scoreWeight * (score_pivot - fscore);// -1;
+			//if(adjFscore < 0) {
+			//	adjFscore = 0;
+			//}	
 
-			if(score_pivot == 1.5) {
-				if(adjFscore > 0) {
-					adjFscore = std::atan(adjFscore);
-				}
-				else {
-					adjFscore = -std::atan(-adjFscore);
-				}
-				if(adjFscore > M_PI / 2) {
-					adjFscore = M_PI / 2;
-				}
-				else
-					if(adjFscore < -M_PI / 2) {
-						adjFscore = -M_PI / 2;
-					}
-				adjFscore = std::tan(adjFscore);
-			}
+			//if(score_pivot == 1.5) {
+			//	if(adjFscore > 0) {
+			//		adjFscore = std::atan(adjFscore);
+			//	}
+			//	else {
+			//		adjFscore = -std::atan(-adjFscore);
+			//	}
+			//	if(adjFscore > M_PI / 2) {
+			//		adjFscore = M_PI / 2;
+			//	}
+			//	else
+			//		if(adjFscore < -M_PI / 2) {
+			//			adjFscore = -M_PI / 2;
+			//		}
+			//	adjFscore = std::tan(adjFscore);
+			//}
 
-			if(std::abs(adjFscore) > 4) {
-				adjFscore = 4 * (std::signbit(adjFscore) ? -1 : 1);
-			}
+			//if(std::abs(adjFscore) > 4) {
+			//	adjFscore = 4 * (std::signbit(adjFscore) ? -1 : 1);
+			//}
 
 			AF[i][j] = fscore;
-			AAF[i][j] = adjFscore;
+			//AAF[i][j] = adjFscore;
+			AAF[i][j] = fDiffScore;
 
 			int64_t case1Cost = A[i_1][j_1] + gapCost * adjFscore + 0.45; /*gapCost + */
 			int64_t case2Cost = A[i_1][j] + gapCost;
@@ -526,6 +539,12 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 					A[i][j] = case3Cost; //case1Cost;
 				}
 			}
+
+			//fscore = 0;
+			//fscore += GetFScore(crop.at<cv::Vec<uchar, 3>>(0, i_1), strip2search.at<cv::Vec<uchar, 3>>(crop.rows - 1, j_1));
+			//fscore += GetNormalizedDiff_Score(crop.at<cv::Vec<uchar, 3>>(0, i_1), strip2search.at<cv::Vec<uchar, 3>>(crop.rows - 1, j_1));
+			//fscore /= 2;
+			//AAF[i][j] = fscore;
 		}
 	}
 
@@ -536,8 +555,8 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 
 	std::stack<int> st;
 
-	for(int j = n; j > M + 1; --j) {
-		if(A[m][j] <= caseCostMax) {
+	for(int j = n - 1; j > M + 1; --j) {
+		if(A[m][j] < caseCostMax) {
 			n = j;
 			caseCostMax = A[m][j];
 		}
@@ -5359,7 +5378,7 @@ struct CalculateDisparityControl {
 	int number_of_passes = 5;
 	int number_of_iterations = 1;
 
-	bool mapResultPoint = true;
+	bool mapResultPoint = false;
 
 	bool createTraceFile = false;
 
@@ -5547,6 +5566,10 @@ void DisparityAlgorithm(DisparityAlgorithmControl& run_ctl) {
 	it.disps = disps;
 	it.costs = costs;
 
+	if(it.pos == 0) {
+		it.pos = stripWidth - 1;
+	}
+
 
 	/*
 	 * flip ancor offsets pivoting on pt.x
@@ -5641,8 +5664,10 @@ return_t __stdcall CalculateDisparitySingleStrip(LPVOID lp) {
 
 		const int last_pass_idx = number_of_passes - 1;
 
+		const int pass_priority[7] = { 1, 2, 3, 0, 4, 0, 0 };
+
 		for (int pass = 0; pass < number_of_passes; ++pass) {
-			iter_ctl[pass]._pass = pass;
+			iter_ctl[pass]._pass = number_of_passes > 1 ? pass_priority[pass] : 0;
 			iter_ctl[pass]._stripAncorOffset = iterAncorOffset;
 			iter_ctl[pass]._halfWidth = musterHalfWidth;
 			iter_ctl[pass]._calc_ctl = ctl;
@@ -5718,6 +5743,14 @@ return_t __stdcall CalculateDisparitySingleStrip(LPVOID lp) {
 			int second_best = good_count % 2 == 0 ? median + 1 : median - 1;
 			if(second_best < 0 || std::abs(iter_rs[iter_rs_order[median]].pos - iter_rs[iter_rs_order[second_best]].pos) <= 2) {
 				best_it = iter_rs[iter_rs_order[median]];
+			}
+			else {
+				if(good_count > 2) {
+					second_best = good_count % 2 != 0 ? median + 1 : median - 1;
+					if(second_best < 0 || std::abs(iter_rs[iter_rs_order[median]].pos - iter_rs[iter_rs_order[second_best]].pos) <= 2) {
+						best_it = iter_rs[iter_rs_order[median]];
+					}
+				}
 			}
 		}
 
@@ -5944,18 +5977,18 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 
 					disp_calc_ctl.pt = pt;
 
-					disp_calc_ctl.musterHalfWidth = std::floor(2 * disp_calc_ctl.aux.cols / 75);
+					disp_calc_ctl.musterHalfWidth = std::floor(2 * disp_calc_ctl.aux.cols / 55);
 					disp_calc_ctl.bandWidth = disp_calc_ctl.musterHalfWidth * 2;
 					//disp_calc_ctl.musterHalfWidth = 30;
 					disp_calc_ctl.strip2searchWidth = disp_calc_ctl.aux.cols - disp_calc_ctl.musterHalfWidth * 2;
-					disp_calc_ctl.blurHeight = 5;
+					disp_calc_ctl.blurHeight = 7;// 5;
 
 					disp_calc_ctl.number_of_iterations = 1;
-					disp_calc_ctl.number_of_passes = 5;
+					disp_calc_ctl.number_of_passes = 3;// 2;// 5;
 					
 					//disp_calc_ctl.createTraceFile = true;
 
-					disp_calc_ctl.mapResultPoint = true;
+					//disp_calc_ctl.mapResultPoint = true;
 
 
 
@@ -6024,7 +6057,7 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 					box.width /= sf.fx;
 					box.height /= sf.fy;
 
-					const int blurHeight = 5;
+					const int blurHeight = 7;// 5;
 
 
 					points4D.resize(0);

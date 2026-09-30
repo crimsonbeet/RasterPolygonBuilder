@@ -253,6 +253,30 @@ inline void localSubtractSquaredValue(double& total, const double sub) {
 	total -= sub * sub;
 }
 
+double GetNormalizedDiff_Score(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2) {
+	//const double max_intens = 65025;
+	const double max_intens = 35512.5;
+
+	const double ch1_intens = sqrt(ch1[0] * ch1[0] + ch1[1] * ch1[1] + ch1[2] * ch1[2]);
+	const double ch2_intens = sqrt(ch2[0] * ch2[0] + ch2[1] * ch2[1] + ch2[2] * ch2[2]);
+
+	const double ch1_norm[3] = { ch1[0] / ch1_intens, ch1[1] / ch1_intens, ch1[2] / ch1_intens };
+	const double ch2_norm[3] = { ch2[0] / ch2_intens, ch2[1] / ch2_intens, ch2[2] / ch2_intens };
+
+	double total_sum = 1;
+
+	localSubtractSquaredValue(total_sum, ch1_norm[0] - ch2_norm[0]);
+	localSubtractSquaredValue(total_sum, ch1_norm[1] - ch2_norm[1]);
+	localSubtractSquaredValue(total_sum, ch1_norm[2] - ch2_norm[2]);
+
+
+	//if(total_sum < 0) {
+	//	total_sum = 0;
+	//}
+
+	return total_sum * 3;
+}
+
 double GetRSS_Score(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2) {
 	//const double max_intens = 65025;
 	const double max_intens = 35512.5;
