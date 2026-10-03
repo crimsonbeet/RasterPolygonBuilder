@@ -481,12 +481,14 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 			}
 			fscore /= fscore_count;
 
-			double fDiffScore = 0;
-			fDiffScore += GetFScore(crop.at<cv::Vec<uchar, 3>>(0, i_1), strip2search.at<cv::Vec<uchar, 3>>(crop.rows - 1, j_1));
-			fDiffScore += GetNormalizedDiff_Score(crop.at<cv::Vec<uchar, 3>>(0, i_1), strip2search.at<cv::Vec<uchar, 3>>(crop.rows - 1, j_1));
-			fDiffScore /= 2;
-			fDiffScore = std::abs(fscore - fDiffScore);
-			double adjFscore = (1 + fDiffScore) * scoreWeight * (score_pivot - fscore);// -1;
+			double fDiffScore[2] = {0, 0};
+			fDiffScore[0] += GetFScore(crop.at<cv::Vec<uchar, 3>>(0, i_1), strip2search.at<cv::Vec<uchar, 3>>(crop.rows - 1, j_1));
+			fDiffScore[0] += GetNormalizedDiff_Score(crop.at<cv::Vec<uchar, 3>>(0, i_1), strip2search.at<cv::Vec<uchar, 3>>(crop.rows - 1, j_1));
+			fDiffScore[0] /= 2;
+			fDiffScore[1] += GetFScore(crop.at<cv::Vec<uchar, 3>>(crop.rows - 1, i_1), strip2search.at<cv::Vec<uchar, 3>>(0, j_1));
+			fDiffScore[1] += GetNormalizedDiff_Score(crop.at<cv::Vec<uchar, 3>>(crop.rows - 1, i_1), strip2search.at<cv::Vec<uchar, 3>>(0, j_1));
+			fDiffScore[1] /= 2;
+			double adjFscore = (1 + std::abs(fscore - std::min(fDiffScore[0], fDiffScore[1]))) * scoreWeight * (score_pivot - fscore);// -1;
 			//if(adjFscore < 0) {
 			//	adjFscore = 0;
 			//}	
@@ -514,7 +516,7 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 
 			AF[i][j] = fscore;
 			//AAF[i][j] = adjFscore;
-			AAF[i][j] = fDiffScore;
+			AAF[i][j] = std::abs(fscore - std::min(fDiffScore[0], fDiffScore[1]));
 
 			int64_t case1Cost = A[i_1][j_1] + gapCost * adjFscore + 0.45; /*gapCost + */
 			int64_t case2Cost = A[i_1][j] + gapCost;
