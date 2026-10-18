@@ -1167,8 +1167,13 @@ template<typename T>
 void WhiteBalance(Mat& image, double whiteFactor[3]);
 
 double GetFScore(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2);
+double GetLogFScore(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2);
+double GetGammaFScore(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2);
+
 double GetEScore(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2); // max value 3; min value 0;
+
 double GetNormalizedDiff_Score(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2);
+
 double GetRSS_Score(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2);
 double GetSkewRSS_Score(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2);
 

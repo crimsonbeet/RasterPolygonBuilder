@@ -71,29 +71,58 @@ void RGB_TO_HSV(Vec<uchar, 3> rgb, double hsv[3], const double maxMinThreshold) 
 	hsv[2] = chMax;
 }
 
-double GetFScore(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2) {
-	//double fscore = 3;
+inline double linearToSrgb(double linear) {
+	if(linear <= 0.0031308f) {
+		return linear * 12.92f;
+	}
+	else {
+		return 1.055f * std::pow(linear, 1.0f / 2.4f) - 0.055f;
+	}
+}
+
+double GetLogFScore(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2) {
+	double fscore = 0;
+	for(int j = 0; j < 3; ++j) {
+		if(ch1[j] > 0 && ch2[j] > 0) {
+			double a = approx_log2(ch1[j]);
+			double b = approx_log2(ch2[j]);
+
+			const double div = a * a + b * b;
+			const double num = a * b;
+
+			fscore += (2.0 * num) / div;
+		}
+	}
+	return fscore;
+}
+
+double GetGammaFScore(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2) {
 	double fscore = 0;
 	for (int j = 0; j < 3; ++j) {
 		if (ch1[j] > 0 && ch2[j] > 0) {
-			const double a = ch1[j];
-			const double b = ch2[j];
+			double a = linearToSrgb(ch1[j] / 255.0);
+			double b = linearToSrgb(ch2[j] / 255.0);
+
 			const double div = a*a + b*b;
 			const double num = a*b;
-			if(div > 1) {
-				//fscore += pow2((2.0 * num) / div);
-				fscore += (2.0 * num) / div;
-			}
-			//if (div > 20 && num > 10) {
-			//	fscore *= (2.0 * num) / div;
-			//}
-			//else {
-			//	fscore *= 0.01;
-			//}
+
+			fscore += (2.0 * num) / div;
 		}
 	}
-	if (isnan(fscore)) {
-		fscore = 3;
+	return fscore;
+}
+
+double GetFScore(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2) {
+	double fscore = 0;
+	for(int j = 0; j < 3; ++j) {
+		int a = ch1[j];
+		int b = ch2[j];
+		if(a > 0 && b > 0) {
+			const double div = a * a + b * b;
+			const double num = a * b;
+
+			fscore += (2.0 * num) / div;
+		}
 	}
 	return fscore;
 }
@@ -147,8 +176,8 @@ double GetEScore(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2) {
 			//e[j] = lookup_log2_64_log2_1_v_5(p + 1);
 
 			const double p = (std::min(a, b) / div); // in 0..1
-			//e[j] = lookup_p_log2_64_log2_1_v_5(p);
-			e[j] = p * p * 1.2 - 0.2;
+			e[j] = lookup_p_log2_64_log2_1_v_5(p);
+			//e[j] = p * p * 1.2 - 0.2;
 		}
 		else {
 			e[j] = 0;
@@ -162,7 +191,8 @@ double GetEScore(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2) {
 	if (isnan(escore)) {
 		escore = 0;
 	}
-	return escore;
+	escore = (escore + 1) / 2; // normalize to 0..1
+	return 3*escore;
 }
 
 /*
@@ -249,16 +279,15 @@ np.array([1,-1]) @ B @ np.array([1,-1]).T
 
 */
 
-inline void localSubtractSquaredValue(double& total, const double sub) {
-	total -= sub * sub;
-}
+#define localSubtractSquaredValue(total, sub) total -= (sub) * (sub)
+
 
 double GetNormalizedDiff_Score(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2) {
-	//const double max_intens = 65025;
-	const double max_intens = 35512.5;
 
-	const double ch1_intens = sqrt(ch1[0] * ch1[0] + ch1[1] * ch1[1] + ch1[2] * ch1[2]);
-	const double ch2_intens = sqrt(ch2[0] * ch2[0] + ch2[1] * ch2[1] + ch2[2] * ch2[2]);
+	const double ch1_intensSQ = (ch1[0] * ch1[0] + ch1[1] * ch1[1] + ch1[2] * ch1[2]);
+	const double ch2_intensSQ = (ch2[0] * ch2[0] + ch2[1] * ch2[1] + ch2[2] * ch2[2]);
+	const double ch1_intens = sqrt(ch1_intensSQ);
+	const double ch2_intens = sqrt(ch2_intensSQ);
 
 	const double ch1_norm[3] = { ch1[0] / ch1_intens, ch1[1] / ch1_intens, ch1[2] / ch1_intens };
 	const double ch2_norm[3] = { ch2[0] / ch2_intens, ch2[1] / ch2_intens, ch2[2] / ch2_intens };
@@ -270,16 +299,16 @@ double GetNormalizedDiff_Score(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar
 	localSubtractSquaredValue(total_sum, ch1_norm[2] - ch2_norm[2]);
 
 
-	//if(total_sum < 0) {
-	//	total_sum = 0;
-	//}
+	double fscore = (2.0 * ch1_intens * ch2_intens) / (ch1_intensSQ + ch2_intensSQ);
 
-	return total_sum * 3;
+
+
+	return (total_sum + fscore) * 3.0 / 2.0;
 }
 
 double GetRSS_Score(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2) {
-	//const double max_intens = 65025;
-	const double max_intens = 35512.5;
+	const double max_intens = 65025;
+	//const double max_intens = 35512.5;
 
 	double si[3] = { ch1[0] - ch2[0], ch1[1] - ch2[1], ch1[2] - ch2[2] };
 
@@ -294,7 +323,7 @@ double GetRSS_Score(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2) 
 	localSubtractSquaredValue(total_sum, si[1] - 2.0 * si[0] + si[2]);
 
 	total_sum += 6 * max_intens;
-	total_sum /= max_intens * 2;
+	total_sum /= 2 * max_intens;
 
 	if(total_sum > 3) {
 		total_sum = 3;

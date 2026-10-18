@@ -429,7 +429,7 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 
 	constexpr int gapCost = 1000000;
 	constexpr double scoreWeight = 4.0;// 1;// 4;
-	constexpr double score_pivot = 2.4;// 0.87;// 1.5;// 3.0;// 2.9;// 2.8;// 2.2;// 0.25;//
+	constexpr double score_pivot = 3.0;// 2.95;//1.5;// 0.87;// 2.4;// 2.8;// 2.2;// 0.25;//
 
 	/*
 	* higher score_pivot means more strict matching, less tolerance for misalignment
@@ -440,14 +440,14 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 	const int nm = M;
 	const int ni = 1;
 
-	for(int i = ni; i < nm; ++i) {
-		const int i_1 = i - 1;
+	for(int j = 1; j < N; ++j) {
+		const int j_1 = j - 1;
 
 		//int nm = std::min(j + bandWidth, M);
 		//int ni = std::max(nm - bandWidth * 2, 1);
 
-		for(int j = 1; j < N; ++j) {
-			const int j_1 = j - 1;
+		for(int i = ni; i < nm; ++i) {
+			const int i_1 = i - 1;
 
 			//const double X_abs_i_1 = std::abs(double(X - i_1));
 			//const double log2_X_i = approx_log2(X_abs_i_1 < 1 ? 1 : X_abs_i_1); // 0 - at the center of crop, log2_X, ~5, at the ends of crop
@@ -467,9 +467,9 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 					if(j_c < 0 || j_c >= N1) {
 						continue;
 					}
-					fscore += GetFScore(crop.at<cv::Vec<uchar, 3>>(r, i_c), strip2search.at<cv::Vec<uchar, 3>>(r, j_c));
-					++fscore_count;
-					//fscore += GetEScore(crop.at<cv::Vec<uchar, 3>>(r, i_c), strip2search.at<cv::Vec<uchar, 3>>(r, j_c));
+					//fscore += GetFScore(crop.at<cv::Vec<uchar, 3>>(r, i_c), strip2search.at<cv::Vec<uchar, 3>>(r, j_c));
+					//++fscore_count;
+					//fscore += GetGammaFScore(crop.at<cv::Vec<uchar, 3>>(r, i_c), strip2search.at<cv::Vec<uchar, 3>>(r, j_c));
 					//++fscore_count;
 					fscore += GetNormalizedDiff_Score(crop.at<cv::Vec<uchar, 3>>(r, i_c), strip2search.at<cv::Vec<uchar, 3>>(r, j_c));
 					++fscore_count;
@@ -482,12 +482,16 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 			fscore /= fscore_count;
 
 			double fDiffScore[2] = {0, 0};
-			fDiffScore[0] += GetFScore(crop.at<cv::Vec<uchar, 3>>(0, i_1), strip2search.at<cv::Vec<uchar, 3>>(crop.rows - 1, j_1));
+			//fDiffScore[0] += GetFScore(crop.at<cv::Vec<uchar, 3>>(0, i_1), strip2search.at<cv::Vec<uchar, 3>>(crop.rows - 1, j_1));
+			//fDiffScore[0] += GetGammaFScore(crop.at<cv::Vec<uchar, 3>>(0, i_1), strip2search.at<cv::Vec<uchar, 3>>(crop.rows - 1, j_1));
 			fDiffScore[0] += GetNormalizedDiff_Score(crop.at<cv::Vec<uchar, 3>>(0, i_1), strip2search.at<cv::Vec<uchar, 3>>(crop.rows - 1, j_1));
-			fDiffScore[0] /= 2;
-			fDiffScore[1] += GetFScore(crop.at<cv::Vec<uchar, 3>>(crop.rows - 1, i_1), strip2search.at<cv::Vec<uchar, 3>>(0, j_1));
+			//fDiffScore[0] += GetRSS_Score(crop.at<cv::Vec<uchar, 3>>(0, i_1), strip2search.at<cv::Vec<uchar, 3>>(crop.rows - 1, j_1));
+			//fDiffScore[0] /= 2;
+			//fDiffScore[1] += GetFScore(crop.at<cv::Vec<uchar, 3>>(crop.rows - 1, i_1), strip2search.at<cv::Vec<uchar, 3>>(0, j_1));
+			//fDiffScore[1] += GetGammaFScore(crop.at<cv::Vec<uchar, 3>>(crop.rows - 1, i_1), strip2search.at<cv::Vec<uchar, 3>>(0, j_1));
 			fDiffScore[1] += GetNormalizedDiff_Score(crop.at<cv::Vec<uchar, 3>>(crop.rows - 1, i_1), strip2search.at<cv::Vec<uchar, 3>>(0, j_1));
-			fDiffScore[1] /= 2;
+			//fDiffScore[1] += GetRSS_Score(crop.at<cv::Vec<uchar, 3>>(crop.rows - 1, i_1), strip2search.at<cv::Vec<uchar, 3>>(0, j_1));
+			//fDiffScore[1] /= 2;
 
 			fDiffScore[0] = std::abs(fscore - fDiffScore[0]);
 			fDiffScore[1] = std::abs(fscore - fDiffScore[1]);
@@ -525,9 +529,11 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 			AF[i][j] = fscore;
 			//AAF[i][j] = adjFscore;
 
-			int64_t case1Cost = A[i_1][j_1] + gapCost * adjFscore + 0.45; /*gapCost + */
-			int64_t case2Cost = A[i_1][j] + gapCost;
-			int64_t case3Cost = A[i][j_1] + gapCost;
+			int64_t case1Cost = A[i_1][j_1] + gapCost * adjFscore + 0.45;
+			int64_t case2Cost = A[i_1][j] + (T[i_1][j] == 1 ? gapCost : gapCost / 2);
+			int64_t case3Cost = A[i][j_1] + (T[i][j_1] == 1 ? gapCost : gapCost / 2);
+			//int64_t case2Cost = A[i_1][j] + (T[i_1][j] == 1 ? gapCost : T[i_1][j] == 2 ? gapCost / 4 : gapCost / 2);
+			//int64_t case3Cost = A[i][j_1] + (T[i][j_1] == 1 ? gapCost : T[i][j_1] == 3 ? gapCost / 4 : gapCost / 2);
 			if(case2Cost < case3Cost) {
 				if(case1Cost < case2Cost/* && fscore > score_pivot*/) {
 					T[i][j] = 1;
@@ -584,7 +590,7 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 		disps[m - 1] = n - 1;
 		costs[m - 1] = caseCost;
 
-		double Y = 0; // yet unknown
+		double Y = -1; // yet unknown
 
 		double fscore = AF[m][n];
 		int fscore_count = 1;
@@ -617,12 +623,11 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 			if(caseType == 1) {
 				disps[m - 1] = n - 1;
 				costs[m - 1] = caseCost;
-			}
 
-
-			if(m == X) {
-				Y = n - 1;
-				resultCost = caseCost;
+				if(m == X) {
+					Y = n - 1;
+					resultCost = caseCost;
+				}
 			}
 		}
 
@@ -5542,14 +5547,14 @@ void DisparityAlgorithm(DisparityAlgorithmControl& run_ctl) {
 		//cv::Scalar strip2searchMean = cv::mean(strip2search);
 		//double seedReference[3];
 		//BuildIdealChannels_Likeness(crop, cv::Point(halfWidth, blurHeight / 2), seedReference, blurHeight / 2);
-		//double cropFactor[3];
+		////double cropFactor[3];
 		//double strip2searchFactor[3];
 		//for (int j = 0; j < 3; ++j) {
-		//	cropFactor[j] = cropMean(j) / std::max(seedReference[j], 1.0);
+		//	//cropFactor[j] = cropMean(j) / std::max(seedReference[j], 1.0);
 		//	strip2searchFactor[j] = strip2searchMean(j) / std::max(seedReference[j], 1.0);
 		//}
 
-		//WhiteBalance<uchar>(crop, cropFactor);
+		////WhiteBalance<uchar>(crop, cropFactor);
 		//WhiteBalance<uchar>(strip2search, strip2searchFactor);
 
 		////NormalizeColoredImage_RSS(crop);
@@ -5575,31 +5580,35 @@ void DisparityAlgorithm(DisparityAlgorithmControl& run_ctl) {
 	it.disps = disps;
 	it.costs = costs;
 
-	if(it.pos == 0) {
-		it.pos = stripWidth - 1;
-	}
+	if(it.pos >= 0) {
+		//if(it.pos == 0) {
+		//	it.pos = stripWidth - 1;
+		//}
+
+		/*
+		 * flip ancor offsets pivoting on pt.x
+		 */
+		 //stripAncorOffset = stripWidth - stripAncorOffset;
+		 //ancorOffset = halfWidth * 2 - ancorOffset;
 
 
-	/*
-	 * flip ancor offsets pivoting on pt.x
-	 */
-	//stripAncorOffset = stripWidth - stripAncorOffset;
-	//ancorOffset = halfWidth * 2 - ancorOffset;
+		stripAncorOffset = it.resPoint.x - (pt.x - ancorOffset) + halfWidth;
+		stripWidth = halfWidth * 4;
 
-	
-	stripAncorOffset = it.resPoint.x - (pt.x - ancorOffset) + halfWidth;
-	stripWidth = halfWidth * 4;
+		//while (stripAncorOffset < 0) {
+		//	stripAncorOffset += halfWidth;
+		//	stripWidth += halfWidth;
+		//}
 
-	//while (stripAncorOffset < 0) {
-	//	stripAncorOffset += halfWidth;
-	//	stripWidth += halfWidth;
-	//}
-
-	if(ctl.mapResultPoint) {
-		it.mapPoint = disparityAlgorithm_internal(it.resPoint, aux2, aux, it.crop_buffer[1], it.strip2search_buffer[1], it.mapResultCost);
+		if(ctl.mapResultPoint) {
+			it.mapPoint = disparityAlgorithm_internal(it.resPoint, aux2, aux, it.crop_buffer[1], it.strip2search_buffer[1], it.mapResultCost);
+		}
+		else {
+			it.mapPoint = pt;
+		}
 	}
 	else {
-		it.mapPoint = pt;
+		it.mapPoint = cv::Point(-1, -1);
 	}
 
 	if(it.mapPoint != cv::Point(-1, -1)) {
@@ -5858,7 +5867,7 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 			unchangedImage = cv_image[2].clone();
 			finalContoursImage = cv_image[2 + targetWindow].clone();
 
-			cv::circle(finalContoursImage, detectedPoint, 10, cv::Scalar(0, 255, 0), -1);
+			cv::circle(finalContoursImage, detectedPoint, 7, cv::Scalar(0, 255, 0), -1);
 
 			g_imageSize = undistorted[0].size();
 
@@ -6050,9 +6059,27 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 
 
 
-					cv::line(crop, cv::Point(best_it.ancorOffset, 0), cv::Point(best_it.ancorOffset, crop.rows - 1), cv::Scalar(0, 255, 0));
-					cv::line(strip2search, cv::Point(best_it.pos, 0), cv::Point(best_it.pos, strip2search.rows - 1), cv::Scalar(0, 255, 0));
+					cv::line(crop, cv::Point(best_it.ancorOffset, 0), cv::Point(best_it.ancorOffset, crop.rows - 1), cv::Scalar(128, 0, 128));
+					cv::line(strip2search, cv::Point(best_it.pos, 0), cv::Point(best_it.pos, strip2search.rows - 1), cv::Scalar(128, 0, 128));
 
+					cv::Vec3b colors[7] = {
+						/*blue*/cv::Vec3b(255, 0, 0), /*magenta*/cv::Vec3b(255, 0, 255), 
+						/*green*/cv::Vec3b(0, 255, 0), /*yellow*/cv::Vec3b(0, 255, 255), 
+						/*red*/cv::Vec3b(0, 0, 255), /*orange*/cv::Vec3b(0, 165, 255),
+						/*purple*/cv::Vec3b(128, 0, 128)
+					};
+
+					int x = -1;
+					for(auto pos : best_it.disps) {
+						++x;
+
+						if(pos < 0) {
+							continue;
+						}
+
+						crop.at<cv::Vec3b>(cv::Point(x, crop.rows / 2)) = colors[x % ARRAY_NUM_ELEMENTS(colors)];
+						strip2search.at<cv::Vec3b>(cv::Point(pos, strip2search.rows / 2)) = colors[x % ARRAY_NUM_ELEMENTS(colors)];
+					}
 					break;
 				}
 				else
@@ -6142,6 +6169,7 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 
 							cv_points[selectedWindow].resize(1);
 							cv_points[selectedWindow][0].x = best_it.mapPoint.x + x;
+							//cv_points[selectedWindow][0].x = x;
 							cv_points[selectedWindow][0].y = best_it.mapPoint.y;
 
 							cv_points[targetWindow].resize(1);

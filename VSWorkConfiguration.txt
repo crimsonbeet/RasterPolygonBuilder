@@ -10,7 +10,7 @@ PercentMaxintensity=0.1333 DistanceToTarget=4 VersionNumber=11 SupervisedLoG=0 V
 SaveAll=1 
 TwoStepCalibration=1 
 MinImages=11 
-MinRMSEImages=50 
+MinRMSEImages=10 
 PatternIsChessBoard=1 
 MaxBoxsizePixels=25 
 CalibMinConfidence=0.4 
