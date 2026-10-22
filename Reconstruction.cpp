@@ -482,19 +482,19 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 			fscore /= fscore_count;
 
 			double fDiffScore[2] = {0, 0};
-			//fDiffScore[0] += GetFScore(crop.at<cv::Vec<uchar, 3>>(0, i_1), strip2search.at<cv::Vec<uchar, 3>>(crop.rows - 1, j_1));
-			//fDiffScore[0] += GetGammaFScore(crop.at<cv::Vec<uchar, 3>>(0, i_1), strip2search.at<cv::Vec<uchar, 3>>(crop.rows - 1, j_1));
-			fDiffScore[0] += GetNormalizedDiff_Score(crop.at<cv::Vec<uchar, 3>>(0, i_1), strip2search.at<cv::Vec<uchar, 3>>(crop.rows - 1, j_1));
-			//fDiffScore[0] += GetRSS_Score(crop.at<cv::Vec<uchar, 3>>(0, i_1), strip2search.at<cv::Vec<uchar, 3>>(crop.rows - 1, j_1));
-			//fDiffScore[0] /= 2;
-			//fDiffScore[1] += GetFScore(crop.at<cv::Vec<uchar, 3>>(crop.rows - 1, i_1), strip2search.at<cv::Vec<uchar, 3>>(0, j_1));
-			//fDiffScore[1] += GetGammaFScore(crop.at<cv::Vec<uchar, 3>>(crop.rows - 1, i_1), strip2search.at<cv::Vec<uchar, 3>>(0, j_1));
-			fDiffScore[1] += GetNormalizedDiff_Score(crop.at<cv::Vec<uchar, 3>>(crop.rows - 1, i_1), strip2search.at<cv::Vec<uchar, 3>>(0, j_1));
-			//fDiffScore[1] += GetRSS_Score(crop.at<cv::Vec<uchar, 3>>(crop.rows - 1, i_1), strip2search.at<cv::Vec<uchar, 3>>(0, j_1));
-			//fDiffScore[1] /= 2;
+			////fDiffScore[0] += GetFScore(crop.at<cv::Vec<uchar, 3>>(0, i_1), strip2search.at<cv::Vec<uchar, 3>>(crop.rows - 1, j_1));
+			////fDiffScore[0] += GetGammaFScore(crop.at<cv::Vec<uchar, 3>>(0, i_1), strip2search.at<cv::Vec<uchar, 3>>(crop.rows - 1, j_1));
+			//fDiffScore[0] += GetNormalizedDiff_Score(crop.at<cv::Vec<uchar, 3>>(0, i_1), strip2search.at<cv::Vec<uchar, 3>>(crop.rows - 1, j_1));
+			////fDiffScore[0] += GetRSS_Score(crop.at<cv::Vec<uchar, 3>>(0, i_1), strip2search.at<cv::Vec<uchar, 3>>(crop.rows - 1, j_1));
+			////fDiffScore[0] /= 2;
+			////fDiffScore[1] += GetFScore(crop.at<cv::Vec<uchar, 3>>(crop.rows - 1, i_1), strip2search.at<cv::Vec<uchar, 3>>(0, j_1));
+			////fDiffScore[1] += GetGammaFScore(crop.at<cv::Vec<uchar, 3>>(crop.rows - 1, i_1), strip2search.at<cv::Vec<uchar, 3>>(0, j_1));
+			//fDiffScore[1] += GetNormalizedDiff_Score(crop.at<cv::Vec<uchar, 3>>(crop.rows - 1, i_1), strip2search.at<cv::Vec<uchar, 3>>(0, j_1));
+			////fDiffScore[1] += GetRSS_Score(crop.at<cv::Vec<uchar, 3>>(crop.rows - 1, i_1), strip2search.at<cv::Vec<uchar, 3>>(0, j_1));
+			////fDiffScore[1] /= 2;
 
-			fDiffScore[0] = std::abs(fscore - fDiffScore[0]);
-			fDiffScore[1] = std::abs(fscore - fDiffScore[1]);
+			//fDiffScore[0] = std::abs(fscore - fDiffScore[0]);
+			//fDiffScore[1] = std::abs(fscore - fDiffScore[1]);
 			double adjFscore = (1 + std::max(fDiffScore[0], fDiffScore[1])) * scoreWeight * (score_pivot - fscore);// -1;
 
 			AAF[i][j] = std::max(fDiffScore[0], fDiffScore[1]);
@@ -617,16 +617,15 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 			}
 
 
-			fscore += AF[m][n];
-			++fscore_count;
-
 			if(caseType == 1) {
 				disps[m - 1] = n - 1;
 				costs[m - 1] = caseCost;
 
+				fscore += AF[m][n];
+				++fscore_count;
+
 				if(m == X) {
 					Y = n - 1;
-					resultCost = caseCost;
 				}
 			}
 		}
@@ -5389,6 +5388,8 @@ struct CalculateDisparityControl {
 	int bandWidth = -1;
 	int blurHeight; // 7
 
+	int y_drift = 0; // vertical drift of the search strip
+
 	int number_of_passes = 5;
 	int number_of_iterations = 1;
 
@@ -5526,7 +5527,7 @@ void DisparityAlgorithm(DisparityAlgorithmControl& run_ctl) {
 		//cv::Rect -> x≤pt.x<x+width, y≤pt.y<y+height
 
 		cropRect = cv::Rect(pt0.x - ancorOffset, pt0.y - blurHeight / 2, 2 * halfWidth + 1, blurHeight);
-		strip2searchRect = cv::Rect(pt0.x - stripAncorOffset, pt0.y - blurHeight / 2, stripWidth, blurHeight);
+		strip2searchRect = cv::Rect(pt0.x - stripAncorOffset, pt0.y - blurHeight / 2 + ctl.y_drift, stripWidth, blurHeight);
 
 		checkRectangle(cropRect, ancorOffset);
 		checkRectangle(strip2searchRect, stripAncorOffset);
@@ -6003,6 +6004,8 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 
 					disp_calc_ctl.number_of_iterations = 1;
 					disp_calc_ctl.number_of_passes = 3;// 2;// 5;
+
+					disp_calc_ctl.y_drift = -1;
 					
 					//disp_calc_ctl.createTraceFile = true;
 

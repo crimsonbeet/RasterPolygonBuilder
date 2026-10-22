@@ -300,10 +300,15 @@ double GetNormalizedDiff_Score(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar
 
 
 	double fscore = (2.0 * ch1_intens * ch2_intens) / (ch1_intensSQ + ch2_intensSQ);
+	fscore = approx_log2(fscore * 7 + 1);
+	// the result is:
+	// fscore ~= 3 when intens are equal
+	// fscore ~= 0 when the intens are at extreme ends.
+	// logathmic scale favors the similar intensities, especially the case when there is a small shade.
 
 
 
-	return (total_sum + fscore) * 3.0 / 2.0;
+	return total_sum * fscore;
 }
 
 double GetRSS_Score(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2) {
