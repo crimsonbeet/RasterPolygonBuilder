@@ -284,27 +284,38 @@ np.array([1,-1]) @ B @ np.array([1,-1]).T
 
 double GetNormalizedDiff_Score(const cv::Vec<uchar, 3>& ch1, const cv::Vec<uchar, 3>& ch2) {
 
-	const double ch1_intensSQ = (ch1[0] * ch1[0] + ch1[1] * ch1[1] + ch1[2] * ch1[2]);
-	const double ch2_intensSQ = (ch2[0] * ch2[0] + ch2[1] * ch2[1] + ch2[2] * ch2[2]);
-	const double ch1_intens = sqrt(ch1_intensSQ);
-	const double ch2_intens = sqrt(ch2_intensSQ);
+	const auto ch1_intensSQ = double((int)ch1[0] * ch1[0] + (int)ch1[1] * ch1[1] + (int)ch1[2] * ch1[2]);
+	const auto ch2_intensSQ = double((int)ch2[0] * ch2[0] + (int)ch2[1] * ch2[1] + (int)ch2[2] * ch2[2]);
+	const auto ch1_intens = sqrt(ch1_intensSQ);
+	const auto ch2_intens = sqrt(ch2_intensSQ);
 
-	const double ch1_norm[3] = { ch1[0] / ch1_intens, ch1[1] / ch1_intens, ch1[2] / ch1_intens };
-	const double ch2_norm[3] = { ch2[0] / ch2_intens, ch2[1] / ch2_intens, ch2[2] / ch2_intens };
+	//const double ch1_norm[3] = { ch1[0] / ch1_intens, ch1[1] / ch1_intens, ch1[2] / ch1_intens };
+	//const double ch2_norm[3] = { ch2[0] / ch2_intens, ch2[1] / ch2_intens, ch2[2] / ch2_intens };
+	const auto ch1_norm_0 = ch1[0] / ch1_intens, ch1_norm_1 = ch1[1] / ch1_intens, ch1_norm_2 = ch1[2] / ch1_intens;
+	const auto ch2_norm_0 = ch2[0] / ch2_intens, ch2_norm_1 = ch2[1] / ch2_intens, ch2_norm_2 = ch2[2] / ch2_intens;
 
-	double total_sum = 1;
+	auto total_sum = 1.618;
 
-	localSubtractSquaredValue(total_sum, ch1_norm[0] - ch2_norm[0]);
-	localSubtractSquaredValue(total_sum, ch1_norm[1] - ch2_norm[1]);
-	localSubtractSquaredValue(total_sum, ch1_norm[2] - ch2_norm[2]);
+	localSubtractSquaredValue(total_sum, ch1_norm_0 - ch2_norm_0);
+	localSubtractSquaredValue(total_sum, ch1_norm_1 - ch2_norm_1);
+	localSubtractSquaredValue(total_sum, ch1_norm_2 - ch2_norm_2);
+
+	total_sum /= 1.618;
+
+	if(total_sum < 0) {
+		total_sum = 0;
+	}
+	else {
+		total_sum = sqrt(total_sum);
+	}
 
 
-	double fscore = (2.0 * ch1_intens * ch2_intens) / (ch1_intensSQ + ch2_intensSQ);
+	auto fscore = (2.0 * ch1_intens * ch2_intens) / (ch1_intensSQ + ch2_intensSQ);
 	fscore = approx_log2(fscore * 7 + 1);
 	// the result is:
 	// fscore ~= 3 when intens are equal
 	// fscore ~= 0 when the intens are at extreme ends.
-	// logathmic scale favors the similar intensities, especially the case when there is a small shade.
+	// logarithmic scale favors the similar intensities, i.e. when the shade is small.
 
 
 

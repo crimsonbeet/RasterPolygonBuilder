@@ -361,7 +361,7 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 	const int M1 = cropIn.cols;
 	const int N1 = strip2searchIn.cols;
 
-	std::vector<std::vector<int64_t>> A(M); // M rows
+	std::vector<std::vector<double>> A(M); // M rows
 	std::vector<std::vector<double>> AF(M); // M rows, matrix of scores
 	std::vector<std::vector<double>> AAF(M); // M rows, matrix of adjusted scores
 	for(auto& v : A) {
@@ -428,7 +428,7 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 	resultCost = std::numeric_limits<int64_t>::max();
 
 	constexpr int gapCost = 1000000;
-	constexpr double scoreWeight = 4.0;// 1;// 4;
+	constexpr double scoreWeight = 5.0;// 1;// 4;
 	constexpr double score_pivot = 3.0;// 2.95;//1.5;// 0.87;// 2.4;// 2.8;// 2.2;// 0.25;//
 
 	/*
@@ -439,6 +439,8 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 
 	const int nm = M;
 	const int ni = 1;
+
+	double pixFscore[20];
 
 	for(int j = 1; j < N; ++j) {
 		const int j_1 = j - 1;
@@ -456,84 +458,49 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 			double fscore = 0;
 			int fscore_count = 0;
 			for(int r = 1; r < (crop.rows-1); ++r) {
-			//for(int r = 0; r < crop.rows; ++r) {
-				//for(int c = -1; c < 1; ++c) {
-				for(int c = 0; c < 1; ++c) {
-					const int i_c = i_1 + c;
-					if(i_c < 0 || i_c >= M1) {
-						continue;
-					}
-					const int j_c = j_1 + c;
-					if(j_c < 0 || j_c >= N1) {
-						continue;
-					}
-					//fscore += GetFScore(crop.at<cv::Vec<uchar, 3>>(r, i_c), strip2search.at<cv::Vec<uchar, 3>>(r, j_c));
-					//++fscore_count;
-					//fscore += GetGammaFScore(crop.at<cv::Vec<uchar, 3>>(r, i_c), strip2search.at<cv::Vec<uchar, 3>>(r, j_c));
-					//++fscore_count;
-					fscore += GetNormalizedDiff_Score(crop.at<cv::Vec<uchar, 3>>(r, i_c), strip2search.at<cv::Vec<uchar, 3>>(r, j_c));
-					++fscore_count;
-					//fscore += GetRSS_Score(crop.at<cv::Vec<uchar, 3>>(r, i_c), strip2search.at<cv::Vec<uchar, 3>>(r, j_c));
-					//++fscore_count;
-					//fscore += GetSkewRSS_Score(crop.at<cv::Vec<uchar, 3>>(r, i_c), strip2search.at<cv::Vec<uchar, 3>>(r, j_c));
-					//++fscore_count;
-				}
+				fscore += pixFscore[fscore_count] = GetNormalizedDiff_Score(crop.at<cv::Vec<uchar, 3>>(r, i_1), strip2search.at<cv::Vec<uchar, 3>>(r, j_1));
+				++fscore_count;
 			}
 			fscore /= fscore_count;
 
-			double fDiffScore[2] = {0, 0};
-			////fDiffScore[0] += GetFScore(crop.at<cv::Vec<uchar, 3>>(0, i_1), strip2search.at<cv::Vec<uchar, 3>>(crop.rows - 1, j_1));
-			////fDiffScore[0] += GetGammaFScore(crop.at<cv::Vec<uchar, 3>>(0, i_1), strip2search.at<cv::Vec<uchar, 3>>(crop.rows - 1, j_1));
-			//fDiffScore[0] += GetNormalizedDiff_Score(crop.at<cv::Vec<uchar, 3>>(0, i_1), strip2search.at<cv::Vec<uchar, 3>>(crop.rows - 1, j_1));
-			////fDiffScore[0] += GetRSS_Score(crop.at<cv::Vec<uchar, 3>>(0, i_1), strip2search.at<cv::Vec<uchar, 3>>(crop.rows - 1, j_1));
-			////fDiffScore[0] /= 2;
-			////fDiffScore[1] += GetFScore(crop.at<cv::Vec<uchar, 3>>(crop.rows - 1, i_1), strip2search.at<cv::Vec<uchar, 3>>(0, j_1));
-			////fDiffScore[1] += GetGammaFScore(crop.at<cv::Vec<uchar, 3>>(crop.rows - 1, i_1), strip2search.at<cv::Vec<uchar, 3>>(0, j_1));
-			//fDiffScore[1] += GetNormalizedDiff_Score(crop.at<cv::Vec<uchar, 3>>(crop.rows - 1, i_1), strip2search.at<cv::Vec<uchar, 3>>(0, j_1));
-			////fDiffScore[1] += GetRSS_Score(crop.at<cv::Vec<uchar, 3>>(crop.rows - 1, i_1), strip2search.at<cv::Vec<uchar, 3>>(0, j_1));
-			////fDiffScore[1] /= 2;
 
-			//fDiffScore[0] = std::abs(fscore - fDiffScore[0]);
-			//fDiffScore[1] = std::abs(fscore - fDiffScore[1]);
-			double adjFscore = (1 + std::max(fDiffScore[0], fDiffScore[1])) * scoreWeight * (score_pivot - fscore);// -1;
+			double fscoresigma = 0;
 
-			AAF[i][j] = std::max(fDiffScore[0], fDiffScore[1]);
-
-			//double adjFscore = (1 + std::abs(fscore - std::min(fDiffScore[0], fDiffScore[1])))* scoreWeight* (score_pivot - fscore);// -1;
-			//AAF[i][j] = std::abs(fscore - std::min(fDiffScore[0], fDiffScore[1]));
-			////if(adjFscore < 0) {
-			////	adjFscore = 0;
-			////}	
-
-			//if(score_pivot == 1.5) {
-			////	if(adjFscore > 0) {
-			////		adjFscore = std::atan(adjFscore);
-			////	}
-			////	else {
-			////		adjFscore = -std::atan(-adjFscore);
-			////	}
-			//	if(adjFscore > M_PI / 2) {
-			//		adjFscore = M_PI / 2;
+			
+			//for (int k = 0; k < fscore_count; ++k) {
+			//	auto diff = (fscore - pixFscore[k]) / score_pivot;
+			//	if(diff > 0) {
+			//		fscoresigma += std::pow(diff, 2);
 			//	}
-			//	else
-			//	if(adjFscore < -M_PI / 2) {
-			//		adjFscore = -M_PI / 2;
-			//	}
-			//	adjFscore = std::tan(adjFscore);
 			//}
+			//fscoresigma /= fscore_count;
 
-			//if(std::abs(adjFscore) > 4) {
-			//	adjFscore = 4 * (std::signbit(adjFscore) ? -1 : 1);
-			//}
+			//fscoresigma = std::sqrt(fscoresigma);
+
+			
+			double fDiffScore[2];
+			fDiffScore[0] = GetNormalizedDiff_Score(crop.at<cv::Vec<uchar, 3>>(0, i_1), strip2search.at<cv::Vec<uchar, 3>>(crop.rows - 1, j_1));
+			fDiffScore[1] = GetNormalizedDiff_Score(crop.at<cv::Vec<uchar, 3>>(crop.rows - 1, i_1), strip2search.at<cv::Vec<uchar, 3>>(0, j_1));
+
+			fDiffScore[0] = std::abs(fscore - fDiffScore[0]);
+			fDiffScore[1] = std::abs(fscore - fDiffScore[1]);
+
+			fscoresigma = std::min(fDiffScore[0], fDiffScore[1]);
+
+
+			double penaltyFscore = (1 + fscoresigma) * scoreWeight * (score_pivot - fscore);
+
+			AAF[i][j] = penaltyFscore;
 
 			AF[i][j] = fscore;
-			//AAF[i][j] = adjFscore;
 
-			int64_t case1Cost = A[i_1][j_1] + gapCost * adjFscore + 0.45;
-			int64_t case2Cost = A[i_1][j] + (T[i_1][j] == 1 ? gapCost : gapCost / 2);
-			int64_t case3Cost = A[i][j_1] + (T[i][j_1] == 1 ? gapCost : gapCost / 2);
-			//int64_t case2Cost = A[i_1][j] + (T[i_1][j] == 1 ? gapCost : T[i_1][j] == 2 ? gapCost / 4 : gapCost / 2);
-			//int64_t case3Cost = A[i][j_1] + (T[i][j_1] == 1 ? gapCost : T[i][j_1] == 3 ? gapCost / 4 : gapCost / 2);
+			double case1Cost = A[i_1][j_1] + gapCost * penaltyFscore;// +0.45;
+			//double case2Cost = A[i_1][j] + gapCost;
+			//double case3Cost = A[i][j_1] + gapCost;
+			//double case2Cost = A[i_1][j] + (T[i_1][j] == 1 ? gapCost : (gapCost / 2));
+			//double case3Cost = A[i][j_1] + (T[i][j_1] == 1 ? gapCost : (gapCost / 2));
+			double case2Cost = A[i_1][j] + (T[i_1][j] == 1 ? gapCost : T[i_1][j] == 2 ? gapCost / 3 : gapCost / 2);
+			double case3Cost = A[i][j_1] + (T[i][j_1] == 1 ? gapCost : T[i][j_1] == 3 ? gapCost / 3 : gapCost / 2);
 			if(case2Cost < case3Cost) {
 				if(case1Cost < case2Cost/* && fscore > score_pivot*/) {
 					T[i][j] = 1;
@@ -554,19 +521,13 @@ double FindBestAlignment(const Mat& cropIn, const Mat& strip2searchIn, const int
 					A[i][j] = case3Cost; //case1Cost;
 				}
 			}
-
-			//fscore = 0;
-			//fscore += GetFScore(crop.at<cv::Vec<uchar, 3>>(0, i_1), strip2search.at<cv::Vec<uchar, 3>>(crop.rows - 1, j_1));
-			//fscore += GetNormalizedDiff_Score(crop.at<cv::Vec<uchar, 3>>(0, i_1), strip2search.at<cv::Vec<uchar, 3>>(crop.rows - 1, j_1));
-			//fscore /= 2;
-			//AAF[i][j] = fscore;
 		}
 	}
 
 	int m = M - 1;
 	int n = N - 1;
 
-	int64_t caseCostMax = A[m][n];
+	double caseCostMax = A[m][n];
 
 	std::stack<int> st;
 
@@ -4073,7 +4034,7 @@ int BlobCentersLoG(std::vector<ABox>& boxes, std::vector<ClusteredPoint>& points
 						if(corners_areValid) {
 							Point2d point_dist = point - Point2d(cornersCenter.x, float(imrows) - cornersCenter.y);
 							centers_distance = std::sqrt(point_dist.ddot(point_dist));
-							if(centers_distance > 1.7/*2.5*/) {
+							if(centers_distance > 1.618/*1.7*//*2.5*/) {
 								isValid = false; 
 							}
 						}
@@ -6005,7 +5966,7 @@ return_t __stdcall RenderCameraImages(LPVOID lp) {
 					disp_calc_ctl.number_of_iterations = 1;
 					disp_calc_ctl.number_of_passes = 3;// 2;// 5;
 
-					disp_calc_ctl.y_drift = -1;
+					disp_calc_ctl.y_drift = 1;
 					
 					//disp_calc_ctl.createTraceFile = true;
 

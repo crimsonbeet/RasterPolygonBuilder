@@ -68,36 +68,36 @@ void ParameterizeCameras(SImageAcquisitionCtl& ctl, bool setTriggerMode) {
 	CBaslerUsbInstantCameraArray& cameras = *ctl._cameras;
 	try {
 		for (int j = 0; j < cameras.GetSize(); ++j) {
-			if (ctl._exposure_times[j] <= 0) {
-				cameras[j].ExposureAuto = Basler_UsbCameraParams::ExposureAuto_Continuous;
-			}
-			else {
-				cameras[j].ExposureAuto = Basler_UsbCameraParams::ExposureAuto_Off;
-				cameras[j].ExposureTime = ctl._exposure_times[j];
-			}
-
-			if (ctl._use_trigger) {
-				cameras[j].TriggerSelector = Basler_UsbCameraParams::TriggerSelector_FrameStart;
-
-				std::string model_name = cameras[j].GetDeviceInfo().GetModelName();
-
-				cameras[j].TriggerSource = ctl._trigger_source_software ? Basler_UsbCameraParams::TriggerSource_Software : Basler_UsbCameraParams::TriggerSource_Line1;
-				cameras[j].AcquisitionStatusSelector = Basler_UsbCameraParams::AcquisitionStatusSelector_FrameTriggerWait;
-			}
+			//if (ctl._exposure_times[j] <= 0) {
+			//	cameras[j].ExposureAuto = Basler_UsbCameraParams::ExposureAuto_Continuous;
+			//}
 			//else {
-			//	cameras[j].TriggerSelector = Basler_UsbCameraParams::TriggerSelector_FrameStart;
-			//	cameras[j].TriggerSource = Basler_UsbCameraParams::TriggerSource_Software;
-			//	cameras[j].AcquisitionStatusSelector = Basler_UsbCameraParams::AcquisitionStatusSelector_FrameTriggerWait;
+			//	cameras[j].ExposureAuto = Basler_UsbCameraParams::ExposureAuto_Off;
+			//	cameras[j].ExposureTime = ctl._exposure_times[j];
 			//}
 
-			if (setTriggerMode) {
-				cameras[j].TriggerMode = ctl._use_trigger ? Basler_UsbCameraParams::TriggerMode_On : Basler_UsbCameraParams::TriggerMode_Off;
-				if (ctl._use_trigger) {
-				}
-				else {
-					cameras[j].AcquisitionStart();
-				}
-			}
+			//if (ctl._use_trigger) {
+			//	cameras[j].TriggerSelector = Basler_UsbCameraParams::TriggerSelector_FrameStart;
+
+			//	std::string model_name = cameras[j].GetDeviceInfo().GetModelName();
+
+			//	cameras[j].TriggerSource = ctl._trigger_source_software ? Basler_UsbCameraParams::TriggerSource_Software : Basler_UsbCameraParams::TriggerSource_Line1;
+			//	cameras[j].AcquisitionStatusSelector = Basler_UsbCameraParams::AcquisitionStatusSelector_FrameTriggerWait;
+			//}
+			////else {
+			////	cameras[j].TriggerSelector = Basler_UsbCameraParams::TriggerSelector_FrameStart;
+			////	cameras[j].TriggerSource = Basler_UsbCameraParams::TriggerSource_Software;
+			////	cameras[j].AcquisitionStatusSelector = Basler_UsbCameraParams::AcquisitionStatusSelector_FrameTriggerWait;
+			////}
+
+			//if (setTriggerMode) {
+			//	cameras[j].TriggerMode = ctl._use_trigger ? Basler_UsbCameraParams::TriggerMode_On : Basler_UsbCameraParams::TriggerMode_Off;
+			//	if (ctl._use_trigger) {
+			//	}
+			//	else {
+			//		cameras[j].AcquisitionStart();
+			//	}
+			//}
 
 			g_frameRate[j] = cameras[j].ResultingFrameRate.GetValue();
 		}
@@ -130,8 +130,8 @@ void OpenCameras(SImageAcquisitionCtl& ctl) {
 				cameras[j].OutputQueueSize = 1;
 			}
 
-			//cameras[j].BinningHorizontal = 1;
-			//cameras[j].BinningVertical = 1;
+			////cameras[j].BinningHorizontal = 1;
+			////cameras[j].BinningVertical = 1;
 
 			std::string model_name = cameras[j].GetDeviceInfo().GetModelName();
 
@@ -153,26 +153,26 @@ void OpenCameras(SImageAcquisitionCtl& ctl) {
 			////cameras[j].CenterX.SetValue(true);
 			////cameras[j].CenterY.SetValue(true);
 
-			if (ctl._12bit_format) {
-				cameras[j].PixelFormat = Basler_UsbCameraParams::PixelFormat_Mono12;
-			}
-			else {
-				cameras[j].PixelFormat = Basler_UsbCameraParams::PixelFormat_BGR8;
-			}
+			//if (ctl._12bit_format) {
+			//	cameras[j].PixelFormat = Basler_UsbCameraParams::PixelFormat_Mono12;
+			//}
+			//else {
+			//	cameras[j].PixelFormat = Basler_UsbCameraParams::PixelFormat_BGR8;
+			//}
 
-			cameras[j].ExposureMode.SetValue(Basler_UsbCameraParams::ExposureMode_Timed);
+			//cameras[j].ExposureMode.SetValue(Basler_UsbCameraParams::ExposureMode_Timed);
 
-			cameras[j].BlackLevelSelector.SetValue(Basler_UsbCameraParams::BlackLevelSelector_All);
-			cameras[j].BlackLevel.SetValue(1);
+			//cameras[j].BlackLevelSelector.SetValue(Basler_UsbCameraParams::BlackLevelSelector_All);
+			//cameras[j].BlackLevel.SetValue(1);
 
-			cameras[j].BalanceWhiteAuto.SetValue(Basler_UsbCameraParams::BalanceWhiteAuto_Off/*BalanceWhiteAuto_Continuous*/);
+			//cameras[j].BalanceWhiteAuto.SetValue(Basler_UsbCameraParams::BalanceWhiteAuto_Off/*BalanceWhiteAuto_Continuous*/);
 
-			cameras[j].AcquisitionBurstFrameCount = 1;
+			//cameras[j].AcquisitionBurstFrameCount = 1;
 
-			int framesRate = 60;
+			//int framesRate = 60;
 
-			cameras[j].AcquisitionFrameRateEnable = true;
-			cameras[j].AcquisitionFrameRate = framesRate; // times a second
+			//cameras[j].AcquisitionFrameRateEnable = true;
+			//cameras[j].AcquisitionFrameRate = framesRate; // times a second
 
 			cameras[j].AcquisitionMode = Basler_UsbCameraParams::AcquisitionMode_Continuous;
 		}
