@@ -1019,6 +1019,17 @@ int64_t MyQueryCounter(void) {
 	return 0;
 }
 
+int RunXMessagePipe() {
+	int rc = -1;
+	if(g_ds7remoting_success) {
+		PIPCObjInterface wsiremoting = IPCObjectGetInterface();
+		if(wsiremoting) {
+			rc = (int)wsiremoting->RunXMarshRequestPipe();
+		}
+	}
+	return rc;
+}
+
 
 
 
@@ -1061,7 +1072,7 @@ int main() {
 			if (ds7remoting) {
 				g_ds7remoting_success = ds7remoting->Initialize(connectConfig.c_str());
 
-	            ADD_WSINAMESPACE(XAndroidCamera)
+				ADD_WSINAMESPACE(XAndroidCamera)
 
 				ds7remoting->GetSettings(g_remoting_settings);
 
@@ -1124,7 +1135,6 @@ int main() {
 	if (_g_images_frame) {
 		_g_images_frame->NEW_StereoConfiguration(g_configuration);
 	}
-
 
 
 
