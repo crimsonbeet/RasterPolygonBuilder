@@ -10,6 +10,7 @@
 #include "XConfiguration.h"
 #include "XClasses.h"
 #include "XAndroidCamera.h"
+#include "rds7connector\Xrds7data.h"
 
 #include "FrameWnd.h" 
 

@@ -29,4 +29,11 @@ InBufferSizeKBytes=32
 $
 
 
+><$Connector ResponseTimeoutSecs=10 UseClones=1 
+
+>< Producer Address='127.0.0.1:18201' Name=Xrds7 Parser=CWSIParser IsLogServer=1 Returns={RDS7DataResponse} Datatype={RDS7DataRequest}
+
+$
+
+
 $ 

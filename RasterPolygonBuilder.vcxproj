@@ -141,7 +141,7 @@
       </SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>false</ConformanceMode>
-      <AdditionalIncludeDirectories>$(SolutionDir)..\XDS7\Include;$(SolutionDir)..\XDS7\KWindows;$(PYLON_DEV_DIR)\include;C:\opencv455\include;$(SolutionDir)..\Polymorpher\Mascot_2016\Mascot</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)..\XDS7\Include;$(SolutionDir)..\XDS7\KWindows;$(PYLON_DEV_DIR)\include;C:\opencv455\include;$(SolutionDir)..\Polymorpher\Mascot_2016\Mascot;D:\Projects\RcppConnector</AdditionalIncludeDirectories>
       <SupportJustMyCode>false</SupportJustMyCode>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <LanguageStandard>stdcpp20</LanguageStandard>

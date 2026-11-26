@@ -17,6 +17,8 @@
 
 #include "opencv2\highgui\highgui_c.h"
 
+#include "rds7connector\Xrds7data.h"
+
 #include "profileapi.h"
 
 //#ifdef _DEBUG
@@ -1030,6 +1032,33 @@ int RunXMessagePipe() {
 	return rc;
 }
 
+return_t __stdcall SendTestRequest(PVOID pv) {
+	RDS7DataRequest request;
+	request._request_name = "SolveQuadratic";
+	request._items.emplace_back();
+	RDS7DataItem& item = request._items.back();
+	item._item_name = "Coefficients";
+	item._doubles = { 2, 3 };
+
+
+	OSSleep(2000);
+
+	std::ostringstream ostr;
+
+	RDS7DataResponse response;
+	if(QueryObject(request, response)) {
+		ostr << __FUNCTION__ << ' ' << "line:" << __LINE__ << ' ' << "got response" << ' ' << response._request_name << std::endl;
+	}
+	else {
+		ostr << __FUNCTION__ << ' ' << "line:" << __LINE__ << ' ' << "got no response" << std::endl;
+	}
+
+	IPCLog(ostr.str());
+
+	QueueWorkItem(SendTestRequest);
+
+	return 0;
+}
 
 
 
@@ -1065,7 +1094,7 @@ int main() {
 	* 
 	*/
 
-	if (g_configuration._frames_acquisition_mode > 1) {
+	//if (g_configuration._frames_acquisition_mode > 1) {
 		std::string connectConfig = ReadTextFile(g_path_connectconfiguration);
 		if (connectConfig.size()) {
 			PIPCObjInterface ds7remoting = IPCObjectGetInterface();
@@ -1099,7 +1128,7 @@ int main() {
 				IPCSetLogDelegate(Handle_LogEvent);
 			}
 		}
-	}
+	//}
 
 
 
@@ -1138,9 +1167,18 @@ int main() {
 
 
 
+	g_configuration._frames_acquisition_mode = 1;
 
-	bool do_calibration = !(g_bCalibrationExists = CalibrationFileExists()) && !g_configuration._evaluate_contours && !g_configuration._use_uncalibrated_cameras;
-	image_acquisition_ctl._calib_images_from_files = do_calibration && g_configuration._frames_acquisition_mode == 1;
+	g_bCalibrationExists = CalibrationFileExists();
+
+	bool do_calibration = false;
+	if(!g_bCalibrationExists) {
+		do_calibration = !g_configuration._evaluate_contours && !g_configuration._use_uncalibrated_cameras;
+
+	}
+	if(do_calibration) {
+		image_acquisition_ctl._calib_images_from_files = g_configuration._frames_acquisition_mode == 1;
+	}
 
 
 
@@ -1169,7 +1207,7 @@ int main() {
 	}
 
 
-
+	QueueWorkItem(SendTestRequest);
 
 
 	int time_average = 0;
