@@ -168,7 +168,11 @@ std::string stringify_currentTime(bool file_mode) {
 
 void VS_FileLog(const std::string& msg, bool do_close, bool do_ipclog) {
 	if(do_ipclog) {
-		IPCLog(msg);
+		std::ostringstream* ostr = nullptr;
+		GetOStringStream(ostr);
+		*ostr << msg;
+		IPCLog(ostr->str());
+		ReleaseOStringStream(ostr);
 	}
 
 	if(g_configuration._file_log) {

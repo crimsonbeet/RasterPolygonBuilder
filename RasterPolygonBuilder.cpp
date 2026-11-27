@@ -1048,14 +1048,13 @@ return_t __stdcall SendTestRequest(PVOID pv) {
 	RDS7DataResponse response;
 	if(QueryObject(request, response)) {
 		ostr << __FUNCTION__ << ' ' << "line:" << __LINE__ << ' ' << "got response" << ' ' << response._request_name << std::endl;
+		QueueWorkItem(SendTestRequest);
 	}
 	else {
 		ostr << __FUNCTION__ << ' ' << "line:" << __LINE__ << ' ' << "got no response" << std::endl;
 	}
 
 	IPCLog(ostr.str());
-
-	QueueWorkItem(SendTestRequest);
 
 	return 0;
 }
@@ -1285,12 +1284,22 @@ int main() {
 	do {
 	} while (ProcessWinMessages(50));
 
+
 	SignalWorkItems(9);
 	RestoreStandardOutput();
+
+	IPCLog("quit"); // thread ChurnLogRequests should quit.
+	Sleep(100);
+
+	auto ipc = IPCObjectGetInterface();
+	ipc->LeaveNetwork();
+	ipc->Destroy();
+
 
 	Sleep(500);
 	std::cout << "quit" << std::endl;
 	WaitforWorkItems();
+
 
 	//if (!g_bUserTerminated) {
 	//	g_bRestart = true;
